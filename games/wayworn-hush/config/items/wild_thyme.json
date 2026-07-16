@@ -1,11 +1,10 @@
 {
-    "_comment": "A PRACTICAL item -- a cooking/herbalism ingredient (stackable, consumed by the future cook/craft loop). Placeholder for the gather system.",
+    "_comment": "A PRACTICAL item -- a cooking/herbalism ingredient, consumed by the craft loop. Placeholder for the gather system.",
     "id": "wild_thyme",
     "name": "Wild Thyme",
     "description": "A sprig of hillside thyme, sharp and green. Good in a pot.",
     "icon": "assets/sprites/items/wild_thyme.png",
     "category": "practical",
     "rarity": 1,
-    "stackable": true,
     "max_stack": 99
 }

@@ -6,6 +6,5 @@
     "icon": "assets/sprites/items/herbal_draught.png",
     "category": "practical",
     "rarity": 2,
-    "stackable": true,
     "max_stack": 20
 }

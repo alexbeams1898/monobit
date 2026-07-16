@@ -2,19 +2,18 @@
 
 #include "Inventory.h"
 #include "Observations.h" // observations::RollRng (the shared int(int) roll source)
-#include "UnlockCondition.h"
 
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
-// Crafting: combine materials into a made thing. The substrate (recipe = inputs -> output,
-// consume + grant through the inventory ops) follows the studio's proven recipe pattern; the
-// layer that makes it wayworn's -- an understanding/capability GATE (unlock::Condition),
-// discovery by ATTEMPTING (Little Alchemy), a stat+lottery OUTCOME, and inverse-mastery XP --
-// is built on top. Coefficients live in config; the math lives in code (formulas pattern).
-// See docs/design/CRAFTING.md. Pure over its inputs -- unit-testable without GL/world.
+// Crafting: combine materials into a made thing. Little-Alchemy -- the INGREDIENTS are the only
+// requirement: the right things in the pot make the thing, always, no unlock gate. Making a recipe
+// you didn't have RECORDS it (State::known -- the discovery, which the game rewards + a recipe book
+// reads later); recipes can also be handed over by events. On top of the inputs->output substrate
+// sit a stat+lottery OUTCOME and inverse-mastery XP. Coefficients live in config; the math lives in
+// code (formulas pattern). See docs/design/CRAFTING.md. Pure over its inputs -- unit-testable.
 namespace crafting
 {
 
@@ -49,10 +48,6 @@ struct Recipe
     std::string output_item;        // -> inventory::ItemDef
     int output_qty = 1;
     OutputKind kind = OutputKind::Consumable;
-    // The gate: this recipe can only be realized/made when its condition holds (understanding
-    // -- a landed thought / observed depth -- plus capability -- a doing-layer stat). REUSED
-    // from observations; empty = ungated.
-    unlock::Condition unlock_when;
     Scaling scaling;          // consumable outcome scaling (ignored for Permanent)
     std::string xp_stat;      // doing-layer stat the craft feeds (empty = none)
     int xp_base = 0;          // pre-inverse-mastery XP
@@ -93,6 +88,13 @@ struct Config
     float xp_mastery_falloff = 0.1f;
     float xp_floor = 0.15f; // a mastered craft still pays a little
     float xp_ceiling = 2.0f;
+    // The reward for LEARNING a recipe (its first successful craft -- discovery, not repetition):
+    // a direct bump to a reading faculty + a Spirit EXP grant. The game layer enacts these on
+    // Outcome.first_time; the pure model just reports the discovery. (A placeholder slice of the
+    // wider growth economy still to be built.)
+    std::string learn_faculty = "perception"; // which faculty a first craft deepens
+    int learn_faculty_gain = 1;               // levels added to that faculty's base
+    int learn_spirit_exp = 10;                // Spirit EXP granted for the discovery
 };
 
 // Load the recipes from a directory of JSON files (one per recipe; id = the JSON's "id" or the
@@ -101,10 +103,6 @@ void load(Registry& out, const std::string& dir);
 
 // Load the outcome/XP tuning from config/crafting.json (silent no-op -> defaults if missing).
 void loadConfig(Config& cfg, const std::string& path);
-
-// Whether a recipe's gate is satisfied -- it can be realized/made. Pure over the unlock
-// Knowledge (built by the caller from observed ids + flags + stat levels).
-bool attemptable(const Recipe& recipe, const unlock::Knowledge& k);
 
 // The result of matching a set of SELECTED inputs against the recipe table.
 struct Match
@@ -119,10 +117,10 @@ struct Match
 
 // Match a set of selected item ids against the registry. An EXACT match = the selection's set
 // of types equals a recipe's input types (quantities are checked at craft time, not here).
-// If no exact match, reports the nearest recipe by type-overlap fraction (the closeness
-// signal that guides experimentation). Only attemptable recipes are considered.
-Match match(const std::vector<std::string>& selectedTypes, const Registry& registry,
-            const unlock::Knowledge& k);
+// If no exact match, reports the nearest recipe by type-overlap fraction (the closeness signal
+// that guides experimentation). ALL recipes are considered -- the ingredients are the only
+// requirement; there is no unlock gate.
+Match match(const std::vector<std::string>& selectedTypes, const Registry& registry);
 
 // The outcome quality for a consumable recipe: scaling.base + a formula of the crafting stat +
 // a bounded roll, clamped to quality_max. Deterministic for a Permanent output (returns 1.0).
@@ -149,10 +147,12 @@ struct Outcome
 };
 
 // Attempt to craft `recipe`: verify + consume its inputs from the satchel (via inventory ops),
-// grant the output, compute the outcome quality + XP, mark the recipe known (+ reveal on first
-// craft). Returns made=false and changes nothing if the satchel lacks the inputs. The game
-// enacts the returned flag/XP (crafting stays growth-ignorant, like observations).
+// grant the output, compute the outcome quality + XP, and report first_time (+ reveal flag) by
+// READING `known`. Returns made=false and changes nothing if the satchel lacks the inputs. Does
+// NOT mark the recipe known -- the caller owns learning (one place), so a first craft and a
+// teach-by-deed can't double-insert. The game enacts the returned flag/XP + the learn.
 Outcome craft(const Recipe& recipe, inventory::Satchel& satchel, const inventory::Registry& items,
-              int craftStat, const observations::RollRng& rng, const Config& cfg, State& state);
+              int craftStat, const observations::RollRng& rng, const Config& cfg,
+              const State& state);
 
 } // namespace crafting

@@ -1,10 +1,9 @@
 {
-    "_comment": "A KEEPSAKE -- a collection / attention-reward item (kept, not spent; picked up because you noticed it). Placeholder; the rarest keepsakes become 'pieces of the self' later (GAME-SYSTEMS.md §5).",
+    "_comment": "A KEEPSAKE -- a collection / attention-reward item (kept, not spent; picked up because you noticed it). Placeholder; the rarest keepsakes become 'pieces of the self' later (GAME-SYSTEMS.md \u00c2\u00a75).",
     "id": "river_stone",
     "name": "Worn River Stone",
     "description": "Smooth and grey, shaped by water where none runs now. You kept it.",
     "icon": "assets/sprites/items/river_stone.png",
     "category": "keepsake",
-    "rarity": 2,
-    "stackable": false
+    "rarity": 2
 }

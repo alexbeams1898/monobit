@@ -35,6 +35,7 @@ bool pressedThisFrame(const EntityManager& em, int scancode);
 bool clickedThisFrame(EntityManager& em, uint8_t button);
 void enactConfirm(EntityManager& em, GameState& gs, const thought_box::ConfirmResult& r);
 void attemptCraft(GameState& gs);
+void enactPageAction(Engine& engine, GameState& gs, pause_page::Action action);
 
 // The surface name of the tile at world (wx,wy): the tile's id looked up in the
 // region's tile->surface map. Empty if off-map or the tile is untagged (footsteps then
@@ -70,11 +71,13 @@ pause_page::Action stepPausePage(EntityManager& em, GameState& gs, bool menuUp)
     const bool up = !menuUp && pressedThisFrame(em, SDL_SCANCODE_W);
     const bool down = !menuUp && pressedThisFrame(em, SDL_SCANCODE_S);
     const bool confirm = !menuUp && pressedThisFrame(em, SDL_SCANCODE_SPACE);
-    const std::vector<std::string> craftMats = pause_page::craftMaterials(gs.satchel, gs.items);
+    const std::vector<pause_page::CraftMaterial> craftMats =
+        pause_page::craftMaterials(gs.satchel, gs.items);
+    // Returns the keyboard action for the caller to enact (via enactPageAction) -- this function
+    // gathers input + owns the page's side-concerns (badges, audio) but does NOT dispatch actions,
+    // so keyboard + mouse share the one dispatch point.
     const pause_page::Action action =
         pause_page::step(gs.pause, toggle, left, right, up, down, confirm, craftMats);
-    if (action == pause_page::Action::Craft)
-        attemptCraft(gs);
 
     // "New" item badges clear when the player LEAVES the satchel view (switched tab or closed
     // the page while on it) -- they saw the fresh finds, so they're no longer new.
@@ -144,6 +147,10 @@ bool clickedThisFrame(EntityManager& em, uint8_t button)
 // Toast color for "new observation / action available" (EXP toasts are emitted
 // by the box when the earning line displays -- see ThoughtBox loadLine).
 constexpr Color kUnlockColor{0.70f, 0.82f, 0.95f, 1.0f};
+
+// Toast color for a craft that didn't take (no match / near-miss / short on materials) -- a
+// muted grey, quieter than a made-item toast so a failed attempt doesn't read as an achievement.
+constexpr Color kCraftMissColor{0.72f, 0.72f, 0.70f, 1.0f};
 
 // Pre-mark a just-observed spot's already-offered actions as announced (no toast)
 // -- they're shown in the menu right there. Only actions that unlock LATER (via
@@ -284,29 +291,45 @@ void grantAndToast(GameState& gs, const std::vector<std::string>& items,
     toastFinds(gs, deposited);
 }
 
+// Learn a recipe -- the ONE place a recipe becomes known, whether TAUGHT by a deed or discovered
+// by a first successful craft. Marks it known and, if it wasn't already, pays the discovery reward
+// (a reading-faculty deepening + Spirit EXP, config-driven) and announces it. Idempotent: teaching
+// an already-known recipe is a silent no-op, so a re-read rock or a re-craft doesn't re-reward.
+// Returns true if this call was the moment it became known.
+bool learnRecipe(GameState& gs, const std::string& recipeId)
+{
+    if (!gs.crafting_state.known.insert(recipeId).second)
+        return false; // already known -- no repeat reward
+    const crafting::Config& cc = gs.crafting_config;
+    gs.growth.stat_levels[cc.learn_faculty] += cc.learn_faculty_gain;
+    gs.growth.spirit_exp += cc.learn_spirit_exp;
+    notify::push("New recipe learned", kUnlockColor);
+    return true;
+}
+
 // Run a craft attempt from the Craft tab's selected materials: match them against the recipe
 // table (gated by the same knowledge observations use), and on an exact match make it -- the
 // craft consumes inputs + grants the output, and here we bank its XP, set any first-craft
-// reveal flag, and toast the find. No match -> a near-miss / nothing feedback line. Either way
-// the outcome shows in `craft_result` and the selection clears.
+// reveal flag, and toast the find. Every outcome (made / near-miss / short on materials) surfaces
+// as a notification toast; the pot is cleared either way.
 void attemptCraft(GameState& gs)
 {
-    std::unordered_set<std::string> observedOut;
-    std::unordered_map<std::string, int> statsOut;
-    const unlock::Knowledge k =
-        observations::buildKnowledge(gs.observations, gs.growth, observedOut, statsOut);
-
-    const std::vector<std::string> selected(gs.pause.craft_selected.begin(),
-                                            gs.pause.craft_selected.end());
-    const crafting::Match m = crafting::match(selected, gs.recipes, k);
+    // The pot's distinct item TYPES (match is type-based; the counts staged in the pot are the
+    // player's staging, while craft() consumes each recipe's own declared quantity). No knowledge
+    // gate -- the ingredients alone decide whether something forms.
+    std::vector<std::string> selected;
+    selected.reserve(gs.pause.craft_selected.size());
+    for (const auto& [id, count] : gs.pause.craft_selected)
+        selected.push_back(id);
+    const crafting::Match m = crafting::match(selected, gs.recipes);
 
     if (m.recipe == nullptr)
     {
         // No recipe. A near-miss (some ingredients of a real, realized recipe) nudges; nothing
         // in common stays silent about what's missing (you're on your own -- see CRAFTING.md).
-        gs.pause.craft_result = (m.nearest != nullptr && m.closeness >= 0.5f)
-                                    ? "Something almost forms..."
-                                    : "These don't belong together.";
+        const bool nearMiss = m.nearest != nullptr && m.closeness >= 0.5f;
+        notify::push(nearMiss ? "Something almost forms..." : "These don't belong together.",
+                     kCraftMissColor);
         gs.pause.craft_selected.clear();
         return;
     }
@@ -317,7 +340,7 @@ void attemptCraft(GameState& gs)
                         gs.crafting_config, gs.crafting_state);
     if (!out.made)
     {
-        gs.pause.craft_result = "Not enough to work with.";
+        notify::push("Not enough to work with.", kCraftMissColor);
         gs.pause.craft_selected.clear();
         return;
     }
@@ -329,12 +352,34 @@ void attemptCraft(GameState& gs)
     if (!out.revealed_flag.empty())
         gs.observations.flags.insert(out.revealed_flag);
     if (const inventory::ItemDef* def = gs.items.find(out.output_item))
-    {
-        gs.pause.craft_result = "Made: " + def->name;
-        notify::push(std::to_string(out.output_qty) + "x " + def->name,
+        notify::push("Made " + std::to_string(out.output_qty) + "x " + def->name,
                      reading_color::rarityColor(def->rarity));
-    }
+
+    // Discovering a recipe by making it (never known before) learns it -- the same reward path a
+    // taught recipe takes. (No-op if a deed already taught it; then this craft is just a re-make.)
+    if (out.first_time)
+        learnRecipe(gs, m.recipe->id);
     gs.pause.craft_selected.clear();
+}
+
+// The ONE place a pause-page action is enacted. The page produces actions from two input paths
+// -- keyboard (step) and mouse (render) -- and both funnel through here, so a new Action variant
+// is wired in exactly one spot and neither path can silently drop it. (This is the root fix for
+// mouse-Combine doing nothing: render's Craft return was previously handled nowhere.)
+void enactPageAction(Engine& engine, GameState& gs, pause_page::Action action)
+{
+    switch (action)
+    {
+    case pause_page::Action::Quit:
+        engine.requestQuit();
+        break;
+    case pause_page::Action::Craft:
+        attemptCraft(gs);
+        break;
+    case pause_page::Action::None:
+    case pause_page::Action::Resume:
+        break; // no side effect beyond what step()/render() already applied to PauseState
+    }
 }
 
 // Despawn the world entity for an observable id (its glimmer + interactable), e.g. when a
@@ -358,6 +403,8 @@ void enactConfirm(EntityManager& em, GameState& gs, const thought_box::ConfirmRe
     gs.growth.spirit_exp += r.earned;
     if (!r.granted.empty() || !r.gathered.empty())
         grantAndToast(gs, r.granted, r.gathered);
+    for (const auto& recipeId : r.taught) // a deed handed over a recipe -> learn it (+ reward)
+        learnRecipe(gs, recipeId);
     if (!r.consumed_spot.empty())
         despawnObservableEntity(em, r.consumed_spot);
 }
@@ -417,8 +464,7 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // menu is up.
     const bool menuUp = thought_box::menuActive();
 
-    if (stepPausePage(em, gs, menuUp) == pause_page::Action::Quit)
-        engine.requestQuit();
+    enactPageAction(engine, gs, stepPausePage(em, gs, menuUp));
 
     // Freeze the world while the page is open: skip movement, observing, camera.
     // Animation is halted in gamePreRender (it runs at wall-clock rate there).
@@ -595,10 +641,6 @@ void gameRenderUI(Engine& engine, EntityManager& em)
         // + rarity via the growth state.
         thought_box::render(gs.growth, ww, wh);
 
-        // Ambient notification toasts (EXP, "new observation/action available") --
-        // in the notification band, non-blocking, self-fading.
-        notify::render(static_cast<float>(engine.frameDt()), ww, wh);
-
         // Interaction-stance badge (Observe / Act) so the player always knows which verb an
         // interact will do.
         interaction_mode::render(gs.int_mode_state, gs.int_mode_config, ww, wh);
@@ -627,9 +669,21 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     const pause_page::Mouse mouse{static_cast<float>(mx), static_cast<float>(my), lClick};
     const pause_page::Content content{gs.observations, gs.satchel, gs.items,
                                       gs.notebook,     gs.recipes, gs.crafting_state};
-    if (pause_page::render(gs.pause, gs.growth, content, mouse, engine.windowWidth(),
-                           engine.windowHeight()) == pause_page::Action::Quit)
-        engine.requestQuit();
+    // Resolve item-icon paths to textures through the engine's cache (the page stays engine-
+    // type-free). Empty path -> 0 (a swatch fallback in the grid).
+    const pause_page::IconResolver icon = [&engine](const std::string& path) -> std::uint32_t
+    { return path.empty() ? 0u : engine.textureManager().load(path); };
+    // The mouse action path funnels through the SAME enactPageAction as the keyboard, so a
+    // Combine click enacts the craft exactly like Space does (no per-action wiring to forget).
+    enactPageAction(engine, gs,
+                    pause_page::render(gs.pause, gs.growth, content, mouse, icon,
+                                       engine.windowWidth(), engine.windowHeight()));
+
+    // Notification toasts render LAST -- above the pause page's dark overlay -- so a craft/find
+    // toast stays visible while the Craft tab is open. Non-blocking, self-fading, always on top.
+    // (Suppressed only when the whole HUD is Off.)
+    if (!hudOff)
+        notify::render(static_cast<float>(engine.frameDt()), ww, wh);
 
     // Clear one-shot input buffers after all consumers have seen them (the
     // engine fills them but leaves clearing to the game). Guard on a tick having

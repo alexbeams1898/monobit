@@ -67,13 +67,16 @@ struct PauseState
     // hovers or presses W/S), 0 = Controls, 1 = Quit.
     int system_sel = -1;
 
-    // Craft tab: the material rows are the carried Practical items plus a trailing "Combine"
-    // row. `craft_sel` is the highlighted row (0..n materials, then Combine); `craft_selected`
-    // is the set of material ids toggled into the current attempt. `craft_result` holds the
-    // last attempt's feedback line (a made item or a closeness hint), shown until the next act.
+    // Satchel grid cursor (read-only; drives the detail panel).
+    int satchel_sel = 0;
+
+    // Craft tab: the Satchel material list + a trailing "Combine" control. `craft_sel` is the
+    // highlighted row (0..n-1 materials, then n = Combine). `craft_selected` is what's in the pot
+    // -- item id -> how many of it the player has thrown in (each click adds one, up to how many
+    // they carry; clicking a pot row takes one back). The attempt's feedback (made item / near-miss
+    // / short-on-materials) surfaces as a notification toast, not a line held here.
     int craft_sel = 0;
-    std::unordered_set<std::string> craft_selected;
-    std::string craft_result;
+    std::unordered_map<std::string, int> craft_selected;
 };
 
 // Game-wide runtime state, stored as a singleton in the entt registry context

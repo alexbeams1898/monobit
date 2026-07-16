@@ -12,7 +12,7 @@
 - **formulas** — stat-driven value formulas (coefficients in `config/formulas.json`, math in code). First customer: the observation glow's brightness as a function of a faculty. The shared home for "a stat changes what you experience." — [include/Formulas.h](../include/Formulas.h)
 - **reading_color** — the shared 1..5 rarity/faculty color vocabulary (readings and items use the same ramp) — [include/ReadingColor.h](../include/ReadingColor.h)
 - **worldclock** — in-world time source (notebook datelines; day/night later) — [include/WorldClock.h](../include/WorldClock.h)
-- **unlock::Condition** — the shared gate primitive (observed / flag / stat). Reused by observation tiers, deeds, thoughts, item/visibility gates, and (planned) crafting recipes — [include/UnlockCondition.h](../include/UnlockCondition.h)
+- **unlock::Condition** — the shared gate primitive (observed / flag / stat). Reused by observation tiers, deeds, thoughts, and item/visibility gates (crafting does NOT gate — see crafting) — [include/UnlockCondition.h](../include/UnlockCondition.h)
 
 ## World + map
 
@@ -31,6 +31,7 @@
 - **interaction** — the generic verb layer: resolve the active target + fire; routes to observe / act / take without owning their logic — [include/Interaction.h](../include/Interaction.h)
 - **inventory** — the satchel: two-layer item model (blueprint / instance), categories, ops (add/remove/count/has), key-item gating, new-find flag — [include/Inventory.h](../include/Inventory.h)
 - **loot** — gather loot tables + a pure weighted roll (the lottery) — [include/Loot.h](../include/Loot.h)
+- **crafting** — Little-Alchemy making: ingredients are the only requirement (no unlock gate); match by type-set + a closeness near-miss signal; stat+roll outcome quality; inverse-mastery XP; first-make RECORDS a recipe (learning is book-keeping, not a prerequisite); deeds can teach recipes early via `grant_recipe` — [include/Crafting.h](../include/Crafting.h) / [design/CRAFTING.md](design/CRAFTING.md)
 - **world_items** — items lying in the world: floor sprites + actionable-only interactables (pickups / gather nodes), with a rim-outline cue — [include/WorldItems.h](../include/WorldItems.h)
 - **notebook** — the dated record of readings (gated on carrying the notebook; time gated on the watch) — [include/Notebook.h](../include/Notebook.h)
 
@@ -41,7 +42,7 @@
 - **interaction_mode** — the movement-stance cue: an Observe/Act badge + a transition sound (see [design/INTERACTION-MODEL.md](design/INTERACTION-MODEL.md)) — [include/InteractionMode.h](../include/InteractionMode.h)
 - **head_marker** — the over-head thought bubble that tracks the player — [include/HeadMarker.h](../include/HeadMarker.h)
 - **notify** — ambient self-fading toasts (finds, unlocks, EXP) — [include/Notify.h](../include/Notify.h)
-- **pause_page** — the on-demand screen (Self / Noticed / Satchel / Notebook / System tabs) — [include/PausePage.h](../include/PausePage.h)
+- **pause_page** — the on-demand screen (Self / Noticed / Satchel / Craft / Notebook / System tabs); Satchel + Craft share a list+detail layout with mouse & keyboard nav — [include/PausePage.h](../include/PausePage.h)
 - **hud::canvas / regions** — fixed HUD region rects + scale — [include/HudCanvas.h](../include/HudCanvas.h)
 - **screen_to_world** — cursor → world transform (undoes the pixel-target blit + camera) — [include/ScreenToWorld.h](../include/ScreenToWorld.h)
 - **tune_panel** — the dev tuning/inspection panel — [include/TunePanel.h](../include/TunePanel.h)

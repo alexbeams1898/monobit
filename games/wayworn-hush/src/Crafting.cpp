@@ -5,6 +5,7 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 
@@ -36,8 +37,6 @@ Recipe parseRecipe(const nlohmann::json& j, const std::string& fallbackId)
     r.output_qty = std::max(1, j.value("output_qty", 1));
     r.kind = j.value("kind", std::string{}) == "permanent" ? OutputKind::Permanent
                                                            : OutputKind::Consumable;
-    if (const auto it = j.find("unlock_when"); it != j.end())
-        r.unlock_when = unlock::parseCondition(*it);
     if (const auto s = j.find("scaling"); s != j.end() && s->is_object())
     {
         r.scaling.stat = s->value("stat", std::string{});
@@ -95,22 +94,20 @@ void loadConfig(Config& cfg, const std::string& path)
     cfg.xp_mastery_falloff = j.value("xp_mastery_falloff", cfg.xp_mastery_falloff);
     cfg.xp_floor = j.value("xp_floor", cfg.xp_floor);
     cfg.xp_ceiling = j.value("xp_ceiling", cfg.xp_ceiling);
+    cfg.learn_faculty = j.value("learn_faculty", cfg.learn_faculty);
+    cfg.learn_faculty_gain = j.value("learn_faculty_gain", cfg.learn_faculty_gain);
+    cfg.learn_spirit_exp = j.value("learn_spirit_exp", cfg.learn_spirit_exp);
 }
 
-bool attemptable(const Recipe& recipe, const unlock::Knowledge& k)
-{
-    return unlock::satisfied(recipe.unlock_when, k);
-}
-
-Match match(const std::vector<std::string>& selectedTypes, const Registry& registry,
-            const unlock::Knowledge& k)
+Match match(const std::vector<std::string>& selectedTypes, const Registry& registry)
 {
     const std::unordered_set<std::string> sel(selectedTypes.begin(), selectedTypes.end());
     Match best;
+    // Every recipe is always makeable -- the INGREDIENTS are the only requirement (Little-Alchemy:
+    // the right things in the pot make the thing, whether or not you'd "learned" it). Learning is
+    // just a record kept afterward (see State::known + the game's learnRecipe), never a gate here.
     for (const auto& [id, r] : registry.recipes)
     {
-        if (!attemptable(r, k))
-            continue;
         const std::unordered_set<std::string> req = requiredTypes(r);
         // Exact type-set match: every required type is selected AND nothing extra is selected.
         if (sel.size() == req.size())
@@ -168,11 +165,12 @@ int xpGained(const Recipe& recipe, int craftStat, float quality, const Config& c
     const float factor = std::clamp(
         cfg.xp_reach_gain * quality - cfg.xp_mastery_falloff * static_cast<float>(craftStat) + 1.0f,
         cfg.xp_floor, cfg.xp_ceiling);
-    return std::max(1, static_cast<int>(static_cast<float>(recipe.xp_base) * factor + 0.5f));
+    return static_cast<int>(std::max(1L, std::lround(static_cast<float>(recipe.xp_base) * factor)));
 }
 
 Outcome craft(const Recipe& recipe, inventory::Satchel& satchel, const inventory::Registry& items,
-              int craftStat, const observations::RollRng& rng, const Config& cfg, State& state)
+              int craftStat, const observations::RollRng& rng, const Config& cfg,
+              const State& state)
 {
     Outcome out;
     // Verify all inputs are present before consuming any (all-or-nothing).
@@ -190,9 +188,11 @@ Outcome craft(const Recipe& recipe, inventory::Satchel& satchel, const inventory
     out.xp = xpGained(recipe, craftStat, out.quality, cfg);
     inventory::add(satchel, items, inventory::ItemInstance{recipe.output_item, recipe.output_qty});
 
-    // Discovery + first-craft reveal. `known` records the recipe (realized by making it); the
-    // reveal flag fires only the FIRST time (opens new understanding -- the two-way loop).
-    out.first_time = state.known.insert(recipe.id).second;
+    // first_time = the recipe wasn't known before this craft (a genuine discovery-by-making, as
+    // opposed to re-making something already learned, or crafting one a deed taught). craft only
+    // READS `known`; the caller owns marking a recipe learned (one place -- see learnRecipe), so
+    // teaching-by-deed and discovery-by-craft can't double-insert or double-reward.
+    out.first_time = state.known.count(recipe.id) == 0;
     if (out.first_time && !recipe.reveals_flag.empty())
         out.revealed_flag = recipe.reveals_flag;
     return out;

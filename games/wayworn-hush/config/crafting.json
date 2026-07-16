@@ -1,10 +1,13 @@
 {
-    "_comment": "Crafting outcome + XP tuning (see include/Crafting.h). Consumable outcome quality = scaling.base + quality_per_stat*craftStat + a luck roll in [0, quality_luck], clamped to quality_max. XP feeds the recipe's stat INVERSE to mastery: factor = clamp(xp_reach_gain*quality - xp_mastery_falloff*craftStat + 1, xp_floor, xp_ceiling), so reaching above your level pays more and routine work pays little. Coefficients only; the math lives in code. Placeholder values -- tune when the craft act lands. Tunable -- edit + relaunch (dev reads assets from source).",
+    "_comment": "Crafting outcome + XP tuning (see include/Crafting.h). Consumable outcome quality = scaling.base + quality_per_stat*craftStat + a luck roll in [0, quality_luck], clamped to quality_max. XP feeds the recipe's stat INVERSE to mastery: factor = clamp(xp_reach_gain*quality - xp_mastery_falloff*craftStat + 1, xp_floor, xp_ceiling), so reaching above your level pays more and routine work pays little. learn_* is the one-time reward for DISCOVERING a recipe (its first successful craft): learn_faculty gains learn_faculty_gain levels + learn_spirit_exp Spirit EXP. Coefficients only; the math lives in code. Placeholder values -- tune when the craft act lands. Tunable -- edit + relaunch (dev reads assets from source).",
     "quality_per_stat": 0.05,
     "quality_luck": 0.3,
     "quality_max": 2.0,
     "xp_reach_gain": 0.6,
     "xp_mastery_falloff": 0.1,
     "xp_floor": 0.15,
-    "xp_ceiling": 2.0
+    "xp_ceiling": 2.0,
+    "learn_faculty": "perception",
+    "learn_faculty_gain": 1,
+    "learn_spirit_exp": 10
 }

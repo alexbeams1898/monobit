@@ -5,6 +5,5 @@
     "description": "A small brass watch, still ticking. It tells you when.",
     "icon": "assets/sprites/items/watch.png",
     "category": "key_item",
-    "rarity": 4,
-    "stackable": false
+    "rarity": 4
 }

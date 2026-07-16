@@ -7,6 +7,7 @@
 #include "ScreenInput.h"
 #include "UIRenderer.h"
 
+#include <algorithm>
 #include <string>
 
 namespace pause_page
@@ -24,7 +25,7 @@ constexpr int kSysItemCount = 2;
 
 // Wayworn's minimal register: muted shadow-text over a soft darkening of the
 // frozen world. Colors mirror the thought box (AESTHETIC.md).
-constexpr Color kOverlay{0.04f, 0.05f, 0.06f, 0.55f};
+constexpr Color kOverlay{0.04f, 0.05f, 0.06f, 0.92f};
 constexpr Color kText{0.95f, 0.95f, 0.92f, 1.0f};
 constexpr Color kTextDim{0.95f, 0.95f, 0.92f, 0.45f};
 constexpr Color kShadow{0.0f, 0.0f, 0.0f, 0.55f};
@@ -158,118 +159,356 @@ void renderNoticed(const growth::GrowthState& g, const observations::State& o, f
         softTextCentered("None", cx, y, kTextDim);
 }
 
-// The Satchel tab: what the pilgrim carries, grouped by category (key items first
-// -- notebook, watch -- then keepsakes, then practical). Each line is the item
-// name (rarity-colored), with a "x N" suffix for a stack.
-void renderSatchel(const inventory::Satchel& sat, const inventory::Registry& reg, float cx, float y)
-{
-    // Category order + heading; key items lead (they're the meaningful ones).
-    const struct
-    {
-        inventory::Category cat;
-        const char* heading;
-    } sections[] = {{inventory::Category::KeyItem, "Carried"},
-                    {inventory::Category::Keepsake, "Kept"},
-                    {inventory::Category::Practical, "Gathered"}};
+// --- the shared item grid (Souls STRUCTURE -- icons in a grid + a detail panel -- in
+// wayworn's MINIMAL/CUTE register: soft cells, a gentle cursor, no ornate chrome) ----------
 
-    bool any = false;
-    for (const auto& sec : sections)
+// One list entry: an item id + a quantity + whether it's marked (in the pot -> green) or new.
+// `show_count` forces the "x N" readout even for N<=1 (the Craft columns always show counts so
+// the pilgrim can read "thyme x3"; the plain Satchel leaves it off so lone items read quiet).
+struct GridItem
+{
+    std::string id;
+    int qty = 0;
+    bool marked = false;
+    bool is_new = false;
+    bool show_count = false;
+};
+
+// Soft row highlights (cute/minimal -- low contrast, warm, no hard borders). Only the cursored
+// / marked rows get a fill; resting rows are bare text so the list reads quiet.
+constexpr Color kCellCursor{0.30f, 0.29f, 0.24f, 0.85f}; // the cursored row (warm lift)
+constexpr Color kCellMarked{0.22f, 0.28f, 0.22f, 0.8f};  // a toggle-selected row (soft green)
+
+// Word-wrap `text` to `maxW` px, drawing each line left-aligned from (x,y) downward. Returns the
+// y past the last line. Long words that don't fit alone are left overflowing (rare for item
+// copy) rather than hard-split mid-word.
+float softTextWrapped(const std::string& text, float x, float y, float maxW, const Color& c,
+                      float alpha = 1.0f)
+{
+    std::string line;
+    std::size_t i = 0;
+    while (i < text.size())
     {
-        bool headingDrawn = false;
+        // Pull the next word (up to the following space).
+        const std::size_t sp = text.find(' ', i);
+        const std::string word = text.substr(i, sp == std::string::npos ? sp : sp - i);
+        std::string trial = line;
+        if (!trial.empty())
+            trial += ' ';
+        trial += word;
+        if (!line.empty() && UIRenderer::measureText(sFont, trial).width > maxW)
+        {
+            softText(line, x, y, c, alpha);
+            y += lineH();
+            line = word;
+        }
+        else
+            line = trial;
+        i = (sp == std::string::npos) ? text.size() : sp + 1;
+    }
+    if (!line.empty())
+    {
+        softText(line, x, y, c, alpha);
+        y += lineH();
+    }
+    return y;
+}
+
+// A list row's full height (icon chip + name). Shared by every list so hit-testing and drawing
+// agree on where each row sits.
+float listRowH()
+{
+    return lineH() * 1.35f;
+}
+
+// The list region reserves a FIXED number of rows of vertical space, so controls anchored below
+// it (Combine, the detail panel) stay put regardless of how many items the list holds. Lists
+// longer than this scroll within the region (a later refinement); shorter lists leave the rest
+// of the region empty rather than pulling the controls up.
+constexpr int kListRows = 6;
+
+// The pixel height the list region always occupies (kListRows rows).
+float listRegionH()
+{
+    return static_cast<float>(kListRows) * listRowH();
+}
+
+// The window size, bundled so layout code passes one thing (both dims are always needed together
+// to derive the 16:9 safe area).
+struct Canvas
+{
+    int w = 0;
+    int h = 0;
+};
+
+// The page's content band width: a fraction of the 16:9 SAFE AREA (not the raw window), so it
+// scales with resolution like the rest of the HUD and stays a cohesive centered panel on a wide
+// window instead of sprawling to the edges. Shared by every tab's layout.
+float contentBandW(Canvas c)
+{
+    return hud::scale(c.w, c.h) * 0.72f;
+}
+
+// The row index the mouse is over within a vertical list of `count` rows starting at (x,y),
+// or -1 if none. The single hit-test all lists share, mirroring the tab strip / System menu
+// mouse standard (pointInRect per element).
+int listRowAt(const Mouse& mouse, float x, float y, float w, int count)
+{
+    const float rowH = listRowH();
+    for (int i = 0; i < count; ++i)
+        if (engine::ui::pointInRect(mouse.x, mouse.y, x, y + static_cast<float>(i) * rowH, w, rowH))
+            return i;
+    return -1;
+}
+
+// One list row: a small icon chip + the item name, left-aligned at (x,y). The active row
+// (keyboard cursor OR mouse hover) gets a soft warm fill; marked (in-the-pot) rows read green.
+// `rowH` is the row's full height; the chip is inset within it.
+void drawListRow(const inventory::ItemDef* def, const GridItem& gi, const IconResolver& icon,
+                 float x, float y, float rowW, float rowH, bool active)
+{
+    if (active || gi.marked)
+        UIRenderer::drawRect(x, y, rowW, rowH, gi.marked ? kCellMarked : kCellCursor);
+
+    const float chip = rowH * 0.78f;
+    const float chipY = y + (rowH - chip) * 0.5f;
+    const float chipX = x + rowH * 0.14f;
+    const std::uint32_t tex = def ? icon(def->icon) : 0u;
+    if (tex != 0u)
+        UIRenderer::drawTexturedRect({chipX, chipY, chip, chip}, tex);
+    else if (def) // no texture -> a soft rarity swatch stands in
+        UIRenderer::drawRect(chipX, chipY, chip, chip,
+                             reading_color::rarityColor(def->rarity, 0.7f));
+
+    const std::string name = def ? def->name : gi.id;
+    const auto ts = UIRenderer::measureText(sFont, name);
+    const float textX = chipX + chip + rowH * 0.22f;
+    softText(name, textX, y + (rowH - ts.height) * 0.5f, kText, active ? 1.0f : 0.7f);
+
+    if (gi.qty > 1 || (gi.show_count && gi.qty >= 0))
+    {
+        const std::string q = "x" + std::to_string(gi.qty);
+        softText(q, x + rowW - UIRenderer::measureText(sFont, q).width - rowH * 0.2f,
+                 y + (rowH - ts.height) * 0.5f, kTextDim);
+    }
+    if (gi.is_new) // a small "New" pip at the row's leading edge
+        UIRenderer::drawRect(x + 2.0f, y + rowH * 0.5f - 3.0f, 5.0f, 5.0f,
+                             {0.98f, 0.82f, 0.38f, 0.95f});
+}
+
+// Draw a vertical item list at (x,y): one drawListRow per item, the `active` row highlighted.
+// Pure draw -- the caller owns hit-testing (listRowAt) so a list can be read-only or interactive.
+void drawList(const std::vector<GridItem>& items, const inventory::Registry& reg,
+              const IconResolver& icon, int active, float x, float y, float w,
+              const std::string& emptyMsg)
+{
+    if (items.empty())
+    {
+        softText(emptyMsg, x, y, kTextDim);
+        return;
+    }
+    const float rowH = listRowH();
+    for (int i = 0; i < static_cast<int>(items.size()); ++i)
+        drawListRow(reg.find(items[static_cast<std::size_t>(i)].id),
+                    items[static_cast<std::size_t>(i)], icon, x, y + static_cast<float>(i) * rowH,
+                    w, rowH, i == active);
+}
+
+// The right-hand detail panel for the item at `sel` in `items`: name (rarity-colored) + wrapped
+// description, drawn from (x,y) within width `w`. No-op if sel is out of range.
+void drawItemDetail(const std::vector<GridItem>& items, const inventory::Registry& reg, int sel,
+                    float x, float y, float w)
+{
+    if (sel < 0 || sel >= static_cast<int>(items.size()))
+        return;
+    const inventory::ItemDef* def = reg.find(items[static_cast<std::size_t>(sel)].id);
+    const std::string name = def ? def->name : items[static_cast<std::size_t>(sel)].id;
+    softText(name, x, y, def ? reading_color::rarityColor(def->rarity) : kText);
+    y += lineH() * 1.6f;
+    if (def && !def->description.empty())
+        softTextWrapped(def->description, x, y, w, kTextDim);
+}
+
+// The Satchel view: a single item list on the LEFT + a detail panel on the RIGHT for the row
+// under the keyboard cursor or the mouse. Hovering a row moves the cursor (so the detail follows
+// the mouse), matching the page's other mouse-driven surfaces. Read-only -- no click action.
+void renderSatchel(PauseState& pause, const std::vector<GridItem>& items,
+                   const inventory::Registry& reg, const IconResolver& icon, const Mouse& mouse,
+                   float cx, float y, Canvas canvas)
+{
+    const float contentW = contentBandW(canvas);
+    const float leftX = cx - contentW * 0.5f;
+    const float colGap = contentW * 0.08f;
+    const float listW = (contentW - colGap) * 0.5f;
+    const float rightX = leftX + listW + colGap;
+    const float rightW = contentW - listW - colGap;
+
+    if (!items.empty())
+        pause.satchel_sel = std::clamp(pause.satchel_sel, 0, static_cast<int>(items.size()) - 1);
+    const int hover = listRowAt(mouse, leftX, y, listW, static_cast<int>(items.size()));
+    if (hover >= 0)
+        pause.satchel_sel = hover; // hovering a row selects it (detail follows the mouse)
+
+    drawList(items, reg, icon, items.empty() ? -1 : pause.satchel_sel, leftX, y, listW,
+             "Nothing yet");
+    drawItemDetail(items, reg, items.empty() ? -1 : pause.satchel_sel, rightX, y, rightW);
+}
+
+// The Satchel grid items: everything carried, key items first (they're the meaningful ones),
+// then keepsakes, then practical -- one grid, in that order, so the cursor walks it naturally.
+std::vector<GridItem> satchelGrid(const inventory::Satchel& sat, const inventory::Registry& reg)
+{
+    const inventory::Category order[] = {inventory::Category::KeyItem,
+                                         inventory::Category::Keepsake,
+                                         inventory::Category::Practical};
+    std::vector<GridItem> out;
+    for (const auto cat : order)
         for (const auto& e : sat.items)
         {
             const inventory::ItemDef* def = reg.find(e.id);
-            const inventory::Category cat = def ? def->category : inventory::Category::Keepsake;
-            if (cat != sec.cat)
-                continue;
-            if (!headingDrawn)
-            {
-                softTextCentered(sec.heading, cx, y, kTextDim);
-                y += lineH() * 1.1f;
-                headingDrawn = true;
-            }
-            std::string label = def ? def->name : e.id;
-            if (e.quantity > 1)
-                label += "  x" + std::to_string(e.quantity);
-            if (e.is_new)
-                label += "  \xE2\x80\xA2 New"; // a freshly-found item, until the tab is viewed
-            const Color c = def ? reading_color::rarityColor(def->rarity) : kText;
-            softTextCentered(label, cx, y, c);
-            y += lineH();
-            any = true;
+            const inventory::Category c = def ? def->category : inventory::Category::Keepsake;
+            if (c == cat)
+                out.push_back(GridItem{e.id, e.quantity, false, e.is_new});
         }
-        if (headingDrawn)
-            y += lineH() * 0.5f;
-    }
-    if (!any)
-        softTextCentered("Nothing yet", cx, y, kTextDim);
+    return out;
 }
 
 } // namespace
 
-// The Craft-tab material rows: the distinct PRACTICAL item ids the pilgrim carries (the things
-// that can go in the pot), in a stable order. Row order is shared by render + step so the
-// selection cursor lines up. Non-Practical items (key items, keepsakes) aren't craftable.
-std::vector<std::string> craftMaterials(const inventory::Satchel& sat,
-                                        const inventory::Registry& reg)
+// The Craft-tab material rows: the distinct item ids the pilgrim can throw in the pot, in a
+// stable order. Row order is shared by render + step so the selection cursor lines up. The pot
+// takes ANYTHING you carry (Little-Alchemy: experiment freely) EXCEPT key items -- those are
+// progression-bound (the notebook, the watch) and must not be consumed on a failed attempt.
+std::vector<CraftMaterial> craftMaterials(const inventory::Satchel& sat,
+                                          const inventory::Registry& reg)
 {
-    std::vector<std::string> out;
+    std::vector<CraftMaterial> out;
     std::unordered_set<std::string> seen;
     for (const auto& e : sat.items)
     {
         const inventory::ItemDef* def = reg.find(e.id);
-        if (!def || def->category != inventory::Category::Practical)
-            continue;
+        if (def && def->category == inventory::Category::KeyItem)
+            continue; // key items are protected from the pot
         if (seen.insert(e.id).second)
-            out.push_back(e.id);
+            out.push_back(CraftMaterial{e.id, inventory::count(sat, e.id)});
     }
     return out;
 }
 
 namespace
 {
-// The Craft tab: pick materials to combine, then Combine to attempt it. Little-Alchemy --
-// realizing a recipe is by trying. Rows = each carried material (a check when selected) + a
-// trailing "Combine". `sel` is the highlighted row; `selected` the toggled material ids;
-// `result` the last attempt's feedback. The actual craft runs in the game layer (needs the
-// recipe registry) -- this only shows + gathers the selection.
-void renderCraft(const inventory::Satchel& sat, const inventory::Registry& reg,
-                 const std::vector<std::string>& materials,
-                 const std::unordered_set<std::string>& selected, int sel,
-                 const std::string& result, float cx, float y)
+// Throw one more of `id` into the pot, capped at how many the pilgrim carries.
+void addToPot(PauseState& pause, const inventory::Satchel& sat, const std::string& id)
 {
-    softTextCentered("Combine what you carry.", cx, y, kTextDim);
-    y += lineH() * 1.4f;
+    const auto it = pause.craft_selected.find(id);
+    const int inPot = (it == pause.craft_selected.end()) ? 0 : it->second;
+    if (inPot < inventory::count(sat, id))
+        pause.craft_selected[id] = inPot + 1;
+}
 
-    if (materials.empty())
+// Take one of `id` back out of the pot (removing the key when it hits zero).
+void removeFromPot(PauseState& pause, const std::string& id)
+{
+    const auto it = pause.craft_selected.find(id);
+    if (it != pause.craft_selected.end() && --it->second <= 0)
+        pause.craft_selected.erase(it);
+}
+
+// The Craft tab's read-only inputs, bundled so the render + its helpers pass one thing instead of
+// five positional args (keeps every sub-function under the parameter budget).
+struct CraftView
+{
+    const inventory::Satchel& sat;
+    const inventory::Registry& reg;
+    const IconResolver& icon;
+    const std::vector<CraftMaterial>& materials;
+    const Mouse& mouse;
+};
+
+// Two-column layout for the Craft tab, derived once from the content origin + window width.
+struct CraftLayout
+{
+    float left_x, list_w, pot_x, pot_w, content_w, list_y;
+};
+
+CraftLayout craftLayout(float cx, float y, Canvas canvas)
+{
+    const float contentW = contentBandW(canvas);
+    const float leftX = cx - contentW * 0.5f;
+    const float colGap = contentW * 0.08f;
+    const float listW = (contentW - colGap) * 0.5f;
+    return {leftX,
+            listW,
+            leftX + listW + colGap,
+            contentW - listW - colGap,
+            contentW,
+            y + lineH() * 1.2f};
+}
+
+// The Craft tab: throw materials in the pot, then Combine to attempt it (Little-Alchemy --
+// realizing a recipe is by trying). Left = everything you can throw in (click / Space toggles it
+// into the pot); right = the POT, what's going in (click a pot row to pull it back out); below
+// the pot = a Combine control; the bottom spans a detail panel for the focused material + the
+// last attempt's result. Keyboard focus (craft_sel) walks materials then Combine (stepCraft); the
+// mouse can also drive every control. Returns Craft if Combine was clicked, else None.
+Action renderCraft(PauseState& pause, const CraftView& v, float cx, float y, Canvas canvas)
+{
+    const CraftLayout lo = craftLayout(cx, y, canvas);
+    const int nMat = static_cast<int>(v.materials.size());
+
+    // Satchel rows (how many carried, minus what's already staged) + pot rows (how many staged).
+    // Both lists follow materials order so they stay stable. A material with its whole stack in
+    // the pot still shows in the Satchel list (greyed to x0) so its row keeps its place.
+    std::vector<GridItem> matRows;
+    std::vector<GridItem> potRows;
+    std::vector<std::string> potIds; // parallel to potRows, for click-to-remove
+    matRows.reserve(v.materials.size());
+    for (const auto& m : v.materials)
     {
-        softTextCentered("Nothing to work with yet.", cx, y, kTextDim);
-        return;
+        const auto it = pause.craft_selected.find(m.id);
+        const int inPot = (it == pause.craft_selected.end()) ? 0 : it->second;
+        matRows.push_back(
+            GridItem{m.id, m.carried - inPot, inPot > 0, false, true}); // still addable
+        if (inPot > 0)
+        {
+            potRows.push_back(GridItem{m.id, inPot, false, false, true});
+            potIds.push_back(m.id);
+        }
     }
 
-    for (int i = 0; i < static_cast<int>(materials.size()); ++i)
-    {
-        const std::string& id = materials[static_cast<std::size_t>(i)];
-        const inventory::ItemDef* def = reg.find(id);
-        const bool on = selected.count(id) > 0;
-        const int have = inventory::count(sat, id);
-        std::string row = std::string(on ? "\xE2\x97\x89 " : "\xE2\x97\x8B ") // ◉ selected / ○ not
-                          + (def ? def->name : id) + "  x" + std::to_string(have);
-        const bool hi = (i == sel);
-        const Color c = def ? reading_color::rarityColor(def->rarity) : kText;
-        softTextCentered(row, cx, y, c, hi ? 1.0f : 0.6f);
-        y += lineH();
-    }
+    softText("Satchel", lo.left_x, y, kTextDim);
+    softText("To craft", lo.pot_x, y, kTextDim);
 
-    y += lineH() * 0.4f;
-    const bool combineHi = (sel == static_cast<int>(materials.size()));
-    softTextCentered("Combine", cx, y, {0.92f, 0.86f, 0.55f, 1.0f}, combineHi ? 1.0f : 0.55f);
+    // Hovering a material row focuses it (detail follows the mouse + a click has a target).
+    const int matHover = listRowAt(v.mouse, lo.left_x, lo.list_y, lo.list_w, nMat);
+    if (matHover >= 0)
+        pause.craft_sel = matHover;
+    const int focus = (pause.craft_sel < nMat) ? pause.craft_sel : -1;
+    drawList(matRows, v.reg, v.icon, focus, lo.left_x, lo.list_y, lo.list_w,
+             "Nothing to work with yet.");
+    drawList(potRows, v.reg, v.icon, -1, lo.pot_x, lo.list_y, lo.pot_w, "(empty)");
 
-    if (!result.empty())
-    {
-        y += lineH() * 1.4f;
-        softTextCentered(result, cx, y, kTextDim);
-    }
+    // A Satchel-row click throws one more of that item in the pot; a pot-row click takes one back.
+    const int potHover =
+        listRowAt(v.mouse, lo.pot_x, lo.list_y, lo.pot_w, static_cast<int>(potRows.size()));
+    if (v.mouse.clicked && matHover >= 0)
+        addToPot(pause, v.sat, v.materials[static_cast<std::size_t>(matHover)].id);
+    else if (v.mouse.clicked && potHover >= 0)
+        removeFromPot(pause, potIds[static_cast<std::size_t>(potHover)]);
+
+    // Combine + the detail panel anchor BELOW the fixed-height list region, so they hold their
+    // place no matter how many items the list carries (the region is roomy; long lists scroll
+    // within it later). Combine sits under the pot column; the detail spans the band below both.
+    const float combineY = lo.list_y + listRegionH() + lineH() * 0.5f;
+    const bool combineHover =
+        engine::ui::pointInRect(v.mouse.x, v.mouse.y, lo.pot_x, combineY - 4.0f, lo.pot_w, lineH());
+    softText("\xE2\x96\xB8 Combine", lo.pot_x, combineY, kText,
+             (pause.craft_sel >= nMat || combineHover) ? 1.0f : 0.55f);
+
+    const float detailY = combineY + lineH() * 1.6f;
+    drawItemDetail(matRows, v.reg, focus, lo.left_x, detailY, lo.content_w);
+
+    return (v.mouse.clicked && combineHover) ? Action::Craft : Action::None;
 }
 
 // The Notebook tab: the dated record of readings, grouped by day (undated last).
@@ -362,7 +601,7 @@ void init(FontHandle font)
 // toggles a material into the attempt, or (on Combine) commits the attempt (returns Craft --
 // the caller runs the actual craft, which needs the recipe registry). `materials` is the row
 // list, in the same order render draws. Selecting a material clears the last result.
-Action stepCraft(PauseState& pause, const std::vector<std::string>& materials, bool up, bool down,
+Action stepCraft(PauseState& pause, const std::vector<CraftMaterial>& materials, bool up, bool down,
                  bool confirm)
 {
     const int rows = static_cast<int>(materials.size()) + 1; // materials + Combine
@@ -375,11 +614,12 @@ Action stepCraft(PauseState& pause, const std::vector<std::string>& materials, b
     {
         if (pause.craft_sel == static_cast<int>(materials.size()))
             return Action::Craft; // Combine row -> attempt (caller enacts)
-        // A material row: toggle it in/out of the attempt.
-        const std::string& id = materials[static_cast<std::size_t>(pause.craft_sel)];
-        if (!pause.craft_selected.erase(id))
-            pause.craft_selected.insert(id);
-        pause.craft_result.clear(); // a new selection supersedes the old feedback
+        // Space throws one more of the highlighted material in, capped at how many are carried.
+        const CraftMaterial& m = materials[static_cast<std::size_t>(pause.craft_sel)];
+        if (pause.craft_selected[m.id] < m.carried)
+            ++pause.craft_selected[m.id];
+        else
+            pause.craft_selected.erase(m.id); // full stack in -> next Space empties it (a reset)
     }
     return Action::None;
 }
@@ -405,7 +645,7 @@ Action stepSystemMenu(PauseState& pause, bool up, bool down, bool confirm)
 }
 
 Action step(PauseState& pause, bool toggle, bool left, bool right, bool up, bool down, bool confirm,
-            const std::vector<std::string>& craftMats)
+            const std::vector<CraftMaterial>& craftMats)
 {
     if (!pause.open)
     {
@@ -442,11 +682,14 @@ Action step(PauseState& pause, bool toggle, bool left, bool right, bool up, bool
         pause.tab = static_cast<PauseState::Tab>(next);
     }
 
-    // Interactive tabs. System = its item menu; Craft = material select + Combine.
+    // Interactive tabs. System = its item menu; Craft = material select + Combine; Satchel =
+    // a read-only grid cursor (W/S walk the cells for the detail panel).
     if (pause.tab == PauseState::Tab::System)
         return stepSystemMenu(pause, up, down, confirm);
     if (pause.tab == PauseState::Tab::Craft)
         return stepCraft(pause, craftMats, up, down, confirm);
+    if (pause.tab == PauseState::Tab::Satchel && (up || down))
+        pause.satchel_sel += down ? 1 : -1; // clamped at render time to the item count
 
     return Action::None;
 }
@@ -491,7 +734,8 @@ void renderTabStrip(PauseState& pause, float cx, float tabY, const Mouse& mouse)
 // the tabs, and resolve clicks on the System tab's items. Returns Quit if Quit
 // was clicked, else None (a Controls click pushes its sub-view).
 Action renderTabContent(PauseState& pause, const growth::GrowthState& growth,
-                        const Content& content, float cx, float contentY, const Mouse& mouse)
+                        const Content& content, const IconResolver& icon, float cx, float contentY,
+                        const Mouse& mouse, Canvas canvas)
 {
     if (!pause.view_stack.empty())
     {
@@ -513,12 +757,15 @@ Action renderTabContent(PauseState& pause, const growth::GrowthState& growth,
         renderNoticed(growth, content.observations, cx, contentY);
         break;
     case PauseState::Tab::Satchel:
-        renderSatchel(content.satchel, content.items, cx, contentY);
+        renderSatchel(pause, satchelGrid(content.satchel, content.items), content.items, icon,
+                      mouse, cx, contentY, canvas);
         break;
     case PauseState::Tab::Craft:
-        renderCraft(content.satchel, content.items, craftMaterials(content.satchel, content.items),
-                    pause.craft_selected, pause.craft_sel, pause.craft_result, cx, contentY);
-        break;
+    {
+        const std::vector<CraftMaterial> mats = craftMaterials(content.satchel, content.items);
+        const CraftView view{content.satchel, content.items, icon, mats, mouse};
+        return renderCraft(pause, view, cx, contentY, canvas);
+    }
     case PauseState::Tab::Notebook:
         renderNotebook(growth, content.notebook, cx, contentY);
         break;
@@ -538,7 +785,7 @@ Action renderTabContent(PauseState& pause, const growth::GrowthState& growth,
 }
 
 Action render(PauseState& pause, const growth::GrowthState& growth, const Content& content,
-              const Mouse& mouse, int windowW, int windowH)
+              const Mouse& mouse, const IconResolver& icon, int windowW, int windowH)
 {
     if (!pause.open || sFont < 0)
         return Action::None;
@@ -552,8 +799,9 @@ Action render(PauseState& pause, const growth::GrowthState& growth, const Conten
 
     // The tab strip always stays visible; sub-views render in the content area
     // below it, never replacing the tabs.
-    renderTabStrip(pause, cx, wh * 0.15f, mouse);
-    return renderTabContent(pause, growth, content, cx, wh * 0.30f, mouse);
+    renderTabStrip(pause, cx, wh * 0.12f, mouse);
+    return renderTabContent(pause, growth, content, icon, cx, wh * 0.24f, mouse,
+                            Canvas{windowW, windowH});
 }
 
 } // namespace pause_page

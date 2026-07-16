@@ -245,9 +245,11 @@ growth.
   find); *Quality* = per-copy roll (how good this one is).
 - **Two lotteries:** `WeightedPool` picks *which* material; a `quality_lottery`
   picks *how good* (Masterwork ≈ 1-in-50).
-- **Crafting = inputs → output**, output quality = avg of inputs; **mastery
-  chains** unlock recipes (craft N times → unlock next). This gates progression
-  (§4).
+- **Crafting = inputs → output** (Little-Alchemy: the ingredients are the only
+  requirement, no unlock gate). Output quality scales on inputs + a doing-layer
+  stat + a roll. Making something new **records** it (learning is a book-keeping
+  reward, not a prerequisite); events can hand recipes over early. See
+  [CRAFTING.md](CRAFTING.md).
 - **Anti-cheese:** the roll commits at spawn (can't reload to reroll); cap +
   respawn trickle (can't farm one spot forever).
 - **The rarest pulls are pieces of the self.** Most drops are crafting fuel; the

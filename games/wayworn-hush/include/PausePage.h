@@ -5,6 +5,8 @@
 #include "Growth.h"
 #include "Observations.h"
 
+#include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -29,11 +31,19 @@ enum class Action
 // Set the font once after FontManager loads it.
 void init(FontHandle font);
 
-// The Craft tab's material rows: the distinct Practical item ids the pilgrim carries, in the
-// order the Craft tab draws + navigates them. The caller passes this to step() so the craft
-// cursor lines up with the rendered rows.
-std::vector<std::string> craftMaterials(const inventory::Satchel& satchel,
-                                        const inventory::Registry& items);
+// One Craft-tab material row: an item id + how many of it the pilgrim carries. The carried count
+// lets the pure step() cap how many can be thrown in the pot without needing the whole satchel.
+struct CraftMaterial
+{
+    std::string id;
+    int carried = 0;
+};
+
+// The Craft tab's material rows: each throwable item the pilgrim carries (everything but key
+// items) + its carried count, in the order the Craft tab draws + navigates them. The caller
+// passes this to step() so the craft cursor lines up with the rendered rows.
+std::vector<CraftMaterial> craftMaterials(const inventory::Satchel& satchel,
+                                          const inventory::Registry& items);
 
 // One frame of input while the page may be open. Controls stay in the left-hand
 // WASD cluster (no Esc); edge-triggered inputs decoded by the caller.
@@ -50,7 +60,7 @@ std::vector<std::string> craftMaterials(const inventory::Satchel& satchel,
 // action committed this frame (Quit / Craft are returned for the caller to act on). Pure --
 // testable without SDL or GL.
 Action step(PauseState& pause, bool toggle, bool left, bool right, bool up, bool down, bool confirm,
-            const std::vector<std::string>& craftMats = {});
+            const std::vector<CraftMaterial>& craftMats = {});
 
 // Mouse state for one frame, decoded by the caller (position from SDL,
 // `clicked` = a left-button press this frame). Passed in so the page module
@@ -75,14 +85,17 @@ struct Content
     const crafting::State& crafting_state; // discovery state (known recipes)
 };
 
+// Resolve an item's icon path to a GL texture id (the caller wraps the engine's
+// TextureManager, so the page stays free of engine types). Returns 0 if unavailable -> the
+// icon cell falls back to a plain rarity-tinted swatch.
+using IconResolver = std::function<std::uint32_t(const std::string&)>;
+
 // Draw the page (overlay + tab strip + content) and handle the mouse against the
 // geometry it draws: hovering a tab brightens it, clicking a tab switches to it,
-// clicking Quit on the System tab quits. Mutates `pause` (a tab click switches
-// tabs) and returns any action a click committed (Quit). Keyboard is handled
-// separately by step(); the two are interchangeable. No-op if the page is
-// closed. Window-space, native resolution. GL/font -- integration-tested by
-// running the game.
+// clicking Quit on the System tab quits. `icon` resolves item icons to textures (the
+// Satchel/Craft grids draw them). Mutates `pause` and returns any action a click committed
+// (Quit). Keyboard is handled by step(). No-op if closed. Window-space, native resolution.
 Action render(PauseState& pause, const growth::GrowthState& growth, const Content& content,
-              const Mouse& mouse, int windowW, int windowH);
+              const Mouse& mouse, const IconResolver& icon, int windowW, int windowH);
 
 } // namespace pause_page

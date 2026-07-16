@@ -39,8 +39,11 @@ struct ItemDef
     // Per-TYPE rarity on the SAME 1..5 scale as reading difficulty (reuse
     // reading_color::rarityWord/rarityColor). 0 = no rarity label.
     int rarity = 1;
-    bool stackable = false; // Practical stacks; Keepsake/KeyItem do not
-    int max_stack = 1;
+    // Every item stacks -- the satchel collapses identical ids into one row with a count. A high
+    // default so a config rarely needs to set it; an authored cap (e.g. a consumable) spills into
+    // fresh stacks past the cap. (There is no "unstackable" item; a singleton like the notebook
+    // just never reaches a count > 1.)
+    int max_stack = 99;
 };
 
 // A concrete copy in the satchel.

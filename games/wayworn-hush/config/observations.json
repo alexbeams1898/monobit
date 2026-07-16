@@ -18,6 +18,7 @@
             "actions": {
                 "add": [
                     {
+                        "_comment": "TEACH deed: the moss is a herb in its own right. Clearing it, you recognize it -- and how it steeps. grant_recipe hands the draught over (the game marks it known + rewards perception, and toasts 'New recipe learned'). Diegetic gate: you learn the recipe by DOING this, not via a hidden flag. Still sets the flag too (other content reads it).",
                         "id": "clear_moss",
                         "label": "Clear the moss from its face",
                         "unlock_when": [
@@ -25,8 +26,9 @@
                                 "observed": "rock"
                             }
                         ],
-                        "result_text": "The moss comes away in a wet green sheet, and the stone shows its grain.",
+                        "result_text": "The moss comes away in a wet green sheet -- and you know this green: it steeps into a bitter, steadying draught. The stone shows its grain beneath.",
                         "set_flag": "rock_moss_cleared",
+                        "grant_recipe": "herbal_draught",
                         "one_shot": true
                     },
                     {
@@ -84,6 +86,23 @@
             "id": "tree",
             "kind": "clearing",
             "value": 1,
+            "actions": {
+                "add": [
+                    {
+                        "_comment": "GATHER deed: wild thyme grows in the tree's shade. A grant_table deed (rolls hillside_herbs -- mostly thyme, rarely a river stone), repeatable so the pilgrim can collect the few thyme a draught needs. Repeatable now; when in-game time lands, harvested patches will regrow on a clock rather than give freely.",
+                        "id": "gather_thyme",
+                        "label": "Gather from the long grass",
+                        "unlock_when": [
+                            {
+                                "observed": "tree"
+                            }
+                        ],
+                        "result_text": "You part the grass in the tree's shade and gather what grows there.",
+                        "grant_table": "hillside_herbs",
+                        "one_shot": false
+                    }
+                ]
+            },
             "tiers": [
                 {
                     "text": "A single tree, standing apart from the rest."

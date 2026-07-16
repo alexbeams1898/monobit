@@ -59,9 +59,11 @@ struct Action
     // grant_item -> deposit that item; grant_table -> roll that loot table. So a "Pick up" /
     // "Gather" deed on an observable-and-takeable thing lives in the same deed list as its
     // readings-deeds, with no inventory dependency here.
-    std::string grant_item;  // item id to deposit on take (empty = none)
-    std::string grant_table; // loot table id to roll on take (empty = none)
-    bool one_shot = false;   // true = leaves the menu once taken
+    std::string grant_item;   // item id to deposit on take (empty = none)
+    std::string grant_table;  // loot table id to roll on take (empty = none)
+    std::string grant_recipe; // recipe id to TEACH on take (empty = none) -- a deed that hands you
+                              // a recipe outright (e.g. reading a cleared rock teaches the draught)
+    bool one_shot = false;    // true = leaves the menu once taken
     // true = taking this deed REMOVES the observable from the world (you took THE thing --
     // a lone pebble). false (default) = the spot persists (you took FROM it -- a sprig off
     // the bush, still there to examine). The game does the despawn (it owns the world entity).
@@ -313,6 +315,7 @@ struct ObserveResult
     // `gathered`. Empty for a plain reading/deed.
     std::vector<std::string> granted;  // item ids to deposit
     std::vector<std::string> gathered; // loot table ids to roll
+    std::vector<std::string> taught;   // recipe ids a deed handed over (the game marks them known)
     // Set to the observable's id when a taken deed's consumes_spot fires -- the game removes
     // that spot's world entity (glimmer + interactable). Empty otherwise.
     std::string consumed_spot;

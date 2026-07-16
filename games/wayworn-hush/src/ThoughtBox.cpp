@@ -490,7 +490,7 @@ ConfirmResult confirm(observations::State& state, const growth::GrowthState& gro
             observations::takeAction(state, growth, sMenuSpot, actionId, rng);
         // A deed that CONSUMES the spot leaves nothing to return to -- don't re-queue.
         sMenuQueued = r.consumed_spot.empty();
-        return {r.earned, r.granted, r.gathered, r.consumed_spot};
+        return {r.earned, r.granted, r.gathered, r.taught, r.consumed_spot};
     }
     return {};
 }

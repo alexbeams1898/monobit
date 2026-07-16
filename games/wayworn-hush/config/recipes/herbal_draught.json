@@ -1,5 +1,5 @@
 {
-    "_comment": "PLACEHOLDER recipe proving the crafting gate end to end. Realized only once you UNDERSTAND the rock (its moss cleared -- the same flag the cache deed sets), so crafting gates on the observe/thought chain. Inputs: gathered thyme. Output: a consumable whose quality scales on the doing-layer stat + a roll. Making it feeds that stat XP (inverse to mastery) and, the first time, reveals a flag (the two-way loop hook). Tune/replace when the craft act + real content land.",
+    "_comment": "PLACEHOLDER recipe. Always makeable: 3 wild_thyme in the pot -> a draught, no gate. Making it the first time without already knowing it RECORDS it (learnRecipe -- toast + reward + a recipe book later). Certain events also hand it over early (the rock's moss deed teaches it via grant_recipe -- see observations.json), but that's a shortcut to the record, never a requirement. Output: a consumable whose quality scales on the doing-layer stat + a roll. Making it feeds that stat XP (inverse to mastery). Tune/replace when real content lands.",
     "id": "herbal_draught",
     "inputs": [
         { "item": "wild_thyme", "qty": 3 }
@@ -7,9 +7,6 @@
     "output_item": "herbal_draught",
     "output_qty": 1,
     "kind": "consumable",
-    "unlock_when": [
-        { "flag": "rock_moss_cleared" }
-    ],
     "scaling": { "stat": "survival", "base": 1.0 },
     "xp_stat": "survival",
     "xp_base": 8,

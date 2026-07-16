@@ -96,6 +96,7 @@ struct ConfirmResult
     int earned = 0;                    // Spirit EXP from a thought the deed fired
     std::vector<std::string> granted;  // item ids a "pick up" deed granted
     std::vector<std::string> gathered; // loot table ids a "gather" deed rolled
+    std::vector<std::string> taught;   // recipe ids a deed taught (the game marks them known)
     std::string consumed_spot;         // observable id to despawn (a consumes_spot take)
 };
 

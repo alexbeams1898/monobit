@@ -409,6 +409,7 @@ Action parseAction(const nlohmann::json& a)
     act.set_flag = a.value("set_flag", std::string{});
     act.grant_item = a.value("grant_item", std::string{});
     act.grant_table = a.value("grant_table", std::string{});
+    act.grant_recipe = a.value("grant_recipe", std::string{});
     act.one_shot = a.value("one_shot", false);
     act.consumes_spot = a.value("consumes_spot", false);
     if (const auto it = a.find("unlock_when"); it != a.end())
@@ -903,6 +904,8 @@ ObserveResult takeAction(State& state, const growth::GrowthState& growth, const 
         result.granted.push_back(act->grant_item);
     if (!act->grant_table.empty())
         result.gathered.push_back(act->grant_table);
+    if (!act->grant_recipe.empty())
+        result.taught.push_back(act->grant_recipe);
     if (act->consumes_spot)
         result.consumed_spot = spot; // the game despawns this observable's world entity
 

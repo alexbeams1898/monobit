@@ -30,8 +30,7 @@ ItemDef parseDef(const nlohmann::json& j, const std::string& stem)
     d.icon = j.value("icon", std::string{});
     d.category = categoryFrom(j.value("category", std::string{"keepsake"}));
     d.rarity = j.value("rarity", 1);
-    d.stackable = j.value("stackable", false);
-    d.max_stack = j.value("max_stack", d.stackable ? 99 : 1);
+    d.max_stack = std::max(1, j.value("max_stack", 99));
     return d;
 }
 } // namespace
@@ -64,37 +63,28 @@ void add(Satchel& satchel, const Registry& registry, ItemInstance item)
     if (item.id.empty() || item.quantity <= 0)
         return;
 
+    // Every item stacks: fill existing stacks of this id up to its cap, then spill the remainder
+    // into fresh stacks so no entry exceeds max_stack. An unknown id (no def) uses cap 1.
     const ItemDef* def = registry.find(item.id);
-    const bool stackable = def && def->stackable;
     const int cap = def ? std::max(1, def->max_stack) : 1;
-
-    if (stackable)
+    for (auto& e : satchel.items)
     {
-        // Fill existing stacks of this id up to the cap, then spill the remainder
-        // into fresh stacks -- so a stackable never exceeds max_stack per entry.
-        for (auto& e : satchel.items)
-        {
-            if (item.quantity <= 0)
-                return;
-            if (e.id != item.id || e.quantity >= cap)
-                continue;
-            const int room = cap - e.quantity;
-            const int move = std::min(room, item.quantity);
-            e.quantity += move;
-            item.quantity -= move;
-        }
-        while (item.quantity > 0)
-        {
-            ItemInstance stack = item;
-            stack.quantity = std::min(cap, item.quantity);
-            item.quantity -= stack.quantity;
-            satchel.items.push_back(std::move(stack));
-        }
-        return;
+        if (item.quantity <= 0)
+            return;
+        if (e.id != item.id || e.quantity >= cap)
+            continue;
+        const int room = cap - e.quantity;
+        const int move = std::min(room, item.quantity);
+        e.quantity += move;
+        item.quantity -= move;
     }
-
-    // Non-stackable: each copy is its own entry.
-    satchel.items.push_back(std::move(item));
+    while (item.quantity > 0)
+    {
+        ItemInstance stack = item;
+        stack.quantity = std::min(cap, item.quantity);
+        item.quantity -= stack.quantity;
+        satchel.items.push_back(std::move(stack));
+    }
 }
 
 bool remove(Satchel& satchel, const std::string& id, int qty)

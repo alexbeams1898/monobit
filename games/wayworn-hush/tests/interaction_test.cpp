@@ -236,7 +236,6 @@ TEST_CASE("Firing an actionable-only Gather rolls the table into the satchel and
     // A single-entry table with a fixed 2 rolls and qty 1 each -> deterministic 2 thyme.
     inventory::Registry items;
     items.defs["wild_thyme"] = inventory::ItemDef{"wild_thyme", "Wild Thyme"};
-    items.defs["wild_thyme"].stackable = true;
     items.defs["wild_thyme"].max_stack = 99;
     loot::Registry loot;
     loot::Table table;

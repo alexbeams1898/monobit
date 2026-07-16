@@ -637,11 +637,11 @@ TEST_CASE("takeAction recovers a thought that observing alone couldn't reach", "
     REQUIRE(sawResult);
 }
 
-TEST_CASE("A deed with grant_item / grant_table returns those ids for the game to grant",
+TEST_CASE("A deed with grant_item / grant_table / grant_recipe returns those ids for the game",
           "[actions]")
 {
-    // A "pick up" deed on an observable-and-takeable stone. observations is
-    // inventory-ignorant: takeAction returns the ids; the GAME does the deposit.
+    // Deeds on an observable-and-takeable stone. observations is inventory/recipe-ignorant:
+    // takeAction returns the opaque ids; the GAME does the deposit / teaches the recipe.
     State s = loadWithActions(R"({
       "observables": [
         { "id": "stone", "kind": "inanimate", "x": 0, "y": 0,
@@ -649,7 +649,8 @@ TEST_CASE("A deed with grant_item / grant_table returns those ids for the game t
           "actions": { "add": [
             { "id": "take", "label": "Pick it up", "grant_item": "river_stone",
               "one_shot": true },
-            { "id": "forage", "label": "Forage nearby", "grant_table": "herbs" } ] } }
+            { "id": "forage", "label": "Forage nearby", "grant_table": "herbs" },
+            { "id": "read", "label": "Read the lichen", "grant_recipe": "herbal_draught" } ] } }
       ],
       "thoughts": []
     })",
@@ -659,11 +660,18 @@ TEST_CASE("A deed with grant_item / grant_table returns those ids for the game t
     const ObserveResult take = observations::takeAction(s, g, "stone", "take", kNoNudge);
     REQUIRE(take.granted == std::vector<std::string>{"river_stone"});
     REQUIRE(take.gathered.empty());
+    REQUIRE(take.taught.empty());
     REQUIRE(take.consumed_spot.empty()); // "forage nearby" doesn't consume; default false
 
     const ObserveResult forage = observations::takeAction(s, g, "stone", "forage", kNoNudge);
     REQUIRE(forage.gathered == std::vector<std::string>{"herbs"});
     REQUIRE(forage.granted.empty());
+
+    // A grant_recipe deed surfaces the recipe id in `taught` for the game to learn.
+    const ObserveResult read = observations::takeAction(s, g, "stone", "read", kNoNudge);
+    REQUIRE(read.taught == std::vector<std::string>{"herbal_draught"});
+    REQUIRE(read.granted.empty());
+    REQUIRE(read.gathered.empty());
 }
 
 TEST_CASE("A consumes_spot take reports the spot id for the game to despawn", "[actions]")

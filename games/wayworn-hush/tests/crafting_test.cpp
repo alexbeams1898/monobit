@@ -1,6 +1,5 @@
 #include "Crafting.h"
 #include "Inventory.h"
-#include "UnlockCondition.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -15,24 +14,8 @@ namespace
 const observations::RollRng kZero = [](int) { return 0; };  // luck roll = 0 (min)
 const observations::RollRng kMax = [](int n) { return n; }; // luck roll = n (max)
 
-// A Knowledge view holding a fixed set of observed ids, flags, and stat levels.
-struct Facts
-{
-    std::unordered_set<std::string> observed;
-    std::unordered_set<std::string> flags;
-    std::unordered_map<std::string, int> stats;
-
-    unlock::Knowledge view() const
-    {
-        unlock::Knowledge k;
-        k.observed = &observed;
-        k.flags = &flags;
-        k.stats = &stats;
-        return k;
-    }
-};
-
-// A recipe: 2 thyme + 1 water -> tea, gated on a flag, scales on "survival".
+// A recipe: 2 thyme + 1 water -> tea; scales on "survival". No gate -- ingredients are the only
+// requirement.
 Recipe teaRecipe()
 {
     Recipe r;
@@ -41,13 +24,6 @@ Recipe teaRecipe()
     r.output_item = "tea";
     r.output_qty = 1;
     r.kind = OutputKind::Consumable;
-    r.unlock_when.any.push_back(
-        []
-        {
-            unlock::Clause c;
-            c.flag = "knows_tea";
-            return c;
-        }());
     r.scaling.stat = "survival";
     r.scaling.base = 1.0f;
     r.xp_stat = "survival";
@@ -57,46 +33,28 @@ Recipe teaRecipe()
 }
 } // namespace
 
-TEST_CASE("attemptable gates a recipe on its unlock condition", "[crafting]")
-{
-    const Recipe r = teaRecipe();
-    Facts none;
-    REQUIRE_FALSE(crafting::attemptable(r, none.view())); // flag not set -> gated
-
-    Facts knows;
-    knows.flags.insert("knows_tea");
-    REQUIRE(crafting::attemptable(r, knows.view()));
-}
-
 TEST_CASE("match finds an exact type-set recipe; else the nearest by overlap", "[crafting]")
 {
     crafting::Registry reg;
     reg.recipes["tea"] = teaRecipe();
-    Facts knows;
-    knows.flags.insert("knows_tea");
 
-    // Exact type set (thyme + water) -> the recipe (quantities checked at craft, not match).
-    const auto exact = crafting::match({"thyme", "water"}, reg, knows.view());
+    // Exact type set (thyme + water) -> the recipe. No gate: the ingredients are the only
+    // requirement, whether or not the recipe was ever "known".
+    const auto exact = crafting::match({"thyme", "water"}, reg);
     REQUIRE(exact.recipe != nullptr);
     REQUIRE(exact.recipe->id == "tea");
 
     // One ingredient short (just thyme) -> no exact match, nearest = tea at 1/2 closeness.
-    const auto close = crafting::match({"thyme"}, reg, knows.view());
+    const auto close = crafting::match({"thyme"}, reg);
     REQUIRE(close.recipe == nullptr);
     REQUIRE(close.nearest != nullptr);
     REQUIRE(close.nearest->id == "tea");
     REQUIRE(close.closeness == Approx(0.5f));
 
     // Nothing in common -> no exact, no nearest.
-    const auto miss = crafting::match({"stone"}, reg, knows.view());
+    const auto miss = crafting::match({"stone"}, reg);
     REQUIRE(miss.recipe == nullptr);
     REQUIRE(miss.nearest == nullptr);
-
-    // A gated-out recipe is never matched even with the right ingredients.
-    Facts locked;
-    const auto blocked = crafting::match({"thyme", "water"}, reg, locked.view());
-    REQUIRE(blocked.recipe == nullptr);
-    REQUIRE(blocked.nearest == nullptr);
 }
 
 TEST_CASE("outcomeQuality scales with the craft stat + a bounded luck roll", "[crafting]")
@@ -145,7 +103,7 @@ TEST_CASE("craft consumes inputs, grants output, records discovery + reveal", "[
     const crafting::Config cfg;
     crafting::State cs;
 
-    inventory::Registry items; // empty defs -> unknown items are non-stackable, fine here
+    inventory::Registry items; // empty defs -> unknown items fall back to cap 1; count() still sums
     inventory::Satchel sat;
     inventory::add(sat, items, inventory::ItemInstance{"thyme", 5});
     inventory::add(sat, items, inventory::ItemInstance{"water", 2});
@@ -159,14 +117,18 @@ TEST_CASE("craft consumes inputs, grants output, records discovery + reveal", "[
     REQUIRE(inventory::count(sat, "thyme") == 3);
     REQUIRE(inventory::count(sat, "water") == 1);
     REQUIRE(inventory::count(sat, "tea") == 1);
-    // First craft: recipe now known, reveal flag reported.
-    REQUIRE(cs.known.count("tea") == 1);
+    // First craft of an unknown recipe: first_time + reveal reported. craft READS known but does
+    // NOT insert -- the caller owns marking a recipe learned (so teach-by-deed can't
+    // double-insert).
     REQUIRE(out.first_time);
     REQUIRE(out.revealed_flag == "brewed_tea_once");
+    REQUIRE(cs.known.empty()); // craft did not mark it known
     REQUIRE(out.xp_stat == "survival");
     REQUIRE(out.xp > 0);
 
-    // Second craft: still made, but NOT first_time -> no reveal.
+    // The caller learns the recipe (as GameLoop's learnRecipe does), then a re-make is NOT
+    // first_time and reports no reveal.
+    cs.known.insert("tea");
     const crafting::Outcome again =
         crafting::craft(*reg.find("tea"), sat, items, 3, kZero, cfg, cs);
     REQUIRE(again.made);
