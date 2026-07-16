@@ -31,6 +31,7 @@ target_sources(engine PRIVATE
     src/systems/SteeringSystem.cpp
     src/systems/CameraPanSystem.cpp
     src/utils/DirectionUtils.cpp
+    src/utils/SaveFile.cpp
     src/gl/ShaderUtils.cpp
     src/gl/PixelRenderTarget.cpp
 )
@@ -82,6 +83,7 @@ add_executable(engine-tests
     tests/evolution_ops_test.cpp
     tests/discovery_test.cpp
     tests/blit_rect_test.cpp
+    tests/save_file_test.cpp
 )
 target_link_libraries(engine-tests PRIVATE engine Catch2::Catch2WithMain)
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "AppState.h"
 #include "Crafting.h"
 #include "Footsteps.h"
 #include "Formulas.h"
@@ -83,6 +84,7 @@ struct PauseState
 // (reg.ctx()). Systems read it from there rather than from file-scope globals.
 struct GameState
 {
+    app::State app; // what the program is doing (greeting / playing); gates the world tick
     entt::entity player = entt::null;
     PlayerConfig player_config;
     observations::State observations;
@@ -114,6 +116,15 @@ struct GameState
     // notification, so "1 new observation / action available" toasts fire exactly
     // once per new unlock, not every frame.
     std::unordered_set<std::string> announced_unlocks;
+
+    // Autosave bookkeeping (ephemeral -- never saved). `progress_events` counts the
+    // things worth keeping (a deed enacted, a craft made, a find granted, a reading
+    // landed) -- NOT the clock, which moves every frame and would make any
+    // "changed?" test meaninglessly true. The loop writes when this has moved since
+    // the last write and the throttle has elapsed. See progress::mark.
+    unsigned progress_events = 0;
+    unsigned saved_at_events = 0; // progress_events as of the last successful write
+    double since_save_secs = 0.0; // world seconds since the last write (throttle)
 };
 
 // Internal pixel-art resolution. The world renders here, then INTEGER-upscales to
@@ -136,6 +147,21 @@ inline constexpr float kAmbientB = 0.24f;
 // Game-side per-frame callbacks the engine invokes. The engine owns the frame
 // (window, GL, fixed-step loop, clear, swap); these are where the game does its
 // work. State (player entity, config) lives in the registry-context GameState.
+
+// Bring the world into being and step into it for the pilgrim `id`: builds the region,
+// spawns, overlays that pilgrim's walk (or seeds a fresh one if they've never set out),
+// starts the ambient bed. Returns false if the region failed to load. Installed by main
+// (which owns the region/spawn plumbing) and called by the loop when the title commits --
+// the same seam the engine uses to reach the game.
+using WorldEnterFn = bool (*)(Engine& engine, EntityManager& em, GameState& gs,
+                              const std::string& id);
+void setWorldEnter(WorldEnterFn fn);
+
+// Write the active pilgrim's walk to disk now. Reads the roster, updates only that
+// pilgrim, writes it back -- so a save never clobbers anyone else's walk. No-op when
+// nobody is walking. Exposed so the shutdown path can flush on the way out (the loop
+// already writes on quit, page-close, and progress).
+void saveNow(const EntityManager& em, GameState& gs);
 
 void gameUpdate(Engine& engine, EntityManager& em, double dt);
 void gamePreRender(Engine& engine, EntityManager& em);

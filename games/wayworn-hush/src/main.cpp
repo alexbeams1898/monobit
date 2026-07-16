@@ -7,7 +7,11 @@
 #include "LdtkImport.h"
 #include "Notify.h"
 #include "PausePage.h"
+#include "PlayerMovement.h"
+#include "SaveGame.h"
+#include "ScreenStyle.h"
 #include "ThoughtBox.h"
+#include "TitleScreen.h"
 #include "Version.h"
 #include "WorldInit.h"
 #include "ecs/Components.h"
@@ -106,6 +110,7 @@ void reloadHudFonts(GameState& gs, int windowW, int windowH)
     const FontHandle body = FontManager::loadFont(sFontCfg.face, sFontCfg.body_frac * s);
     const FontHandle label = FontManager::loadFont(sFontCfg.face, sFontCfg.label_frac * s);
     thought_box::init(body, label, sBoxCfg, gs.hud);
+    screen_style::init(body, label); // the shared register every full-screen surface draws in
     pause_page::init(body);
     notify::init(label, gs.hud.notification);
     interaction_mode::init(label); // the stance badge uses the small label font
@@ -120,6 +125,31 @@ void gameOnResize(Engine& engine, int w, int h)
     auto& gs = engine.entityManager().registry().ctx().get<GameState>();
     reloadHudFonts(gs, w, h);
 }
+
+// Put the player at (wx,wy). Sets the interpolation snapshot too -- without it the first
+// frame after a move renders a smear from wherever he was. The one place a placement
+// happens, so the map's spawn and a save's resume can't disagree about what that means.
+void placePlayer(EntityManager& em, const GameState& gs, float wx, float wy)
+{
+    auto& t = em.registry().get<Transform>(gs.player);
+    t.x = wx;
+    t.y = wy;
+    if (auto* pt = em.registry().try_get<PreviousTransform>(gs.player))
+    {
+        pt->x = wx;
+        pt->y = wy;
+    }
+}
+
+// Bring a world into being and step into it -- the ONE path from the title into play,
+// whether continuing a saved walk (`saved`) or starting one (nullopt). Builds the region,
+// spawns the player + props, overlays any save, and starts the ambient bed. Returns false
+// if the region couldn't load (fatal -- the region IS the map).
+//
+// Nothing here runs at boot: greeting a player must not require a loaded region, and a
+// fresh "begin again" gets a world built from scratch rather than an old one reset (see
+// AppState / docs/design/SHELL.md).
+bool enterWorld(Engine& engine, EntityManager& em, GameState& gs, bool continue_saved);
 
 // Load the authored LDtk region into the world (fatal if it fails -- the region IS the
 // map). Applies terrain + surface map, uploads it, spawns the player at the region's
@@ -152,16 +182,7 @@ bool setupRegion(Engine& engine, EntityManager& em, GameState& gs)
     gs.player = world_init::spawnPlayer(em, gs.player_config);
     for (const auto& o : region.objects)
         if (o.type == "PlayerSpawn")
-        {
-            auto& t = em.registry().get<Transform>(gs.player);
-            t.x = o.wx;
-            t.y = o.wy;
-            if (auto* pt = em.registry().try_get<PreviousTransform>(gs.player))
-            {
-                pt->x = o.wx;
-                pt->y = o.wy;
-            }
-        }
+            placePlayer(em, gs, o.wx, o.wy);
 
     // Bind observation PLACEMENTS from the map onto the loaded observation content: an
     // entity carrying an `observable` field supplies its position/size/trigger. Content
@@ -185,6 +206,62 @@ bool setupRegion(Engine& engine, EntityManager& em, GameState& gs)
     glimmer::spawn(em, gs.observations, gs.glimmer_config);
     world_items::spawn(em, region.pickups, gs.items, gs.loot_tables, gs.world_items_config);
     ldtk::spawnProps(em, region, wc.tileset_png);
+    return true;
+}
+
+bool enterWorld(Engine& engine, EntityManager& em, GameState& gs, const std::string& id)
+{
+    const savegame::File file = savegame::load();
+    const savegame::Data* pilgrim = savegame::find(file, id);
+    if (pilgrim == nullptr)
+    {
+        std::fprintf(stderr, "[app] no pilgrim '%s' to walk as\n", id.c_str());
+        return false;
+    }
+
+    // Terrain + player + props. The region IS the map -- a failed load is fatal.
+    if (!setupRegion(engine, em, gs))
+        return false;
+
+    // The pilgrim's walk overlays the fresh world: their record/self/things, then where
+    // they stood. AFTER setupRegion, which spawns them at the map's PlayerSpawn -- a walk
+    // in progress then overrides that.
+    savegame::apply(*pilgrim, gs);
+    gs.app.active_id = pilgrim->id;
+
+    if (!pilgrim->place.walked)
+    {
+        // They have never set out: leave them at the map's spawn (NOT the saved place,
+        // which is meaningless before a first step) and give them the notebook -- a key
+        // item; carrying it is what lets thoughts be written down (docs/design/INVENTORY.md).
+        // The watch is found later, not started with.
+        inventory::add(gs.satchel, gs.items, inventory::ItemInstance{"notebook"});
+    }
+    else if (player_movement::canStand(em, gs.player, pilgrim->place.x, pilgrim->place.y))
+    {
+        placePlayer(em, gs, pilgrim->place.x, pilgrim->place.y);
+    }
+    else
+    {
+        // The spot is no longer somewhere they can BE: a walk saved against an older map
+        // (or a hand-edited file) can name a place that is now water, inside a rock, or off
+        // the world entirely. Falling back to the spawn keeps a stale walk playable instead
+        // of stranding them in the void.
+        std::fprintf(stderr,
+                     "[save] resume point (%.0f,%.0f) is not standable -- "
+                     "starting from the map's spawn instead\n",
+                     static_cast<double>(pilgrim->place.x), static_cast<double>(pilgrim->place.y));
+    }
+
+    // The over-head thought bubble: one player-attached sprite that pops (faculty-hued)
+    // while a thought reading is on screen. See HeadMarker / docs/design/HUD.md.
+    head_marker::spawn(em, gs.head_marker_config);
+
+    // The region's ambient bed. Loops with a slow fade-in so the world eases in rather
+    // than snapping on. Low volume -- the score is sparse and unhurried (see
+    // docs/design/AESTHETIC.md). Runs silent if no audio device.
+    AudioSystem::playMusic(gs.world_config.ambient_track, gs.world_config.ambient_volume,
+                           /*loop=*/true, gs.world_config.ambient_fade_in_ms);
     return true;
 }
 } // namespace
@@ -288,24 +365,12 @@ int main(int argc, char* argv[])
     interaction_mode::load(gs.int_mode_config, "config/interaction_mode.json"); // stance badge
     world_config::load(gs.world_config, "config/world.json"); // region asset paths
 
-    // Item blueprints, then the pilgrim's starting satchel: he sets out carrying his
-    // notebook (a key item -- carrying it is what lets thoughts be written down; see
-    // docs/design/INVENTORY.md). The watch is found later, not started with.
     inventory::load(gs.items, "config/items");
     loot::load(gs.loot_tables, "config/loot");    // gather tables (rolled by ActionKind::Gather)
     crafting::load(gs.recipes, "config/recipes"); // recipes (combine -> made thing)
     crafting::loadConfig(gs.crafting_config, "config/crafting.json"); // outcome/XP tuning
-    inventory::add(gs.satchel, gs.items, inventory::ItemInstance{"notebook"});
 
-    // Terrain + player + props: load the authored LDtk region, apply it, and spawn the
-    // player at its PlayerSpawn. The region IS the map -- a failed load is fatal.
-    if (!setupRegion(engine, em, gs))
-        return 1;
-
-    // The over-head thought bubble: one player-attached sprite that pops (faculty-
-    // hued) while a thought reading is on screen. See HeadMarker / docs/design/HUD.md.
     head_marker::load(gs.head_marker_config, "config/head_marker.json");
-    head_marker::spawn(em, gs.head_marker_config);
 
     // UI fonts by ROLE on a 1.25 (Major-Third) scale, authored as canvas FRACTIONS
     // (config/fonts.json): body = reading text; label = headings / notifications /
@@ -339,13 +404,14 @@ int main(int argc, char* argv[])
     hud::loadRegions(gs.hud, "config/hud.json");
     reloadHudFonts(gs, engine.windowWidth(), engine.windowHeight());
 
-    // The region's ambient bed. Loops with a slow fade-in so the world eases in
-    // rather than snapping on. Low volume -- the score is sparse and unhurried
-    // (see docs/design/AESTHETIC.md). Runs silent if no audio device.
-    // (AudioSystem's init/shutdown are owned by the engine; the game only
-    // decides what to play.)
-    AudioSystem::playMusic(gs.world_config.ambient_track, gs.world_config.ambient_volume,
-                           /*loop=*/true, gs.world_config.ambient_fade_in_ms);
+    // The world (and its ambient bed) is built when the player commits from the title --
+    // see enterWorld. Boot ends at the greeting.
+    //
+    // Whether there's a walk to continue is probed ONCE here: the title only needs to know
+    // if the entry exists, and asking the disk every frame to draw a menu is absurd.
+    gs.app.pilgrim_count = static_cast<int>(savegame::load().pilgrims.size());
+    setWorldEnter(&enterWorld);
+    title_screen::reset();
 
     engine.setGameUpdate(&gameUpdate);
     engine.setPreRender(&gamePreRender);
@@ -353,6 +419,13 @@ int main(int argc, char* argv[])
     engine.setRenderUI(&gameRenderUI);
     engine.setRenderImGui(&gameRenderImGui);
     engine.run();
+
+    // Keep the walk on the way out. Quitting from the page already wrote; this covers
+    // every other exit (the window's close button, Alt+F4) so leaving never costs it.
+    // saveNow no-ops when nobody is walking, so leaving from the title can't overwrite a
+    // real walk with the empty state of a game that was never played.
+    if (gs.app.world_built)
+        saveNow(em, gs);
 
     RenderSystem::shutdown();
     TileMapRenderer::shutdown();

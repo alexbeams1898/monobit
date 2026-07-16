@@ -32,6 +32,9 @@ add_library(wayworn-systems STATIC
     src/Notebook.cpp
     src/LdtkImport.cpp
     src/PausePage.cpp
+    src/SaveGame.cpp
+    src/ScreenStyle.cpp
+    src/TitleScreen.cpp
     src/TunePanel.cpp
 )
 
@@ -89,6 +92,9 @@ add_executable(wayworn-tests
     tests/inventory_test.cpp
     tests/loot_test.cpp
     tests/formulas_test.cpp
+    tests/savegame_test.cpp
+    tests/player_movement_test.cpp
+    tests/title_screen_test.cpp
     tests/crafting_test.cpp
     tests/notebook_test.cpp
     tests/ldtk_import_test.cpp

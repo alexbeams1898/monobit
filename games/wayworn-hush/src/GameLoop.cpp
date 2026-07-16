@@ -8,9 +8,11 @@
 #include "PausePage.h"
 #include "PlayerMovement.h"
 #include "ReadingColor.h"
+#include "SaveGame.h"
 #include "ScreenInput.h"
 #include "ScreenToWorld.h"
 #include "ThoughtBox.h"
+#include "TitleScreen.h"
 #include "TunePanel.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
@@ -35,7 +37,7 @@ bool pressedThisFrame(const EntityManager& em, int scancode);
 bool clickedThisFrame(EntityManager& em, uint8_t button);
 void enactConfirm(EntityManager& em, GameState& gs, const thought_box::ConfirmResult& r);
 void attemptCraft(GameState& gs);
-void enactPageAction(Engine& engine, GameState& gs, pause_page::Action action);
+void enactPageAction(Engine& engine, EntityManager& em, GameState& gs, pause_page::Action action);
 
 // The surface name of the tile at world (wx,wy): the tile's id looked up in the
 // region's tile->surface map. Empty if off-map or the tile is untagged (footsteps then
@@ -151,6 +153,140 @@ constexpr Color kUnlockColor{0.70f, 0.82f, 0.95f, 1.0f};
 // Toast color for a craft that didn't take (no match / near-miss / short on materials) -- a
 // muted grey, quieter than a made-item toast so a failed attempt doesn't read as an achievement.
 constexpr Color kCraftMissColor{0.72f, 0.72f, 0.70f, 1.0f};
+
+// The autosave throttle: world seconds that must pass between writes driven by
+// progress. Leaving the page or the game always writes regardless.
+constexpr double kAutosaveThrottleSecs = 30.0;
+
+// Installed by main (see setWorldEnter): the region/spawn plumbing lives there, so the
+// loop calls back rather than owning the map pipeline.
+WorldEnterFn sWorldEnter = nullptr;
+
+// Note that something worth keeping just happened. Called ONLY from the deed / craft /
+// grant / reading chokepoints -- deliberately NOT from the clock, which moves every
+// frame and would make "has anything changed?" always true. The autosave reads this.
+void markProgress(GameState& gs)
+{
+    ++gs.progress_events;
+}
+
+// Drop this frame's one-shot input after every consumer has seen it (the engine fills the
+// buffers but leaves clearing to the game). Guarded on a tick having run so events arriving
+// on a 0-tick frame aren't discarded before the fixed-step code reads them.
+//
+// EVERY path out of the UI pass must call this: a path that skips it leaves the press in
+// the buffer to be re-read on every later frame (a held-down key that never lifts).
+void clearOneShotInput(EntityManager& em)
+{
+    if (em.ticks_this_frame > 0)
+    {
+        em.key_down_events.clear();
+        em.mouse_down_events.clear();
+        em.mouse_wheel_y = 0;
+        em.text_input_buffer.clear();
+    }
+}
+
+// Enact what the title committed. The ONE place a title action turns into something --
+// both its input paths (keys via step, mouse via render) funnel here, so a new entry is
+// wired in one spot and neither path can drop it (the same rule enactPageAction follows).
+void enactTitleAction(Engine& engine, EntityManager& em, GameState& gs, title_screen::Action action)
+{
+    switch (action)
+    {
+    case title_screen::Action::Continue:
+    case title_screen::Action::Begin:
+    {
+        if (sWorldEnter == nullptr)
+            break;
+        // Which pilgrim to walk as. Picking one from a roster and naming a new one are the
+        // Load/New screens' job (next slice); for now Continue takes the most recent and
+        // Begin mints an unnamed pilgrim, so the world path can be exercised end to end.
+        savegame::File file = savegame::load();
+        std::string id;
+        if (action == title_screen::Action::Continue && !file.pilgrims.empty())
+        {
+            id = file.pilgrims.back().id;
+        }
+        else
+        {
+            id = savegame::add(file, "");
+            if (!savegame::save(file))
+                break; // the pilgrim must exist on disk before we walk as them
+            gs.app.pilgrim_count = static_cast<int>(file.pilgrims.size());
+        }
+
+        if (sWorldEnter(engine, em, gs, id))
+        {
+            gs.app.world_built = true;
+            gs.app.phase = app::Phase::Playing;
+        }
+        else
+        {
+            // The region IS the map -- if it won't load there is no world to enter, and
+            // sitting on the title forever is a lie. Leave rather than pretend.
+            std::fprintf(stderr, "[app] could not build the world; leaving\n");
+            engine.requestQuit();
+        }
+        break;
+    }
+    case title_screen::Action::Quit:
+        engine.requestQuit();
+        break;
+    case title_screen::Action::None:
+        break;
+    }
+}
+
+// The greeting: read the keys, let the title report what was chosen, enact it. Returns
+// true if the app is still greeting (so the caller skips the world tick).
+bool updateGreeting(Engine& engine, EntityManager& em, GameState& gs)
+{
+    const bool up = pressedThisFrame(em, SDL_SCANCODE_W);
+    const bool down = pressedThisFrame(em, SDL_SCANCODE_S);
+    const bool confirm = pressedThisFrame(em, SDL_SCANCODE_SPACE);
+    enactTitleAction(engine, em, gs,
+                     title_screen::step(up, down, confirm, (gs.app.pilgrim_count > 0)));
+    return gs.app.phase == app::Phase::Greeting;
+}
+
+// Write the active pilgrim's walk now. Reads the roster, updates only that pilgrim, and
+// writes the file back -- so a save can never clobber someone else's walk. No-op when
+// nobody is walking (the title) or the pilgrim has been forgotten.
+void writeSave(const EntityManager& em, GameState& gs)
+{
+    if (gs.app.active_id.empty())
+        return;
+
+    savegame::File file = savegame::load();
+    savegame::Data* pilgrim = savegame::find(file, gs.app.active_id);
+    if (pilgrim == nullptr)
+        return;
+
+    float px = 0.0f;
+    float py = 0.0f;
+    if (const auto* t = em.registry().try_get<Transform>(gs.player))
+    {
+        px = t->x;
+        py = t->y;
+    }
+    savegame::capture(gs, px, py, *pilgrim);
+    if (savegame::save(file))
+    {
+        gs.saved_at_events = gs.progress_events;
+        gs.since_save_secs = 0.0;
+    }
+}
+
+// Write only if something worth keeping has happened since the last write AND the
+// throttle has elapsed -- so a busy stretch doesn't write every frame, and a quiet
+// walk doesn't rewrite an unchanged save.
+void autosaveTick(const EntityManager& em, GameState& gs, double dt)
+{
+    gs.since_save_secs += dt;
+    if (gs.progress_events != gs.saved_at_events && gs.since_save_secs >= kAutosaveThrottleSecs)
+        writeSave(em, gs);
+}
 
 // Pre-mark a just-observed spot's already-offered actions as announced (no toast)
 // -- they're shown in the menu right there. Only actions that unlock LATER (via
@@ -289,6 +425,8 @@ void grantAndToast(GameState& gs, const std::vector<std::string>& items,
                 deposited.push_back(inst);
             }
     toastFinds(gs, deposited);
+    if (!deposited.empty())
+        markProgress(gs); // something was found -- worth keeping
 }
 
 // Learn a recipe -- the ONE place a recipe becomes known, whether TAUGHT by a deed or discovered
@@ -360,25 +498,29 @@ void attemptCraft(GameState& gs)
     if (out.first_time)
         learnRecipe(gs, m.recipe->id);
     gs.pause.craft_selected.clear();
+    markProgress(gs); // something was made -- worth keeping
 }
 
 // The ONE place a pause-page action is enacted. The page produces actions from two input paths
 // -- keyboard (step) and mouse (render) -- and both funnel through here, so a new Action variant
 // is wired in exactly one spot and neither path can silently drop it. (This is the root fix for
 // mouse-Combine doing nothing: render's Craft return was previously handled nowhere.)
-void enactPageAction(Engine& engine, GameState& gs, pause_page::Action action)
+void enactPageAction(Engine& engine, EntityManager& em, GameState& gs, pause_page::Action action)
 {
     switch (action)
     {
     case pause_page::Action::Quit:
+        writeSave(em, gs); // leaving -- keep the pilgrimage
         engine.requestQuit();
         break;
     case pause_page::Action::Craft:
         attemptCraft(gs);
         break;
-    case pause_page::Action::None:
     case pause_page::Action::Resume:
-        break; // no side effect beyond what step()/render() already applied to PauseState
+        writeSave(em, gs); // closing the page is a natural beat to keep
+        break;
+    case pause_page::Action::None:
+        break;
     }
 }
 
@@ -407,6 +549,7 @@ void enactConfirm(EntityManager& em, GameState& gs, const thought_box::ConfirmRe
         learnRecipe(gs, recipeId);
     if (!r.consumed_spot.empty())
         despawnObservableEntity(em, r.consumed_spot);
+    markProgress(gs); // a deed was taken -- worth keeping
 }
 
 // Follow-up after the InteractionSystem fired. A direct actionable-only item already deposited
@@ -418,6 +561,8 @@ void onInteractionFired(GameState& gs, const interaction::Outcome& out)
     if (out.observe_target.empty())
     {
         toastFinds(gs, out.items); // direct pickup/gather -- items already in the satchel
+        if (!out.items.empty())
+            markProgress(gs); // a find -- worth keeping
         return;
     }
     const std::string& spot = out.observe_target;
@@ -435,13 +580,32 @@ void onInteractionFired(GameState& gs, const interaction::Outcome& out)
     gs.growth.spirit_exp +=
         thought_box::pushObserve(gs.observations, gs.growth, spot, observeNudge);
     seedObservedActionsAsKnown(gs, spot);
+    markProgress(gs); // a reading landed -- worth keeping
 }
 } // namespace
+
+void setWorldEnter(WorldEnterFn fn)
+{
+    sWorldEnter = fn;
+}
+
+void saveNow(const EntityManager& em, GameState& gs)
+{
+    writeSave(em, gs);
+}
 
 void gameUpdate(Engine& engine, EntityManager& em, double dt)
 {
     auto& reg = em.registry();
     GameState& gs = reg.ctx().get<GameState>();
+
+    // The greeting is not the world: no world exists yet to tick (the region is built when
+    // the player commits -- see enactTitleAction). Everything below assumes a built world.
+    if (gs.app.phase == app::Phase::Greeting)
+    {
+        updateGreeting(engine, em, gs);
+        return;
+    }
 
     // F1 toggles the dev tunables panel (drawn in the ImGui pass).
     if (pressedThisFrame(em, SDL_SCANCODE_F1))
@@ -464,7 +628,7 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // menu is up.
     const bool menuUp = thought_box::menuActive();
 
-    enactPageAction(engine, gs, stepPausePage(em, gs, menuUp));
+    enactPageAction(engine, em, gs, stepPausePage(em, gs, menuUp));
 
     // Freeze the world while the page is open: skip movement, observing, camera.
     // Animation is halted in gamePreRender (it runs at wall-clock rate there).
@@ -474,6 +638,11 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // World time advances only while unfrozen (drives notebook datelines; later the
     // day/night cycle). Placed after the pause guard so a paused world holds time.
     worldclock::tick(gs.clock, dt);
+
+    // Keep the pilgrimage as it happens: writes only when something worth keeping has
+    // landed since the last write, and no more often than the throttle. Leaving the
+    // page or the game writes regardless (see enactPageAction).
+    autosaveTick(em, gs, dt);
 
     // Snapshot positions for render interpolation before integrating.
     for (auto [e, t, pt] : reg.view<Transform, PreviousTransform>().each())
@@ -583,6 +752,10 @@ void gamePreRender(Engine& engine, EntityManager& em)
 {
     auto& gs = em.registry().ctx().get<GameState>();
 
+    // Nothing to animate or drain before there is a world.
+    if (!gs.app.world_built)
+        return;
+
     // The page freezes the world: hold the sprite pose and stop draining
     // monologue lines (both advance at wall-clock rate, so they must be gated
     // here rather than in the fixed-step update).
@@ -608,15 +781,21 @@ void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, 
 {
     (void)alpha;
 
+    // The target still opens + blits with no world (it clears to the ambient color, which
+    // is what the title sits on); only the world passes are skipped -- there is nothing to
+    // draw until the player commits.
     engine::gl::pixelTargetBegin(kAmbientR, kAmbientG, kAmbientB);
-    // Render at the internal resolution (the pixel target's viewport), zoom 1.
-    // camX/camY are the engine-interpolated active-camera position. Draw order:
-    // GROUND -> DECORATION (flowers, under player) -> character sprites -> OVERHANG
-    // (canopy tops, over player = walk-behind). The sparse passes no-op if absent.
-    TileMapRenderer::render(camX, camY, kInternalWidth, kInternalHeight, 1.0f);
-    TileMapRenderer::renderDecoration(camX, camY, kInternalWidth, kInternalHeight, 1.0f);
-    RenderSystem::render(em, engine.textureManager(), camX, camY, 1.0f);
-    TileMapRenderer::renderOverhang(camX, camY, kInternalWidth, kInternalHeight, 1.0f);
+    if (em.registry().ctx().get<GameState>().app.world_built)
+    {
+        // Render at the internal resolution (the pixel target's viewport), zoom 1.
+        // camX/camY are the engine-interpolated active-camera position. Draw order:
+        // GROUND -> DECORATION (flowers, under player) -> character sprites -> OVERHANG
+        // (canopy tops, over player = walk-behind). The sparse passes no-op if absent.
+        TileMapRenderer::render(camX, camY, kInternalWidth, kInternalHeight, 1.0f);
+        TileMapRenderer::renderDecoration(camX, camY, kInternalWidth, kInternalHeight, 1.0f);
+        RenderSystem::render(em, engine.textureManager(), camX, camY, 1.0f);
+        TileMapRenderer::renderOverhang(camX, camY, kInternalWidth, kInternalHeight, 1.0f);
+    }
     engine::gl::pixelTargetEnd(engine.windowWidth(), engine.windowHeight());
 }
 
@@ -625,6 +804,23 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     auto& gs = em.registry().ctx().get<GameState>();
     const int ww = engine.windowWidth();
     const int wh = engine.windowHeight();
+
+    // The greeting IS the screen -- none of the world's HUD applies, and the mouse belongs
+    // to the title. Its action funnels through the same sink the keys use. Note the shared
+    // exit through clearOneShotInput below: an early return here would leave this frame's
+    // key presses in the buffer to be re-read forever.
+    if (gs.app.phase == app::Phase::Greeting)
+    {
+        int mx = 0;
+        int my = 0;
+        SDL_GetMouseState(&mx, &my);
+        const title_screen::Mouse mouse{static_cast<float>(mx), static_cast<float>(my),
+                                        engine::ui::mouseClicked(em, SDL_BUTTON_LEFT)};
+        enactTitleAction(engine, em, gs,
+                         title_screen::render(mouse, (gs.app.pilgrim_count > 0), ww, wh));
+        clearOneShotInput(em);
+        return;
+    }
 
     // HUD visibility mode (see hud::Visibility): Off suppresses all HUD region
     // drawing; On adds always-on region frames under the content; Auto (default)
@@ -675,7 +871,7 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     { return path.empty() ? 0u : engine.textureManager().load(path); };
     // The mouse action path funnels through the SAME enactPageAction as the keyboard, so a
     // Combine click enacts the craft exactly like Space does (no per-action wiring to forget).
-    enactPageAction(engine, gs,
+    enactPageAction(engine, em, gs,
                     pause_page::render(gs.pause, gs.growth, content, mouse, icon,
                                        engine.windowWidth(), engine.windowHeight()));
 
@@ -685,17 +881,7 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     if (!hudOff)
         notify::render(static_cast<float>(engine.frameDt()), ww, wh);
 
-    // Clear one-shot input buffers after all consumers have seen them (the
-    // engine fills them but leaves clearing to the game). Guard on a tick having
-    // run so events arriving on a 0-tick frame aren't discarded before the
-    // fixed-step observe/input code reads them.
-    if (em.ticks_this_frame > 0)
-    {
-        em.key_down_events.clear();
-        em.mouse_down_events.clear();
-        em.mouse_wheel_y = 0;
-        em.text_input_buffer.clear();
-    }
+    clearOneShotInput(em);
 }
 
 void gameRenderImGui(Engine& /*engine*/, EntityManager& em)

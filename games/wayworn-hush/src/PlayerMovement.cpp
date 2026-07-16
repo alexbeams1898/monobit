@@ -117,4 +117,14 @@ void update(EntityManager& em, entt::entity player, const unsigned char* keys, f
     t->x = nx;
     t->y = ny;
 }
+
+bool canStand(const EntityManager& em, entt::entity entity, float wx, float wy)
+{
+    const auto* col = em.registry().try_get<Collider>(entity);
+    if (col == nullptr)
+        return false;
+    // The same inset box update() projects with, so "somewhere I could walk to" and
+    // "somewhere I can be placed" can never disagree.
+    return !touchesSolid(em, entity, wx, wy, col->width - kInset, col->height - kInset);
+}
 } // namespace player_movement
