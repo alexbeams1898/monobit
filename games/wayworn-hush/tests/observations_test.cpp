@@ -450,6 +450,181 @@ TEST_CASE("A hidden observable can't be observed until its visible_when holds",
     REQUIRE(observations::observeById(s, g, "ruin", kNoNudge).outcome != Outcome::None);
 }
 
+// --- is_new: what the notebook writes on -----------------------------------------
+// A reading carries is_new only the FIRST time it's reached. The notebook records on that
+// flag alone (ThoughtBox::loadLine), so anything that sets it twice writes the same entry
+// into the notebook twice.
+
+TEST_CASE("a re-observed tier is not new the second time", "[observations][is_new]")
+{
+    State s = loadFromJson(R"({
+      "observables": [
+        { "id": "rock", "kind": "inanimate", "x": 0, "y": 0,
+          "tiers": [{ "text": "a rock, half-sunk" }] }
+      ],
+      "thoughts": []
+    })");
+    const GrowthState g = self({{"perception", 5}});
+
+    // First look: the reading is new -- the notebook takes it.
+    observations::observeById(s, g, "rock", kNoNudge);
+    REQUIRE(s.pending.size() == 1);
+    REQUIRE(s.pending.front().is_new);
+    s.pending.clear(); // the box drains it
+
+    // Every look after: the SAME reading surfaces, but it is not new. If this is true,
+    // the notebook writes a duplicate every time the player walks past.
+    observations::observeById(s, g, "rock", kNoNudge);
+    REQUIRE(s.pending.size() == 1);
+    REQUIRE_FALSE(s.pending.front().is_new);
+
+    observations::observeById(s, g, "rock", kNoNudge);
+    REQUIRE_FALSE(s.pending.front().is_new);
+}
+
+TEST_CASE("only the newly-reached tier is new, not the ones below it", "[observations][is_new]")
+{
+    State s = loadFromJson(R"({
+      "observables": [
+        { "id": "rock", "kind": "inanimate", "x": 0, "y": 0,
+          "tiers": [
+            { "text": "a rock" },
+            { "text": "moss on its north face", "unlock_when": [{ "stat": { "perception": 3 } }] }
+          ] }
+      ],
+      "thoughts": []
+    })");
+
+    // Shallow look reaches tier 1 only.
+    observations::observeById(s, self({{"perception", 1}}), "rock", kNoNudge);
+    REQUIRE(s.pending.front().is_new);
+    REQUIRE(s.pending.front().text == "a rock");
+    s.pending.clear();
+
+    // Deeper perception reaches tier 2: new again, because it's a tier never reached --
+    // a second notebook entry, and correctly so (it's a different reading).
+    observations::observeById(s, self({{"perception", 5}}), "rock", kNoNudge);
+    REQUIRE(s.pending.front().is_new);
+    REQUIRE(s.pending.front().text == "moss on its north face");
+    s.pending.clear();
+
+    // But looking again at that same depth is not new.
+    observations::observeById(s, self({{"perception", 5}}), "rock", kNoNudge);
+    REQUIRE_FALSE(s.pending.front().is_new);
+}
+
+TEST_CASE("observing REPORTS the thoughts that landed, by id", "[observations][landed]")
+{
+    // The result's `landed` is the only way a thought reaches the notebook: the game writes
+    // down exactly what this reports. Firing a thought but reporting nothing means the
+    // pilgrim thinks it and never records it -- invisible, because `pending` (the reading on
+    // screen) is populated from a different path and still looks right.
+    State s = loadFromJson(R"({
+      "observables": [
+        { "id": "rock", "kind": "inanimate", "x": 0, "y": 0,
+          "tiers": [{ "text": "a rock" }] }
+      ],
+      "thoughts": [
+        { "id": "rock_thought", "text": "it was shaped by water",
+          "faculty": "wonder", "value": 1,
+          "unlock_when": [{ "observed": "rock" }] }
+      ]
+    })");
+    const GrowthState g = self({{"wonder", 20}, {"perception", 5}});
+
+    const ObserveResult r = observations::observeById(s, g, "rock", kMaxNudge);
+    REQUIRE(r.landed == std::vector<std::string>{"rock_thought"});
+    REQUIRE(s.fired.count("rock_thought") == 1); // and the record agrees with the report
+
+    // Re-observing lands nothing new -- so nothing is reported, and no second note is written.
+    REQUIRE(observations::observeById(s, g, "rock", kMaxNudge).landed.empty());
+}
+
+TEST_CASE("a landed thought is never reported as a granted item", "[observations][landed]")
+{
+    // ObserveResult carries several id lists; `landed` is not the first of them. A positional
+    // init would load thought ids into `granted` and the game would deposit them as items.
+    State s = loadFromJson(R"({
+      "observables": [
+        { "id": "rock", "kind": "inanimate", "x": 0, "y": 0,
+          "tiers": [{ "text": "a rock" }] }
+      ],
+      "thoughts": [
+        { "id": "rock_thought", "text": "it was shaped by water",
+          "faculty": "wonder", "value": 1,
+          "unlock_when": [{ "observed": "rock" }] }
+      ]
+    })");
+    const ObserveResult r =
+        observations::observeById(s, self({{"wonder", 20}, {"perception", 5}}), "rock", kMaxNudge);
+    REQUIRE_FALSE(r.landed.empty());
+    REQUIRE(r.granted.empty()); // a thought is not a thing you can put in a satchel
+    REQUIRE(r.gathered.empty());
+    REQUIRE(r.taught.empty());
+}
+
+TEST_CASE("walking into an ambient spot reports its thoughts too", "[observations][landed]")
+{
+    // The enter-trigger path shares fireObservable with the deliberate verb, and accumulates
+    // across every spot that came within reach this frame -- a walk past two of them must
+    // report both, not just the last.
+    State s = loadFromJson(R"({
+      "observables": [
+        { "id": "grove", "kind": "place", "tiers": [{ "text": "a grove" }] },
+        { "id": "brook", "kind": "water", "tiers": [{ "text": "a brook" }] }
+      ],
+      "thoughts": [
+        { "id": "grove_thought", "text": "held breath", "faculty": "wonder", "value": 1,
+          "unlock_when": [{ "observed": "grove" }] },
+        { "id": "brook_thought", "text": "still running", "faculty": "wonder", "value": 1,
+          "unlock_when": [{ "observed": "brook" }] }
+      ]
+    })");
+    // The box + trigger are placement, which the map supplies (not the observations config).
+    for (auto& o : s.observables)
+    {
+        o.trigger = observations::Trigger::Enter;
+        o.x = 0;
+        o.y = 0;
+    }
+    const ObserveResult r = observations::triggerProximity(
+        s, self({{"wonder", 20}, {"perception", 5}}), 0, 0, kMaxNudge);
+    REQUIRE(r.landed.size() == 2);
+    REQUIRE(s.fired.count("grove_thought") == 1);
+    REQUIRE(s.fired.count("brook_thought") == 1);
+}
+
+TEST_CASE("a thought fires -- and is new -- exactly once", "[observations][is_new]")
+{
+    State s = loadFromJson(R"({
+      "observables": [
+        { "id": "rock", "kind": "inanimate", "x": 0, "y": 0,
+          "tiers": [{ "text": "a rock" }] }
+      ],
+      "thoughts": [
+        { "id": "rock_thought", "text": "it was shaped by water",
+          "faculty": "wonder", "value": 1,
+          "unlock_when": [{ "observed": "rock" }] }
+      ]
+    })");
+    const GrowthState g = self({{"wonder", 20}, {"perception", 5}});
+
+    // Observing fires the thought once.
+    observations::observeById(s, g, "rock", kMaxNudge);
+    int newThoughts = 0;
+    for (const auto& p : s.pending)
+        if (p.kind == LineKind::Thought && p.is_new)
+            ++newThoughts;
+    REQUIRE(newThoughts == 1);
+    s.pending.clear();
+
+    // Re-observing must not fire it again: `fired` already holds it, so the notebook
+    // gets no second copy.
+    observations::observeById(s, g, "rock", kMaxNudge);
+    for (const auto& p : s.pending)
+        REQUIRE(p.kind != LineKind::Thought);
+}
+
 // --- Actions (kind defaults + per-spot overrides; takeAction -> ambient) ------
 namespace
 {

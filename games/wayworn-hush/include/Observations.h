@@ -323,6 +323,10 @@ struct ObserveResult
     std::vector<std::string> granted;  // item ids to deposit
     std::vector<std::string> gathered; // loot table ids to roll
     std::vector<std::string> taught;   // recipe ids a deed handed over (the game marks them known)
+    // Thought ids that LANDED this call, in the order they fired. Reported as opaque ids like
+    // the grants above: the game notes when they happened (observations doesn't know what a
+    // notebook is). Empty when nothing new landed.
+    std::vector<std::string> landed;
     // Set to the observable's id when a taken deed's consumes_spot fires -- the game removes
     // that spot's world entity (glimmer + interactable). Empty otherwise.
     std::string consumed_spot;

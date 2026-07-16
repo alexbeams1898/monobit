@@ -44,26 +44,17 @@ struct Config
 void init(FontHandle body_font, FontHandle heading_font, const Config& config,
           const hud::Regions& regions);
 
-// Where a first-occurrence reading gets written down as it surfaces. The box is
-// the one place that sees every line as it appears, so it is the recording
-// chokepoint -- but it stays ignorant of satchel/clock: the GAME decides whether
-// recording is enabled (notebook carried) and what day to stamp (watch carried, or
-// 0 for undated) and hands both in.
-struct RecordSink
-{
-    notebook::Record* record = nullptr; // where to append (null = don't record)
-    bool enabled = false;               // notebook carried?
-    int day = 0;                        // in-world day, or 0 if undated (no watch)
-};
-
 // Advance the box animation + typewriter at wall-clock rate; pulls the next Line
 // from state.pending when idle (and re-surfaces an action menu when its result
 // line has been read). Plays SFX at the right beats. Takes growth so a Menu can
 // recompute its offered actions and act on them. Window dims size the fixed HUD
-// region a loading line wraps to. `sink` records each NEW line as it surfaces (if
-// enabled). The box never auto-dismisses.
+// region a loading line wraps to. The box never auto-dismisses.
+//
+// Purely a display. What a landed thought MEANS -- that it belongs in the notebook,
+// on a particular day -- is the game's business, decided from
+// observations::ObserveResult::landed at the moment it fires.
 void update(observations::State& state, const growth::GrowthState& growth, float dt, int windowW,
-            int windowH, const RecordSink& sink);
+            int windowH);
 
 // True while the box shows anything (a Line dropping in / typing / held, or a
 // Menu). The game gates world input on this: no box -> Space observes; box up ->
@@ -79,9 +70,11 @@ bool menuActive();
 bool activeThought(const growth::GrowthState& growth, Color& out_color);
 
 // Run a spot's OBSERVE reading (the EarthBound "Check"): queues the reading lines; update()
-// drains them. Returns the Spirit EXP earned (the caller banks it).
-int pushObserve(observations::State& state, const growth::GrowthState& growth,
-                const std::string& spot, const observations::RollRng& rng);
+// drains them. Returns the observation's whole result -- the EXP to bank, and any thoughts
+// that landed for the caller to write down. The box passes it through untouched.
+observations::ObserveResult pushObserve(observations::State& state,
+                                        const growth::GrowthState& growth, const std::string& spot,
+                                        const observations::RollRng& rng);
 
 // Open a spot's deed menu (the RUNNING/Act stance). Always shows, even with no deeds (a
 // "Leave"-only menu), so a run-interact is never a dead press.
@@ -97,6 +90,7 @@ struct ConfirmResult
     std::vector<std::string> granted;  // item ids a "pick up" deed granted
     std::vector<std::string> gathered; // loot table ids a "gather" deed rolled
     std::vector<std::string> taught;   // recipe ids a deed taught (the game marks them known)
+    std::vector<std::string> landed;   // thought ids that landed (the game writes them down)
     std::string consumed_spot;         // observable id to despawn (a consumes_spot take)
 };
 

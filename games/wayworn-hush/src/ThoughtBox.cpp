@@ -4,6 +4,7 @@
 #include "HudCanvas.h"
 #include "Notify.h"
 #include "ReadingColor.h"
+#include "ScreenStyle.h"
 #include "UIRenderer.h"
 #include "systems/AudioSystem.h"
 
@@ -25,13 +26,10 @@ hud::Regions sRegions; // fixed HUD bands (canvas fractions); content renders in
 // Shared by loadLine (page-capacity math) and renderLine (layout) so they agree.
 constexpr float kHeadingGap = 12.0f;
 
-// Notebook palette -- a thought reading reads as a notebook entry: aged paper
-// backing, ink-brown border + body text, with the faculty hue kept as a small
-// accent (the dateline/tag + a thin margin rule) rather than the whole chrome.
-constexpr Color kPaper{0.87f, 0.83f, 0.73f, 1.0f};     // aged parchment backing
-constexpr Color kInkBorder{0.36f, 0.29f, 0.21f, 1.0f}; // worn ink-brown edge
-constexpr Color kInkBody{0.17f, 0.14f, 0.11f, 1.0f};   // handwriting ink
-constexpr Color kInkFaint{0.42f, 0.36f, 0.29f, 1.0f};  // faded ink (dateline, rules)
+// The notebook palette is the game's, not this box's -- the pause page reads the same
+// entries back on the same page (see screen_style).
+constexpr Color kInkBody = screen_style::kInkBody;
+constexpr Color kInkFaint = screen_style::kInkFaint;
 
 // What the box is currently showing.
 enum class ItemKind
@@ -174,16 +172,10 @@ void playAppearSfx()
         AudioSystem::playSfx(sCfg.appear_sound, vol * 0.5f, pitch * 1.6f);
 }
 
-void loadLine(observations::PendingLine line, int windowW, int windowH, const RecordSink& sink)
+void loadLine(observations::PendingLine line, int windowW, int windowH)
 {
     sItem = ItemKind::Line;
     sLine = std::move(line);
-    // Write a FIRST-occurrence reading into the notebook as it surfaces (is_new is
-    // true only the first time an observation tier is reached / a thought fires).
-    // Gated on carrying the notebook; the day is 0 unless a watch is carried.
-    if (sink.enabled && sink.record != nullptr && sLine.is_new)
-        notebook::record(*sink.record, sLine.kind, sLine.text, sLine.faculty, sLine.difficulty,
-                         sink.day);
     sPhase = Phase::DropIn;
     sPhaseT = 0.0f;
     sRevealed = 0;
@@ -262,26 +254,16 @@ void advanceTyping(float dt)
 
 // --- draw helpers ----------------------------------------------------------
 
-void drawBorder(float x, float y, float w, float h, const Color& c)
-{
-    constexpr float t = 2.0f;
-    UIRenderer::drawRect(x, y, w, t, c);
-    UIRenderer::drawRect(x, y + h - t, w, t, c);
-    UIRenderer::drawRect(x, y, t, h, c);
-    UIRenderer::drawRect(x + w - t, y, t, h, c);
-}
-
 // The padded content area of a region, in window pixels. Two registers:
-//   notebook=true  -> a THOUGHT: aged-paper page + ink border + faculty-hued margin
-//                     rule (subjective -- he is reflecting / writing it down).
-//   notebook=false -> an OBSERVATION / menu: an EarthBound-style dark dialogue window
-//                     with a faculty-neutral (or lightly accented) frame (objective --
-//                     he is perceiving the world, not writing it down).
+//   notebook=true  -> a THOUGHT: the notebook page (screen_style::paperPanel -- the same
+//                     surface the pause page reads these entries back on, so a thought is
+//                     one thing whether it's landing or being looked up).
+//   notebook=false -> an OBSERVATION / menu: a dark dialogue window with a faculty-neutral
+//                     (or lightly accented) frame -- he is perceiving the world, not
+//                     writing it down.
 // Content renders within {x,y,w,h}; the region is a FIXED band (no content-sizing).
-struct ContentArea
-{
-    float x, y, w, h;
-};
+using ContentArea = screen_style::Inset;
+
 ContentArea drawPanel(const hud::Rect& region, int windowW, int windowH, float alpha,
                       float dropOffset, bool notebook, const Color& accent)
 {
@@ -291,24 +273,11 @@ ContentArea drawPanel(const hud::Rect& region, int windowW, int windowH, float a
     const float y = region.y + dropOffset;
 
     if (notebook)
-    {
-        UIRenderer::drawRect(x, y, region.w, region.h,
-                             {kPaper.r, kPaper.g, kPaper.b, kPaper.a * alpha});
-        drawBorder(x, y, region.w, region.h,
-                   {kInkBorder.r, kInkBorder.g, kInkBorder.b, 0.85f * alpha});
-        // Faculty-hued margin rule: a thin colored bar inside the left edge, like a
-        // ruled notebook margin -- the entry's accent without tinting the whole page.
-        const float margin = padX * 0.45f;
-        UIRenderer::drawRect(x + margin, y + padY, 2.0f, region.h - padY * 2.0f,
-                             {accent.r, accent.g, accent.b, 0.65f * alpha});
-    }
-    else
-    {
-        // Dark dialogue window: cool backing + a soft accent-tinted frame.
-        UIRenderer::drawRect(x, y, region.w, region.h, {0.05f, 0.06f, 0.07f, 0.85f * alpha});
-        drawBorder(x, y, region.w, region.h, {accent.r, accent.g, accent.b, 0.55f * alpha});
-    }
+        return screen_style::paperPanel(x, y, region.w, region.h, accent, padX, padY, alpha);
 
+    // Dark dialogue window: cool backing + a soft accent-tinted frame.
+    UIRenderer::drawRect(x, y, region.w, region.h, {0.05f, 0.06f, 0.07f, 0.85f * alpha});
+    screen_style::border(x, y, region.w, region.h, {accent.r, accent.g, accent.b, 0.55f * alpha});
     return {x + padX, y + padY, region.w - padX * 2.0f, region.h - padY * 2.0f};
 }
 
@@ -357,7 +326,7 @@ void init(FontHandle body_font, FontHandle heading_font, const Config& config,
 }
 
 void update(observations::State& state, const growth::GrowthState& growth, float dt, int windowW,
-            int windowH, const RecordSink& sink)
+            int windowH)
 {
     if (sItem == ItemKind::None)
     {
@@ -368,7 +337,7 @@ void update(observations::State& state, const growth::GrowthState& growth, float
         {
             observations::PendingLine next = state.pending.front();
             state.pending.pop_front();
-            loadLine(std::move(next), windowW, windowH, sink);
+            loadLine(std::move(next), windowW, windowH);
             return;
         }
         // Pending is empty: re-open the deed menu after a deed's result line was read (Act
@@ -429,13 +398,15 @@ bool activeThought(const growth::GrowthState& growth, Color& out_color)
     return true;
 }
 
-int pushObserve(observations::State& state, const growth::GrowthState& growth,
-                const std::string& spot, const observations::RollRng& rng)
+observations::ObserveResult pushObserve(observations::State& state,
+                                        const growth::GrowthState& growth, const std::string& spot,
+                                        const observations::RollRng& rng)
 {
     // Run the spot's reading (the WALKING/Observe stance: queues lines; update() drains them).
-    // Returns the Spirit EXP earned so the caller banks it (mirrors confirm()).
+    // The whole result goes back to the caller -- the EXP to bank, and any thoughts that
+    // landed, which the game writes into the notebook. The box adds nothing to it.
     sMenuSpot = spot;
-    return observations::observeById(state, growth, spot, rng).earned;
+    return observations::observeById(state, growth, spot, rng);
 }
 
 void openDeedMenu(observations::State& state, const growth::GrowthState& growth,
@@ -490,7 +461,7 @@ ConfirmResult confirm(observations::State& state, const growth::GrowthState& gro
             observations::takeAction(state, growth, sMenuSpot, actionId, rng);
         // A deed that CONSUMES the spot leaves nothing to return to -- don't re-queue.
         sMenuQueued = r.consumed_spot.empty();
-        return {r.earned, r.granted, r.gathered, r.taught, r.consumed_spot};
+        return {r.earned, r.granted, r.gathered, r.taught, r.landed, r.consumed_spot};
     }
     return {};
 }
@@ -597,8 +568,8 @@ void renderLine(const growth::GrowthState& growth, int windowW, int windowH, flo
         const float pillX = c.x + c.w - rw - padH * 2.0f;
         UIRenderer::drawRect(pillX, cursorY - padV, rw + padH * 2.0f, headingH + padV,
                              {0.10f, 0.09f, 0.08f, 0.92f * alpha});
-        drawBorder(pillX, cursorY - padV, rw + padH * 2.0f, headingH + padV,
-                   {rc.r, rc.g, rc.b, alpha});
+        screen_style::border(pillX, cursorY - padV, rw + padH * 2.0f, headingH + padV,
+                             {rc.r, rc.g, rc.b, alpha});
         UIRenderer::drawText(sHeadingFont, rarity, pillX + padH, cursorY,
                              {0.97f, 0.96f, 0.93f, alpha});
 

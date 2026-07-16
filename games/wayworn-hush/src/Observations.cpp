@@ -627,10 +627,12 @@ bool isSynthesis(const Thought& r)
 namespace
 {
 // Roll every unfired thought triggered by `changedKeys`; queue hits, apply
-// yields (which enqueue more changed keys -> cascade). Returns EXP earned and
-// whether anything fired. Fire-once bounds the cascade.
+// yields (which enqueue more changed keys -> cascade). Returns EXP earned; appends
+// every thought that LANDED to `landed`, in the order they fired (the caller notes
+// when they happened -- observations doesn't know what a notebook is, the same way
+// it doesn't know what a satchel is). Fire-once bounds the cascade.
 int runEngine(State& state, const growth::GrowthState& growth, std::vector<std::string> changedKeys,
-              const RollRng& rng, bool& anyFired)
+              const RollRng& rng, std::vector<std::string>& landed)
 {
     int earned = 0;
     std::unordered_set<std::string> observedIds;
@@ -675,7 +677,7 @@ int runEngine(State& state, const growth::GrowthState& growth, std::vector<std::
             state.pending.push_back(PendingLine{LineKind::Thought, r.text, r.faculty, r.difficulty,
                                                 /*is_new=*/true, r.spirit_exp});
             earned += r.spirit_exp;
-            anyFired = true;
+            landed.push_back(r.id);
 
             // Yields cascade: a fired thought is itself a held memory, and may
             // set a flag -> new changed keys re-checked this same run. State
@@ -733,11 +735,17 @@ ObserveResult fireObservable(State& state, const growth::GrowthState& growth, co
         changedKeys.push_back(keyObserved(o.id)); // now a held memory
     }
 
-    bool anyFired = false;
-    earned += runEngine(state, growth, std::move(changedKeys), rng, anyFired);
-    if (anyFired)
+    std::vector<std::string> landed;
+    earned += runEngine(state, growth, std::move(changedKeys), rng, landed);
+    if (!landed.empty())
         outcome = Outcome::Thought;
-    return {outcome, earned};
+    // The ids ride out with the result: the caller is what writes them into the notebook,
+    // and this is the path BOTH the observe verb and the ambient triggers take. Assigned by
+    // NAME -- `landed` is not the third field, and positional init would quietly load these
+    // thought ids into `granted` and spawn items out of them.
+    ObserveResult r{outcome, earned};
+    r.landed = std::move(landed);
+    return r;
 }
 } // namespace
 
@@ -779,6 +787,7 @@ ObserveResult triggerProximity(State& state, const growth::GrowthState& growth, 
     // fireObservable. Called every frame.
     int earned = 0;
     Outcome outcome = Outcome::None;
+    std::vector<std::string> landed;
     std::unordered_set<std::string> observedIds;
     std::unordered_map<std::string, int> statLevels;
     const unlock::Knowledge k = makeKnowledge(state, growth, observedIds, statLevels);
@@ -791,12 +800,19 @@ ObserveResult triggerProximity(State& state, const growth::GrowthState& growth, 
         if (o.distanceTo(px, py) > state.interact_reach)
             continue; // not within reach yet
         o.fired = true;
-        const ObserveResult res = fireObservable(state, growth, o, rng);
+        ObserveResult res = fireObservable(state, growth, o, rng);
         earned += res.earned;
         if (res.outcome != Outcome::None)
             outcome = res.outcome;
+        // ACCUMULATE: more than one spot can come within reach on the same frame, and every
+        // thought they land has to reach the caller -- keeping only the last one's would
+        // quietly lose the rest.
+        landed.insert(landed.end(), std::make_move_iterator(res.landed.begin()),
+                      std::make_move_iterator(res.landed.end()));
     }
-    return {outcome, earned};
+    ObserveResult out{outcome, earned};
+    out.landed = std::move(landed);
+    return out;
 }
 
 ObserveResult setFlag(State& state, const growth::GrowthState& growth, const std::string& flag,
@@ -804,9 +820,11 @@ ObserveResult setFlag(State& state, const growth::GrowthState& growth, const std
 {
     if (!state.flags.insert(flag).second)
         return {Outcome::None, 0}; // already set
-    bool anyFired = false;
-    const int earned = runEngine(state, growth, {keyFlag(flag)}, rng, anyFired);
-    return {anyFired ? Outcome::Thought : Outcome::None, earned};
+    std::vector<std::string> landed;
+    const int earned = runEngine(state, growth, {keyFlag(flag)}, rng, landed);
+    ObserveResult r{landed.empty() ? Outcome::None : Outcome::Thought, earned};
+    r.landed = std::move(landed);
+    return r;
 }
 
 ObserveResult evaluateStats(State& state, const growth::GrowthState& growth, const RollRng& rng)
@@ -818,9 +836,11 @@ ObserveResult evaluateStats(State& state, const growth::GrowthState& growth, con
     for (const auto& [key, ignored] : state.trigger_index)
         if (key.rfind("stat:", 0) == 0)
             keys.push_back(key);
-    bool anyFired = false;
-    const int earned = runEngine(state, growth, std::move(keys), rng, anyFired);
-    return {anyFired ? Outcome::Thought : Outcome::None, earned};
+    std::vector<std::string> landed;
+    const int earned = runEngine(state, growth, std::move(keys), rng, landed);
+    ObserveResult r{landed.empty() ? Outcome::None : Outcome::Thought, earned};
+    r.landed = std::move(landed);
+    return r;
 }
 
 namespace
@@ -912,9 +932,10 @@ ObserveResult takeAction(State& state, const growth::GrowthState& growth, const 
 
     // Run the ambient engine over the new flag -- this is what recovers a missed
     // thought or opens a deeper tier gated on the deed.
-    bool anyFired = false;
-    result.earned = runEngine(state, growth, std::move(changedKeys), rng, anyFired);
-    result.outcome = anyFired ? Outcome::Thought : Outcome::Surfaced;
+    std::vector<std::string> landed;
+    result.earned = runEngine(state, growth, std::move(changedKeys), rng, landed);
+    result.outcome = landed.empty() ? Outcome::Surfaced : Outcome::Thought;
+    result.landed = std::move(landed);
     return result;
 }
 

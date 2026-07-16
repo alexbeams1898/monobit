@@ -4,41 +4,65 @@
 
 namespace notebook
 {
-
-void record(Record& rec, observations::LineKind kind, const std::string& text,
-            const std::string& faculty, int difficulty, int day)
+namespace
 {
-    rec.entries.push_back(Entry{kind, text, faculty, difficulty, day});
+// Moments ascending, with the untimed LAST -- "when unknown" reads after the times
+// that are known, not before the first of them.
+bool momentBefore(double a, double b)
+{
+    if (a == kUntimed)
+        return false;
+    if (b == kUntimed)
+        return true;
+    return a < b;
+}
+} // namespace
+
+bool timed(const Entry& e)
+{
+    return e.at != kUntimed;
 }
 
-std::vector<DayGroup> groupByDay(const Record& rec)
+void note(Record& rec, const std::string& thought_id, double at_seconds)
 {
-    std::vector<DayGroup> groups;
-    // First pass in write order: land each entry in its day's group (creating one
-    // on first sight), so within a day entries keep the order they were written.
-    for (const auto& e : rec.entries)
+    if (thought_id.empty())
+        return;
+    rec.at.emplace(thought_id, at_seconds); // emplace: the first note wins
+}
+
+std::vector<Entry> found(const Record& rec, const observations::State& obs)
+{
+    std::vector<Entry> out;
+    // The collection IS `fired` joined to the authored thoughts. Walking the thought
+    // table (rather than `fired`) is what keeps the order stable: a hash set can't
+    // reorder it, and a fired id with no thought behind it -- content removed since
+    // the walk -- simply doesn't appear.
+    for (const auto& t : obs.thoughts)
     {
-        auto it = std::find_if(groups.begin(), groups.end(),
-                               [&](const DayGroup& g) { return g.day == e.day; });
-        if (it == groups.end())
-        {
-            groups.push_back(DayGroup{e.day, {}});
-            it = std::prev(groups.end());
-        }
-        it->entries.push_back(e);
+        if (obs.fired.count(t.id) == 0)
+            continue;
+        const auto it = rec.at.find(t.id);
+        out.push_back(Entry{&t, it == rec.at.end() ? kUntimed : it->second});
     }
-    // Days ascending; the undated group (day 0) sorts LAST -- "when unknown" reads
-    // after the dated days rather than before day 1.
-    std::sort(groups.begin(), groups.end(),
-              [](const DayGroup& a, const DayGroup& b)
-              {
-                  if (a.day == 0)
-                      return false;
-                  if (b.day == 0)
-                      return true;
-                  return a.day < b.day;
-              });
-    return groups;
+    // By the moment he wrote it. stable_sort so untimed notes (all equal to each other)
+    // keep authored order rather than shuffling between frames.
+    std::stable_sort(out.begin(), out.end(),
+                     [](const Entry& a, const Entry& b) { return momentBefore(a.at, b.at); });
+    return out;
+}
+
+std::vector<Day> byDay(const Record& rec, const observations::State& obs,
+                       const worldclock::WorldClock& clock)
+{
+    std::vector<Day> days;
+    for (const auto& e : found(rec, obs)) // already moment-ordered
+    {
+        const int d = timed(e) ? worldclock::dayAt(clock, e.at) : 0;
+        if (days.empty() || days.back().day != d)
+            days.push_back(Day{d, {}});
+        days.back().entries.push_back(e);
+    }
+    return days;
 }
 
 } // namespace notebook
