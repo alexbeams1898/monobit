@@ -66,6 +66,11 @@ if(MINGW)
     target_link_options(wayworn-hush PRIVATE -static-libgcc -static-libstdc++)
 endif()
 
+# A shareable build: the exe reads assets from beside itself rather than chdir'ing
+# to THIS machine's source tree, so it runs anywhere. Off by default -- F7 wants the
+# dev behaviour. scripts/package.sh turns it on for the copy it zips.
+option(WAYWORN_RELEASE "Build an exe that reads assets beside it, for sharing" OFF)
+
 # Dev builds read assets/config DIRECTLY from the source tree (main.cpp chdir's
 # here at startup): one source of truth, so an LDtk/JSON/PNG edit is live on the
 # next F7 -- no copy step that can lag or lock behind a running game. Release

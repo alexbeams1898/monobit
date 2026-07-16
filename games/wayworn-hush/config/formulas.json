@@ -1,7 +1,8 @@
 {
     "_comment": "Stat-driven formulas (see include/Formulas.h). Coefficients only -- the math lives in C++. 'Your stats change how you see the world': Perception scales the observable-hint glow, the SAME for every spot. glowBrightness SOFT-caps: max * Perception / (Perception + half_at) -- approaches max, never slams into it. half_at = the Perception that reaches HALF of max; below it the hint is faint (search-for-answers). Perception 0 = dark. Tunable -- edit + relaunch (dev reads assets from source).",
+    "_testing": "half_at is deliberately near-zero right now, which makes the glow read at full `max` from Perception 1 -- i.e. the stat-scaling is switched OFF while spots need to be findable for playtesting. Restore half_at to ~6.0 to bring the Perception curve back; that value is the authored intent, this one is a temporary flat light.",
     "glow": {
-        "max": 0.55,
-        "half_at": 6.0
+        "max": 0.8,
+        "half_at": 0.001
     }
 }
