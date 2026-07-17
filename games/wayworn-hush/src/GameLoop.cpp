@@ -25,7 +25,6 @@
 #include "systems/CameraSystem.h"
 #include "systems/RenderSystem.h"
 #include "systems/TileMapRenderer.h"
-#include "utils/DirectionUtils.h"
 
 #include <SDL.h>
 
@@ -109,26 +108,14 @@ pause_page::Action stepPausePage(EntityManager& em, GameState& gs, bool menuUp)
     return action;
 }
 
-// Drive the player's animation state from its velocity: moving -> face the movement
-// direction (diagonals snap to the dominant cardinal) + walk/fast-walk clip; still ->
-// hold the idle pose for the last-faced direction. Cadence is per-clip, decoupled from
-// speed.
-void updatePlayerAnim(Animation& anim, const Velocity& vel, const PlayerConfig& pc, bool fast)
+// Pick the player's animation CLIP: walk/fast-walk while moving, idle at rest. Facing is not
+// set here -- FacingDirection carries it and AnimationSystem snaps the cardinal (see spawn).
+void updatePlayerAnim(Animation& anim, bool moving, const PlayerConfig& pc, bool fast)
 {
-    if (vel.dx != 0.0f || vel.dy != 0.0f)
-    {
-        anim.dir = engine::direction::snapMovement(vel.dx, vel.dy, anim.direction_count);
-        const PlayerConfig::AnimState& st = fast ? pc.fast_walk : pc.walk;
-        anim.current_row = st.row;
-        anim.current_frames = st.frames;
-        anim.current_duration = st.duration;
-    }
-    else
-    {
-        anim.current_row = pc.idle.row;
-        anim.current_frames = pc.idle.frames;
-        anim.current_duration = pc.idle.duration;
-    }
+    const PlayerConfig::AnimState& st = moving ? (fast ? pc.fast_walk : pc.walk) : pc.idle;
+    anim.current_row = st.row;
+    anim.current_frames = st.frames;
+    anim.current_duration = st.duration;
 }
 
 bool pressedThisFrame(const EntityManager& em, int scancode)
@@ -945,19 +932,30 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     const Uint8* rawKeys = SDL_GetKeyboardState(nullptr);
     const bool running = rawKeys[SDL_SCANCODE_LSHIFT] != 0 || rawKeys[SDL_SCANCODE_RSHIFT] != 0;
     interaction_mode::update(gs.int_mode_state, gs.int_mode_config, running);
-    player_movement::update(em, gs.player, keys, speed, static_cast<float>(dt));
+    const player_movement::MoveIntent intent = player_movement::update(
+        em, gs.player, keys, speed, pc.corner_nudge, pc.corner_slide, static_cast<float>(dt));
 
-    // Facing + state from the resulting velocity. Moving -> face movement
-    // direction (diagonals snap to the dominant cardinal) and play walk or
-    // fast-walk; still -> hold the standing pose for the last direction.
+    // Facing + state from the move INTENT, not the resulting velocity. Pressed against a wall,
+    // collision zeroes velocity but the player is still trying to walk -- so the walk cycle
+    // keeps playing (velocity-driven, it would freeze to idle against a tree). Intent is the
+    //
+    // Facing follows INTENT (constant while a key is held), so a corner where collision
+    // oscillates the velocity can't flicker the sprite. AnimationSystem snaps it to a cardinal
+    // via snapFacing's hysteresis. Left at its last value when idle, so you keep facing where
+    // you were headed.
     auto& anim = reg.get<Animation>(gs.player);
-    const auto& vel = reg.get<Velocity>(gs.player);
-    updatePlayerAnim(anim, vel, pc, fast);
+    if (intent.moving())
+    {
+        auto& facing = reg.get<FacingDirection>(gs.player);
+        facing.render_dx = intent.dx;
+        facing.render_dy = intent.dy;
+    }
+    updatePlayerAnim(anim, intent.moving(), pc, fast);
 
     // Footstep SFX: a footfall matching the surface under the player, on a speed-scaled
-    // cadence while moving. The surface is the tile at the player's position (empty if
-    // untagged -> the default pool; water has no pool -> silent).
-    const bool moving = vel.dx != 0.0f || vel.dy != 0.0f;
+    // cadence while moving. Driven by intent (like the walk cycle), so pressing into a wall
+    // still steps -- the legs are moving even when collision holds you in place.
+    const bool moving = intent.moving();
     const auto& ptf = reg.get<Transform>(gs.player);
     const std::string surface = surfaceUnder(em, gs, ptf.x, ptf.y);
     footsteps::update(gs.footstep_state, gs.footstep_config, surface, moving, fast,

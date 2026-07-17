@@ -30,6 +30,16 @@ struct PlayerConfig
     // art and retune here, not in code.
     float collider_w = 22.0f;
     float collider_h = 12.0f;
+
+    // Corner-nudge PROBE distance (world px): how far to the side the game looks for an
+    // opening when you walk dead-on into a wall. Bigger = rounds a corner from further out
+    // (more forgiving). Does NOT set how fast you slide -- that's corner_slide. 0 disables.
+    float corner_nudge = 8.0f;
+
+    // How fast the deflection glide runs, as a fraction of walk speed. 1.0 = you slide around
+    // an obstacle at full pace; lower = the slide is gentler than a free walk (less "slidy",
+    // more deliberate). A feel knob: tune in-game.
+    float corner_slide = 0.6f;
 };
 
 // Loads config/player.json. Missing fields fall back to the struct defaults, so

@@ -47,6 +47,17 @@ entt::entity spawnPlayer(EntityManager& em, const PlayerConfig& cfg)
     anim.current_duration = cfg.idle.duration;
     reg.emplace<Animation>(player, anim);
 
+    // Facing drives the walk animation's direction. With this present, AnimationSystem snaps
+    // the sprite's cardinal from render_dx/dy through snapFacing (hysteresis) -- the ONE writer
+    // of anim.dir, and the anti-jitter path. Without it, AnimationSystem falls back to raw
+    // velocity, which flips cardinals frame-to-frame when collision oscillates the velocity
+    // near a corner. The game sets render_dx/dy from move intent each frame (see GameLoop).
+    // Start facing south, matching the idle pose.
+    FacingDirection facing{};
+    facing.dy = 1.0f;
+    facing.render_dy = 1.0f;
+    reg.emplace<FacingDirection>(player, facing);
+
     Camera cam{};
     cam.x = cx;
     cam.y = cy;

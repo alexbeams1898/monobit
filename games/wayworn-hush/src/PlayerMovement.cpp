@@ -55,6 +55,34 @@ bool touchesSolid(const EntityManager& em, entt::entity self, float cx, float cy
     return false;
 }
 
+// Which perpendicular DIRECTION to deflect a blocked move: +1, -1, or 0 (boxed in). The
+// caller then spends the frame's movement budget that way, so deflection REDIRECTS your speed
+// along the surface rather than adding to it -- the difference between a smooth glide and a
+// jerky sideways lurch.
+//
+// Looks a probe distance to each side (the nearer side first, so you round the short way) and
+// picks the first that's clear at the destination AND along the path there (so a diagonal gap
+// can't be slipped through). `probe` is how far to look for clear space -- a few px, enough to
+// tell "there's an opening this way" without teleporting. `blockedX` picks the axis: blocked
+// in X deflects along Y, and vice versa.
+int deflectDir(const EntityManager& em, entt::entity self, float bx, float by, float w, float h,
+               bool blockedX, float probe)
+{
+    if (probe <= 0.0f)
+        return 0;
+    for (const int dir : {1, -1})
+    {
+        const float s = static_cast<float>(dir) * probe;
+        const float px = blockedX ? bx : bx + s;
+        const float py = blockedX ? by + s : by;
+        const float pathX = blockedX ? bx : px;
+        const float pathY = blockedX ? py : by;
+        if (!touchesSolid(em, self, px, py, w, h) && !touchesSolid(em, self, pathX, pathY, w, h))
+            return dir;
+    }
+    return 0; // no clear side -- boxed in, so stop
+}
+
 // WASD/arrow keys -> a normalized move direction (diagonals aren't faster than
 // cardinals). Zero vector when no movement key is held.
 void readMoveDir(const unsigned char* keys, float& ix, float& iy)
@@ -76,20 +104,21 @@ void readMoveDir(const unsigned char* keys, float& ix, float& iy)
         iy /= len;
     }
 }
+
 } // namespace
 
-void update(EntityManager& em, entt::entity player, const unsigned char* keys, float speed,
-            float fdt)
+MoveIntent update(EntityManager& em, entt::entity player, const unsigned char* keys, float speed,
+                  float corner_nudge, float corner_slide, float fdt)
 {
     auto& reg = em.registry();
     if (!reg.valid(player))
-        return;
+        return {};
 
     auto* t = reg.try_get<Transform>(player);
     auto* v = reg.try_get<Velocity>(player);
     const auto* col = reg.try_get<Collider>(player);
     if (!t || !v || !col)
-        return;
+        return {};
 
     float ix = 0.0f;
     float iy = 0.0f;
@@ -100,22 +129,39 @@ void update(EntityManager& em, entt::entity player, const unsigned char* keys, f
     const float mw = col->width - kInset;
     const float mh = col->height - kInset;
 
-    // Axis-split projection: resolve X, then Y from the new X. Zeroing the
-    // blocked axis lets the character slide along a wall it hits at an angle.
+    // This frame's deflection budget (px): the sideways glide spends THIS, redirected along
+    // the wall, rather than adding to the blocked move -- so it's smooth, not a lurch. Scaled
+    // by corner_slide so the glide can run gentler than a free walk (the "slidy" pace knob).
+    const float budget = speed * corner_slide * fdt;
+    // How far to look sideways for an opening. `corner_nudge` widens the search (rounds a
+    // corner from further out) without affecting how FAST you deflect -- that's the budget.
+    const float probe = std::max(budget, corner_nudge);
+
+    // Axis-split projection: resolve X, then Y from the new X. Each axis: try the move; if
+    // blocked, drop it and glide perpendicular toward the open side by the budget (go AROUND,
+    // not through). The two branches are deliberate mirror images -- parameterizing them by
+    // axis traded readability for sign-bug risk, so they stay spelled out.
     float nx = t->x + v->dx * fdt;
-    if (touchesSolid(em, player, nx, t->y, mw, mh))
+    if (v->dx != 0.0f && touchesSolid(em, player, nx, t->y, mw, mh))
     {
-        v->dx = 0.0f;
-        nx = t->x;
+        nx = t->x; // X blocked -> drop the forward move
+        const int dir = deflectDir(em, player, t->x + v->dx * fdt, t->y, mw, mh, true, probe);
+        const float dy = static_cast<float>(dir) * budget;
+        if (dir != 0 && !touchesSolid(em, player, nx, t->y + dy, mw, mh))
+            t->y += dy;
     }
     float ny = t->y + v->dy * fdt;
-    if (touchesSolid(em, player, nx, ny, mw, mh))
+    if (v->dy != 0.0f && touchesSolid(em, player, nx, ny, mw, mh))
     {
-        v->dy = 0.0f;
-        ny = t->y;
+        ny = t->y; // Y blocked -> drop the forward move
+        const int dir = deflectDir(em, player, nx, t->y + v->dy * fdt, mw, mh, false, probe);
+        const float dx = static_cast<float>(dir) * budget;
+        if (dir != 0 && !touchesSolid(em, player, nx + dx, ny, mw, mh))
+            nx += dx;
     }
     t->x = nx;
     t->y = ny;
+    return {ix, iy};
 }
 
 bool canStand(const EntityManager& em, entt::entity entity, float wx, float wy)

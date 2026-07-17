@@ -26,6 +26,8 @@ PlayerConfig loadPlayerConfig(const std::string& path)
 
     cfg.speed = j.value("speed", cfg.speed);
     cfg.run_speed_mult = j.value("run_speed_mult", cfg.run_speed_mult);
+    cfg.corner_nudge = j.value("corner_nudge", cfg.corner_nudge);
+    cfg.corner_slide = j.value("corner_slide", cfg.corner_slide);
     if (const auto c = j.find("collider"); c != j.end() && c->is_object())
     {
         cfg.collider_w = c->value("w", cfg.collider_w);

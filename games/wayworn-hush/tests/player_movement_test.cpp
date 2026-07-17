@@ -2,6 +2,10 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 
+#include <SDL.h>
+
+#include <cmath>
+
 #include <catch2/catch_test_macros.hpp>
 
 // canStand is the ONE definition of "a place the player can be" -- movement refuses a
@@ -98,4 +102,181 @@ TEST_CASE("canStand is false for an entity with no collider", "[movement]")
     reg.emplace<Transform>(bare, Transform{0.0f, 0.0f});
 
     REQUIRE_FALSE(player_movement::canStand(em, bare, 64.0f, 64.0f));
+}
+
+namespace
+{
+// A key-state array with one scancode held (SDL uses a 512-ish bool array).
+struct Keys
+{
+    unsigned char state[SDL_NUM_SCANCODES] = {};
+    explicit Keys(int scancode)
+    {
+        state[scancode] = 1;
+    }
+};
+
+// Drive update() for `frames` fixed steps at 60Hz with the given held key.
+void walk(EntityManager& em, entt::entity actor, int scancode, float nudge, int frames)
+{
+    const Keys k(scancode);
+    for (int i = 0; i < frames; ++i)
+        player_movement::update(em, actor, k.state, /*speed=*/120.0f, nudge, /*corner_slide=*/1.0f,
+                                /*fdt=*/1.0f / 60.0f);
+}
+} // namespace
+
+// A static solid prop (a tree trunk: Collider, no Velocity) centered at (px,py).
+entt::entity makeProp(EntityManager& em, float px, float py, float w, float h)
+{
+    auto& reg = em.registry();
+    const entt::entity e = reg.create();
+    reg.emplace<Transform>(e, Transform{px, py});
+    Collider col;
+    col.width = w;
+    col.height = h;
+    col.is_solid = true;
+    reg.emplace<Collider>(e, col);
+    return e;
+}
+
+TEST_CASE("deflect: dead-on into a wall's edge glides around the corner", "[movement][nudge]")
+{
+    // Slidy feel: a head-on hit near an obstacle's edge deflects you past it, no dead stop.
+    // Wall fills the bottom-right quadrant (cells 4..7); its top-left corner is world (64,64).
+    EntityManager em;
+    makeOpenMap(em);
+    for (int r = 4; r < 8; ++r)
+        for (int c = 4; c < 8; ++c)
+            em.tile_map.tiles[r * 8 + c].walkable = false;
+
+    const entt::entity actor = makeActor(em);
+    auto& reg = em.registry();
+    // Just above the wall's top edge, approaching its top-left corner from the left, walking
+    // RIGHT. His box clips the corner -> deflect UP and continue.
+    reg.get<Transform>(actor) = Transform{56.0f, 63.0f};
+
+    const float x0 = reg.get<Transform>(actor).x;
+    walk(em, actor, SDL_SCANCODE_D, /*nudge=*/8.0f, /*frames=*/20);
+    const Transform after = reg.get<Transform>(actor);
+
+    REQUIRE(after.x > x0 + 4.0f); // made progress rightward -- rounded the corner
+    REQUIRE(after.y < 63.0f);     // deflected UP, clear of the wall's top
+}
+
+TEST_CASE("deflect: dead-on into a TREE glides around it (props, not just tiles)",
+          "[movement][nudge]")
+{
+    // The reported case: walking straight into a tree must slide around, not dead-stop. The
+    // trunk is a solid prop; deflection tests props via touchesSolid the same as tiles.
+    EntityManager em;
+    makeOpenMap(em);
+    const entt::entity actor = makeActor(em);
+    auto& reg = em.registry();
+
+    // A narrow trunk mid-map; the player approaches its left face slightly OFF-center (so one
+    // side is nearer clear), walking RIGHT into it.
+    makeProp(em, /*px=*/64.0f, /*py=*/64.0f, /*w=*/12.0f, /*h=*/12.0f);
+    reg.get<Transform>(actor) = Transform{52.0f, 61.0f}; // left of the trunk, a touch high
+
+    const float x0 = reg.get<Transform>(actor).x;
+    walk(em, actor, SDL_SCANCODE_D, /*nudge=*/8.0f, /*frames=*/30);
+    const Transform after = reg.get<Transform>(actor);
+
+    REQUIRE(after.x > x0 + 4.0f); // got past the trunk rather than stopping dead against it
+}
+
+TEST_CASE("deflect: boxed in on both sides still stops", "[movement][nudge]")
+{
+    // A full-width wall: walking into it mid-span, both perpendicular sides are blocked within
+    // reach, so there's nowhere to deflect -- he stops. Deflection glides, it doesn't tunnel.
+    EntityManager em;
+    makeOpenMap(em);
+    for (int c = 0; c < 8; ++c)
+        em.tile_map.tiles[4 * 8 + c].walkable = false;
+
+    const entt::entity actor = makeActor(em);
+    auto& reg = em.registry();
+    reg.get<Transform>(actor) = Transform{64.0f, 56.0f}; // just above the wall, mid-span
+
+    walk(em, actor, SDL_SCANCODE_S, /*nudge=*/8.0f, /*frames=*/20);
+    const Transform after = reg.get<Transform>(actor);
+
+    REQUIRE(after.y < 64.0f); // stopped above the wall -- never crossed into it
+}
+
+TEST_CASE("update reports move INTENT even when collision holds the player", "[movement][nudge]")
+{
+    // The animation fix: pressed against a flat wall (velocity zeroed), intent must still read
+    // "moving" so the walk cycle keeps playing instead of snapping to idle.
+    EntityManager em;
+    makeOpenMap(em);
+    for (int c = 0; c < 8; ++c)
+        em.tile_map.tiles[4 * 8 + c].walkable = false;
+
+    const entt::entity actor = makeActor(em);
+    auto& reg = em.registry();
+    reg.get<Transform>(actor) = Transform{64.0f, 56.0f};
+
+    const Keys down(SDL_SCANCODE_S);
+    const player_movement::MoveIntent intent =
+        player_movement::update(em, actor, down.state, 120.0f, 8.0f, 1.0f, 1.0f / 60.0f);
+    REQUIRE(intent.moving());                     // still trying to walk...
+    REQUIRE(intent.dy > 0.0f);                    // ...downward
+    REQUIRE(reg.get<Transform>(actor).y < 64.0f); // ...even though collision held him
+}
+
+TEST_CASE("the nudge config knob widens the corner-rounding reach", "[movement][nudge]")
+{
+    // The knob is real: a bigger corner_nudge rounds a corner from further back. Same approach,
+    // two reaches -- the generous one makes more rightward progress than the stingy one.
+    auto progressWith = [](float nudge)
+    {
+        EntityManager em;
+        makeOpenMap(em);
+        for (int r = 4; r < 8; ++r)
+            for (int c = 4; c < 8; ++c)
+                em.tile_map.tiles[r * 8 + c].walkable = false;
+        const entt::entity actor = makeActor(em);
+        auto& reg = em.registry();
+        reg.get<Transform>(actor) = Transform{56.0f, 60.0f}; // a bit further from the edge
+        const float x0 = reg.get<Transform>(actor).x;
+        walk(em, actor, SDL_SCANCODE_D, nudge, /*frames=*/20);
+        return reg.get<Transform>(actor).x - x0;
+    };
+
+    REQUIRE(progressWith(12.0f) >= progressWith(2.0f)); // more reach -> at least as far around
+}
+
+TEST_CASE("deflection conserves speed -- a glide never outruns a free walk", "[movement][nudge]")
+{
+    // The "too fast" fix: deflecting spends the frame's budget REDIRECTED, not added on top.
+    // A frame spent sliding along a wall must not move further than a frame of free walking.
+    const float budget = 120.0f / 60.0f; // speed * fdt, one frame
+
+    // Free walk: one frame, open ground, measure the distance.
+    EntityManager freeEm;
+    makeOpenMap(freeEm);
+    const entt::entity freeActor = makeActor(freeEm);
+    freeEm.registry().get<Transform>(freeActor) = Transform{64.0f, 64.0f};
+    walk(freeEm, freeActor, SDL_SCANCODE_D, 8.0f, /*frames=*/1);
+    const float freeStep = freeEm.registry().get<Transform>(freeActor).x - 64.0f;
+
+    // Deflecting: walk RIGHT into a wall whose top edge is open above -> glides UP. One frame's
+    // total displacement must not exceed the free step (redirected, not additive).
+    EntityManager em;
+    makeOpenMap(em);
+    for (int r = 4; r < 8; ++r)
+        for (int c = 4; c < 8; ++c)
+            em.tile_map.tiles[r * 8 + c].walkable = false;
+    const entt::entity actor = makeActor(em);
+    auto& reg = em.registry();
+    reg.get<Transform>(actor) = Transform{60.0f, 63.0f}; // pressed at the corner
+    const Transform before = reg.get<Transform>(actor);
+    walk(em, actor, SDL_SCANCODE_D, 8.0f, /*frames=*/1);
+    const Transform after = reg.get<Transform>(actor);
+
+    const float moved = std::hypot(after.x - before.x, after.y - before.y);
+    REQUIRE(moved <= budget + 0.01f); // one frame's glide <= one frame's free walk
+    REQUIRE(freeStep > 0.0f);         // sanity: the free walk actually moved
 }
