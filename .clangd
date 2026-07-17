@@ -1,0 +1,30 @@
+# clangd language-server config (VS Code C/C++ "clangd" extension, or any LSP editor).
+#
+# Why this exists: without it, clangd can't find the compile database and falls back to
+# guessing flags per file -- so go-to-definition, find-references, and especially
+# RENAME-SYMBOL (F2) work poorly or not at all, forcing text find-and-replace across dozens
+# of files for a single type rename. Pointing it at build/compile_commands.json (which CMake
+# already exports -- see CMAKE_EXPORT_COMPILE_COMMANDS in the root CMakeLists) makes those
+# semantic operations work across the whole tree. A rename becomes one F2, propagated
+# correctly, instead of a error-prone sweep.
+#
+# Prerequisite: configure the build once (F7 / cmake) so build/compile_commands.json exists.
+
+CompileFlags:
+  # The compile database CMake writes. Relative to this file (the repo root).
+  CompilationDatabase: build
+
+Diagnostics:
+  # clang-tidy runs in CI and pre-push (see .claude/CLAUDE.md); surfacing the same checks
+  # in-editor catches issues before they reach the pipeline. Scoped to the checks the repo
+  # actually enforces rather than the full default set, so the editor doesn't cry wolf.
+  ClangTidy:
+    Add:
+      - misc-const-correctness # a hard ERROR in CI -- worth seeing live
+      - bugprone-*
+      - readability-identifier-naming
+    Remove:
+      - bugprone-easily-swappable-parameters
+    # misc-const-correctness is flagged "slow" and skipped unless fast-filtering is off.
+    # It's a merge gate here, so run it in-editor regardless.
+    FastCheckFilter: None

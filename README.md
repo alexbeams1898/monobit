@@ -43,6 +43,16 @@ cmake --build build
 In VS Code, use the CMake Tools status bar at the bottom to pick which
 target F7 builds and F5 runs.
 
+### Editor / language server
+
+Install the **clangd** VS Code extension (not the default C/C++ IntelliSense —
+run one or the other, not both). A committed `.clangd` at the repo root points it
+at `build/compile_commands.json` (CMake exports this), which gives working
+go-to-definition, find-references, and — the one that saves real pain —
+**rename-symbol (F2)** that propagates a type or function rename across every file
+correctly, instead of a manual find-and-replace. Configure the build once (F7) so
+`build/compile_commands.json` exists before opening a C++ file.
+
 ## Documentation
 
 ### Per-game
