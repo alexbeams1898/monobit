@@ -1,5 +1,5 @@
 {
-    "_comment": "The cognition engine's authored content (see docs/design/PROCESSING-MODEL.md). OBSERVABLES hold objective reading TIERS (deterministic: deepest tier whose unlock_when you meet; no roll) and an authored VALUE = how much noticing this matters (the one authored worth knob). THOUGHTS are subjective: a self-scaling ROLL, recorded once. Their VALUE (consequence a thought sets in motion), DIFFICULTY (structural + a quiet value nudge), and Spirit EXP are all DERIVED at load -- never author difficulty or spirit_exp. A hidden observable carries visible_when; a thought's set_flag can reveal it, which is how VALUE flows forward. PLACEMENT (where each observable lives + its trigger) is authored in LDtk on the Observables layer, not here. PLACEHOLDER content, matched to the current map (rock/tree/log/water).",
+    "_comment": "The cognition engine's authored content (see docs/design/PROCESSING-MODEL.md). ENCOUNTERS hold objective reading TIERS (deterministic: deepest tier whose unlock_when you meet; no roll) and an authored VALUE = how much noticing this matters (the one authored worth knob). THOUGHTS are subjective: a self-scaling ROLL, recorded once. Their VALUE (consequence a thought sets in motion), DIFFICULTY (structural + a quiet value nudge), and Spirit EXP are all DERIVED at load -- never author difficulty or spirit_exp. A hidden encounter carries visible_when; a thought's set_flag can reveal it, which is how VALUE flows forward. PLACEMENT (where each encounter lives + its trigger) is authored in LDtk on the Encounters layer, not here. PLACEHOLDER content, matched to the current map (rock/tree/log/water).",
     "roll": {
         "dice": 4,
         "tightness": 0.75,
@@ -10,7 +10,7 @@
         "exp_per_value": 5
     },
     "interact_reach": 40,
-    "observables": [
+    "encounters": [
         {
             "id": "rock",
             "kind": "inanimate",

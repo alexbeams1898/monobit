@@ -4,7 +4,7 @@
 
 // Stat-driven formulas: the shared home for "how a stat changes what you experience." A core
 // pillar of the game -- your stats change how you see the world (Perception brightens the
-// glow that hints at observables; more mappings join here as the pillar grows). Following the
+// glow that hints at encounters; more mappings join here as the pillar grows). Following the
 // studio convention (see prison-escape/selva Formulas): the COEFFICIENTS live in
 // config/formulas.json; the MATH lives in C++ (the accessors below). Never hardcode formula
 // constants -- edit the JSON. See docs/design/GAME-SYSTEMS.md.

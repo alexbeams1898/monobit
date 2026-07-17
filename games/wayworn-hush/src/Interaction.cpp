@@ -78,9 +78,14 @@ Outcome update(EntityManager& em, const Intent& intent, const Context& ctx)
     std::vector<entt::entity> ents;
     for (auto [e, t, it] : reg.view<Transform, Interactable>().each())
     {
+        it.active = false; // cleared each frame; the resolved target is re-set below
+        // A not-present interactable (a hidden encounter) is no candidate at all -- it can't
+        // be targeted, so neither verb can fire on it. This is the one gate; observe and act
+        // downstream never see a spot that isn't here.
+        if (!it.present)
+            continue;
         items.push_back({t.x, t.y, it.w, it.h});
         ents.push_back(e);
-        it.active = false; // cleared each frame; the resolved target is re-set below
     }
 
     const Resolution r = resolve(items, intent, ctx.reach);
@@ -96,7 +101,7 @@ Outcome update(EntityManager& em, const Intent& intent, const Context& ctx)
     Outcome out;
     out.fired = true;
 
-    // Observable spot: report which spot fired, but do NOT observe here -- the caller routes
+    // Encounter spot: report which spot fired, but do NOT observe here -- the caller routes
     // it (a spot offering both observe + deeds shows a verb picker; one verb fires directly).
     // Keeps this layer generic: it resolves the target, the game decides the verb.
     if (!target.observe_id.empty())

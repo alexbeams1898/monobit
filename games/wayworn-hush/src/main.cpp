@@ -216,10 +216,10 @@ bool setupRegion(Engine& engine, EntityManager& em, GameState& gs)
     const ldtk::Region region =
         ldtk::load(wc.ldtk, wc.tileset_png, gs.surface_config, gs.structure_config);
     std::fprintf(stderr,
-                 "[region] ldtk load %s: %dx%d, %zu objects, %zu props, %zu observables, %zu "
+                 "[region] ldtk load %s: %dx%d, %zu objects, %zu props, %zu encounters, %zu "
                  "pickups\n",
                  region.ok ? "OK" : "FAILED", region.map.width, region.map.height,
-                 region.objects.size(), region.props.size(), region.observables.size(),
+                 region.objects.size(), region.props.size(), region.encounters.size(),
                  region.pickups.size());
     if (!region.ok)
     {
@@ -240,20 +240,20 @@ bool setupRegion(Engine& engine, EntityManager& em, GameState& gs)
             placePlayer(em, gs, o.wx, o.wy);
 
     // Bind observation PLACEMENTS from the map onto the loaded observation content: an
-    // entity carrying an `observable` field supplies its position/size/trigger. Content
+    // entity carrying an `encounter` field supplies its position/size/trigger. Content
     // (observations.json) and placement (LDtk) meet by id here -- before glimmer spawns
-    // (it reads each observable's world position). Authoring gaps are logged, not fatal.
+    // (it reads each encounter's world position). Authoring gaps are logged, not fatal.
     {
         std::vector<observations::Placement> placements;
-        placements.reserve(region.observables.size());
-        for (const auto& p : region.observables)
+        placements.reserve(region.encounters.size());
+        for (const auto& p : region.encounters)
             placements.push_back({p.id, p.placement_id, p.x, p.y, p.w, p.h,
                                   observations::triggerFromString(p.trigger)});
         const auto rep = observations::applyPlacements(gs.observations, placements);
-        for (const auto& id : rep.placements_without_observable)
+        for (const auto& id : rep.placements_without_encounter)
             std::fprintf(stderr, "[observe] placement '%s' has no observation content\n",
                          id.c_str());
-        for (const auto& id : rep.observables_without_placement)
+        for (const auto& id : rep.encounters_without_placement)
             std::fprintf(stderr, "[observe] observation '%s' has no placement in the map\n",
                          id.c_str());
     }

@@ -12,7 +12,7 @@ namespace
 // Knowledge (it holds pointers).
 struct World
 {
-    std::unordered_set<std::string> observed; // observed observables + fired thoughts
+    std::unordered_set<std::string> observed; // observed encounters + fired thoughts
     std::unordered_set<std::string> flags;
     std::unordered_map<std::string, int> stats;
 

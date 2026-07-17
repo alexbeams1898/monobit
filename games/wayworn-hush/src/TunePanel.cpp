@@ -167,8 +167,8 @@ std::string clauseText(const unlock::Clause& c)
     return s.empty() ? "(always)" : s;
 }
 
-void drawObservableNode(const observations::State& obs, const growth::GrowthState& g,
-                        const observations::Observable& o)
+void drawEncounterNode(const observations::State& obs, const growth::GrowthState& g,
+                       const observations::Encounter& o)
 {
     const int reached = obs.observed_tier.count(o.id) ? obs.observed_tier.at(o.id) : 0;
     const observations::Signal sig = observations::signalFor(obs, g, o.id);
@@ -246,9 +246,9 @@ void cognitionTab(const observations::State& obs, const growth::GrowthState& g)
 {
     ImGui::TextDisabled("Live cognition tree (dev X-ray -- reads the loaded state).");
     ImGui::Spacing();
-    if (ImGui::CollapsingHeader("Observables", ImGuiTreeNodeFlags_DefaultOpen))
-        for (const auto& o : obs.observables)
-            drawObservableNode(obs, g, o);
+    if (ImGui::CollapsingHeader("Encounters", ImGuiTreeNodeFlags_DefaultOpen))
+        for (const auto& o : obs.encounters)
+            drawEncounterNode(obs, g, o);
     if (ImGui::CollapsingHeader("Thoughts", ImGuiTreeNodeFlags_DefaultOpen))
         for (const auto& r : obs.thoughts)
             drawThoughtNode(obs, g, r);

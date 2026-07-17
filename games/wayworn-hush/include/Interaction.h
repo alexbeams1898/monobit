@@ -40,7 +40,7 @@ enum class ActionKind
 // when within interact_reach, or when the cursor is over it. Two optional capabilities:
 //   observe_id -- non-empty => examining surfaces this observation (glimmer marks it).
 //   action     -- non-None  => interacting performs it directly (only when observe_id is
-//                  empty; an observable spot's "take" is a deed, not a direct action).
+//                  empty; an encounter spot's "take" is a deed, not a direct action).
 // Plain data (save-friendly): no behavior here -- the InteractionSystem routes.
 struct Interactable
 {
@@ -54,6 +54,12 @@ struct Interactable
     ActionKind action = ActionKind::None; // direct action (None = not directly actionable)
     std::string target;                   // the action's id (item id / loot table id)
     bool active = false; // set by the system each frame: is this the highlighted target?
+    // Is this interactable LIVE right now? A hidden encounter (visible_when unmet) is not:
+    // it must offer NEITHER verb, so it isn't a target and doesn't glow. Set live by whoever
+    // owns the reveal condition (glimmer::update, for encounters), read by the interaction
+    // resolve + the glow. The ONE answer to "does this spot exist right now" -- so observe
+    // and act can never disagree about it.
+    bool present = true;
 };
 
 // The player's targeting + firing intent for this frame, resolved from input by the game
@@ -122,7 +128,7 @@ struct Outcome
     bool act = false;           // the fire was an ACT (running): skip the reading -> deed menu
     int earned = 0;             // Spirit EXP from an observe
     // Items a DIRECT action deposited, for the toast (Pickup -> one; Gather -> the handful).
-    // Empty for an observable (a "take" deed's grant flows through the menu, not here).
+    // Empty for an encounter (a "take" deed's grant flows through the menu, not here).
     std::vector<inventory::ItemInstance> items;
     // The placement id of a thing this fire removed from the world for good, if any. Passed
     // up as an opaque id (like the observation system's grants): interaction destroys the

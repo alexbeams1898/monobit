@@ -78,7 +78,7 @@
 		},
 		{
 			"__type": "Entities",
-			"identifier": "Observables",
+			"identifier": "Encounters",
 			"type": "Entities",
 			"uid": 23,
 			"doc": null,
@@ -358,7 +358,7 @@
 			"fieldDefs": []
 		},
 		{
-			"identifier": "Observable",
+			"identifier": "Encounter",
 			"uid": 14,
 			"tags": [],
 			"exportToToc": false,
@@ -392,7 +392,7 @@
 			"pivotY": 0,
 			"fieldDefs": [
 				{
-					"identifier": "observable",
+					"identifier": "encounter",
 					"doc": null,
 					"__type": "String",
 					"uid": 15,
@@ -681,7 +681,7 @@
 					]
 				},
 				{
-					"__identifier": "Observables",
+					"__identifier": "Encounters",
 					"__type": "Entities",
 					"__cWid": 16,
 					"__cHei": 16,
@@ -705,7 +705,7 @@
 					"gridTiles": [],
 					"entityInstances": [
 						{
-							"__identifier": "Observable",
+							"__identifier": "Encounter",
 							"__grid": [13,8],
 							"__pivot": [0,0],
 							"__tags": [],
@@ -717,7 +717,7 @@
 							"defUid": 14,
 							"px": [208,128],
 							"fieldInstances": [
-								{ "__identifier": "observable", "__type": "String", "__value": "rock", "__tile": null, "defUid": 15, "realEditorValues": [{
+								{ "__identifier": "encounter", "__type": "String", "__value": "rock", "__tile": null, "defUid": 15, "realEditorValues": [{
 									"id": "V_String",
 									"params": ["rock"]
 								}] },
@@ -730,7 +730,7 @@
 							"__worldY": 128
 						},
 						{
-							"__identifier": "Observable",
+							"__identifier": "Encounter",
 							"__grid": [10,6],
 							"__pivot": [0,0],
 							"__tags": [],
@@ -742,7 +742,7 @@
 							"defUid": 14,
 							"px": [160,96],
 							"fieldInstances": [
-								{ "__identifier": "observable", "__type": "String", "__value": "tree", "__tile": null, "defUid": 15, "realEditorValues": [{
+								{ "__identifier": "encounter", "__type": "String", "__value": "tree", "__tile": null, "defUid": 15, "realEditorValues": [{
 									"id": "V_String",
 									"params": ["tree"]
 								}] },
@@ -755,7 +755,7 @@
 							"__worldY": 96
 						},
 						{
-							"__identifier": "Observable",
+							"__identifier": "Encounter",
 							"__grid": [3,13],
 							"__pivot": [0,0],
 							"__tags": [],
@@ -767,7 +767,7 @@
 							"defUid": 14,
 							"px": [48,208],
 							"fieldInstances": [
-								{ "__identifier": "observable", "__type": "String", "__value": "log", "__tile": null, "defUid": 15, "realEditorValues": [{
+								{ "__identifier": "encounter", "__type": "String", "__value": "log", "__tile": null, "defUid": 15, "realEditorValues": [{
 									"id": "V_String",
 									"params": ["log"]
 								}] },
@@ -780,7 +780,7 @@
 							"__worldY": 208
 						},
 						{
-							"__identifier": "Observable",
+							"__identifier": "Encounter",
 							"__grid": [11,3],
 							"__pivot": [0,0],
 							"__tags": [],
@@ -792,7 +792,7 @@
 							"defUid": 14,
 							"px": [176,48],
 							"fieldInstances": [
-								{ "__identifier": "observable", "__type": "String", "__value": "water", "__tile": null, "defUid": 15, "realEditorValues": [{
+								{ "__identifier": "encounter", "__type": "String", "__value": "water", "__tile": null, "defUid": 15, "realEditorValues": [{
 									"id": "V_String",
 									"params": ["water"]
 								}] },

@@ -79,7 +79,7 @@ you observe it depends on what else you've observed.**
 
 ### Tiered text (Selva's `lang`, curated)
 
-Each observable authors **tiered thoughts**, gated by which *other* observations
+Each encounter authors **tiered thoughts**, gated by which *other* observations
 you've made:
 
 ```
@@ -184,10 +184,10 @@ The prototype (ambient AABB-trigger + textbox + queue + fired-set + counter) is
 The rework is contained:
 
 1. **Trigger: replace auto-AABB-enter with face-+-Space interact.** Find the
-   observable the player faces within range; fire on keypress. (Contained change
+   encounter the player faces within range; fire on keypress. (Contained change
    to one function — the earlier `observations::update(state, x, y)` auto-check
    becomes an on-press "what am I facing?" query.)
-2. **Tiered thoughts** — extend the observable data from a flat line list to
+2. **Tiered thoughts** — extend the encounter data from a flat line list to
    `{tier_0/1/2, unlock gates}` (lift `lang`'s Entry + resolve).
 3. **Conclusions** — add `requires`-list nodes that form when their observations
    are all made; grant more currency + a distinct sound.
@@ -204,7 +204,7 @@ Keep: textbox, queue, record/fired-set, persistence hooks, the Catch2 tests
 Guiding rule: **minimalist in spirit, a clean functioning machine in its parts.**
 The MVP is three testable parts and nothing more:
 
-1. **Observe** — face + Space fires the observable you're facing (in range).
+1. **Observe** — face + Space fires the encounter you're facing (in range).
 2. **Resolve** — tiered thought chosen by what you've already observed;
    conclusions auto-form when their required observations are all made; currency
    granted for *new* content only.

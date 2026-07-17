@@ -16,7 +16,7 @@
 
 ## World + map
 
-- **ldtk import** — LDtk region → tiles / props / observable placements / world-item placements; authoring at native scale, doubled to the world grid — [include/LdtkImport.h](../include/LdtkImport.h)
+- **ldtk import** — LDtk region → tiles / props / encounter placements / world-item placements; authoring at native scale, doubled to the world grid — [include/LdtkImport.h](../include/LdtkImport.h)
 - **world_config** — per-region asset paths (map, atlas, ambient) — [include/WorldConfig.h](../include/WorldConfig.h)
 - **surfaces** — per-surface walkability (terrain collision derived from tile tags, no hand-painted layer) — [include/Surfaces.h](../include/Surfaces.h)
 - **structures** — resizable walk-on structures (9-slice deck + per-slice walkability + per-cell surface) — [include/Structures.h](../include/Structures.h)
@@ -27,7 +27,7 @@
 - **player_movement / player_config** — movement integration + authored player tuning — [include/PlayerMovement.h](../include/PlayerMovement.h)
 - **footsteps** — per-surface footstep audio, speed-scaled cadence — [include/Footsteps.h](../include/Footsteps.h)
 - **growth** — the self: faculties + secondary stats + Spirit EXP; stat-level queries; starting levels — [include/Growth.h](../include/Growth.h)
-- **observations** — the cognition engine: objective tiers + subjective thoughts + deeds; the observe verb; the ambient re-check engine; per-spot taken-state; deeds may grant items / consume their spot (drops) — [include/Observations.h](../include/Observations.h)
+- **observations** — the cognition engine. An **Encounter** is a glowing spot you can OBSERVE (reading tiers) or ACT ON (deeds) -- it must offer BOTH to load, though the player may lean entirely on one. Plus subjective thoughts, the observe verb, the ambient re-check engine, per-spot taken-state; deeds may grant items / consume their spot (drops) — [include/Observations.h](../include/Observations.h)
 - **interaction** — the generic verb layer: resolve the active target + fire; routes to observe / act / take without owning their logic — [include/Interaction.h](../include/Interaction.h)
 - **inventory** — the satchel: two-layer item model (blueprint / instance), categories, ops (add/remove/count/has), key-item gating, new-find flag — [include/Inventory.h](../include/Inventory.h)
 - **loot** — gather loot tables + a pure weighted roll (the lottery) — [include/Loot.h](../include/Loot.h)

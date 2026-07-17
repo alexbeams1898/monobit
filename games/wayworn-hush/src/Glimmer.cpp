@@ -51,10 +51,10 @@ void spawn(EntityManager& em, const observations::State& obs, const Config& cfg,
            const std::unordered_set<std::string>& gone)
 {
     auto& reg = em.registry();
-    for (const auto& o : obs.observables)
+    for (const auto& o : obs.encounters)
     {
         // Observe-mode only: one entity that IS both the interactable (input) and its
-        // glimmer (highlight). An Enter (ambient) observable fires on proximity, not the
+        // glimmer (highlight). An Enter (ambient) encounter fires on proximity, not the
         // interact verb, so it carries no glimmer.
         if (o.trigger != observations::Trigger::Observe)
             continue;
@@ -64,7 +64,7 @@ void spawn(EntityManager& em, const observations::State& obs, const Config& cfg,
         const entt::entity e = reg.create();
         reg.emplace<Transform>(e, Transform{o.x, o.y});
         reg.emplace<Glimmer>(e, Glimmer{cfg.warm_r, cfg.warm_g, cfg.warm_b, 0.0f});
-        // Observable-only interactable: no direct action (a "take" deed, if any, lives in
+        // Encounter-only interactable: no direct action (a "take" deed, if any, lives in
         // the observation menu). The glimmer marks it; examining opens its reading.
         interaction::Interactable inter{};
         inter.w = o.w;
@@ -74,6 +74,19 @@ void spawn(EntityManager& em, const observations::State& obs, const Config& cfg,
         reg.emplace<interaction::Interactable>(e, inter);
         attachGlowSprite(em, e, cfg);
     }
+}
+
+void refreshPresence(EntityManager& em, const observations::State& obs,
+                     const growth::GrowthState& growth)
+{
+    // The single source for "does this encounter exist right now". Set BEFORE the interaction
+    // resolve reads it, so a hidden encounter (visible_when unmet) is no target -- neither
+    // verb can fire on it -- and a just-revealed one becomes interactable the same frame. A
+    // non-encounter interactable (an item) has no observe_id and is always present.
+    auto& reg = em.registry();
+    for (auto [e, inter] : reg.view<interaction::Interactable>().each())
+        inter.present =
+            inter.observe_id.empty() || observations::visible(obs, growth, inter.observe_id);
 }
 
 void update(EntityManager& em, const growth::GrowthState& growth, const formulas::Config& formulas,
@@ -89,9 +102,10 @@ void update(EntityManager& em, const growth::GrowthState& growth, const formulas
     for (auto [e, glim, spr, tint, inter] :
          reg.view<Glimmer, Sprite, TintOverride, interaction::Interactable>().each())
     {
-        // One rule: glow only while this is the active target (in reach / hovered); its peak
-        // brightness is the Perception formula. Otherwise fade to 0 -- nothing lingers.
-        const float target = inter.active ? peak : 0.0f;
+        // One rule: glow only while this is the active target (in reach / hovered) AND present;
+        // its peak brightness is the Perception formula. Otherwise fade to 0 -- nothing lingers.
+        // Presence was set by refreshPresence() before the interaction resolve this frame.
+        const float target = (inter.active && inter.present) ? peak : 0.0f;
 
         // Lerp the SMOOTHED BASE toward the target (a clean fade in/out), then display base +
         // breathing on top -- scaled by how faded-in the glow is, so a first appearance ramps

@@ -18,28 +18,28 @@ unlock::Knowledge makeKnowledge(const State& s, const growth::GrowthState& g,
                                 std::unordered_set<std::string>& observedIds,
                                 std::unordered_map<std::string, int>& statLevels);
 
-// An observable is visible (faceable, glowable) when its visible_when holds
+// An encounter is visible (faceable, glowable) when its visible_when holds
 // (against the given knowledge). Empty visible_when = always visible. Hidden
 // spots don't exist to the player until a thought's yield reveals them.
-bool observableVisible(const Observable& o, const unlock::Knowledge& k)
+bool encounterVisible(const Encounter& o, const unlock::Knowledge& k)
 {
     return o.visible_when.any.empty() || unlock::satisfied(o.visible_when, k);
 }
 
 // --- spatial resolution ----------------------------------------------------
-// The observable the player can interact with: the NEAREST visible one whose box is
+// The encounter the player can interact with: the NEAREST visible one whose box is
 // within interact_reach of the player (Souls-style: walk up, it lights, press). Nullptr
 // if none in reach.
-const Observable* nearestInReach(const State& s, const growth::GrowthState& g, float px, float py)
+const Encounter* nearestInReach(const State& s, const growth::GrowthState& g, float px, float py)
 {
     std::unordered_set<std::string> observedIds;
     std::unordered_map<std::string, int> statLevels;
     const unlock::Knowledge k = makeKnowledge(s, g, observedIds, statLevels);
-    const Observable* best = nullptr;
+    const Encounter* best = nullptr;
     float bestDist = s.interact_reach;
-    for (const auto& o : s.observables)
+    for (const auto& o : s.encounters)
     {
-        if (!observableVisible(o, k))
+        if (!encounterVisible(o, k))
             continue;
         const float d = o.distanceTo(px, py);
         if (d <= bestDist)
@@ -175,16 +175,16 @@ std::unordered_map<std::string, int> parseFeeders(const nlohmann::json& j)
 //
 // A thought, when it fires, produces two output keys: obs:<its id> (it is
 // now a held memory) and flag:<set_flag>. Those outputs can (a) enable OTHER
-// thoughts whose unlock_when is thereby satisfied, and (b) make observables
+// thoughts whose unlock_when is thereby satisfied, and (b) make encounters
 // VISIBLE whose visible_when is thereby satisfied. A thought's VALUE is the
-// total authored `value` of every observable it ends up making reachable this
+// total authored `value` of every encounter it ends up making reachable this
 // way (transitive; thoughts are conduits, full credit on shared nodes).
 //
 // We answer reachability with a monotone fixpoint over the set of "produced
 // keys" seeded from one thought: keep adding the outputs of any thought
 // now enabled, until nothing new appears. `satisfiedBy` asks whether a condition
 // holds given ONLY a set of held keys (base observations are always held, since
-// an observable with no visible_when is reachable from the start).
+// an encounter with no visible_when is reachable from the start).
 
 // Does a condition hold using only the produced key set? A clause holds if all
 // its observed ids and its flag are present as keys (stat gates are ignored here
@@ -206,11 +206,11 @@ bool satisfiedByKeys(const unlock::Condition& cond, const std::unordered_set<std
     return false;
 }
 
-// Observable value reachable when the thoughts in `firing` are allowed to
+// Encounter value reachable when the thoughts in `firing` are allowed to
 // fire. Computed as a fixpoint over two forward edges, run to convergence:
 //   - a firing thought whose unlock_when is met adds its outputs
 //     (obs:<its id>, flag:<set_flag>);
-//   - an observable whose visible_when is met becomes visible -> the player can
+//   - an encounter whose visible_when is met becomes visible -> the player can
 //     observe it, so its obs:<id> is a held memory later thoughts build on.
 // VALUE = sum of every visible observable's value. `skip` (may be empty) is a
 // thought id excluded from firing -- used for the leave-one-out marginal.
@@ -233,7 +233,7 @@ int reachableValue(const State& s, const std::string& skip)
                 produced.insert(keyFlag(r.set_flag));
             grew = true;
         }
-        for (const auto& o : s.observables)
+        for (const auto& o : s.encounters)
         {
             const std::string obsKey = keyObserved(o.id);
             if (produced.count(obsKey) || !satisfiedByKeys(o.visible_when, produced))
@@ -243,7 +243,7 @@ int reachableValue(const State& s, const std::string& skip)
         }
     }
     int total = 0;
-    for (const auto& o : s.observables)
+    for (const auto& o : s.encounters)
         if (produced.count(keyObserved(o.id)))
             total += o.value;
     return total;
@@ -292,7 +292,7 @@ std::vector<std::string> directRequires(const Thought& t)
 // Neither depends on centrality, so centrality is well-defined in one pass.
 int baseWorth(const State& s, const std::string& id)
 {
-    for (const auto& o : s.observables)
+    for (const auto& o : s.encounters)
         if (o.id == id)
             return o.value;
     for (const auto& t : s.thoughts)
@@ -373,8 +373,8 @@ void deriveValues(State& state)
         t.spirit_exp = t.value * state.roll.exp_per_value;
     }
 
-    // Observation tier EXP = the observable's value (scaled), earned once per tier.
-    for (auto& o : state.observables)
+    // Observation tier EXP = the encounter's value (scaled), earned once per tier.
+    for (auto& o : state.encounters)
         for (auto& t : o.tiers)
             t.spirit_exp = o.value * state.roll.exp_per_value;
 }
@@ -417,9 +417,9 @@ Action parseAction(const nlohmann::json& a)
     return act;
 }
 
-Observable parseObservable(const nlohmann::json& e)
+Encounter parseEncounter(const nlohmann::json& e)
 {
-    Observable o;
+    Encounter o;
     o.id = e.value("id", std::string{});
     // Placement (the box: x/y/w/h + trigger) is authored in LDtk and applied later. Any
     // JSON values are only a fallback for content not yet placed in the map.
@@ -493,17 +493,17 @@ const nlohmann::json& arrayOr(const nlohmann::json& obj, const char* key)
     return (it != obj.end() && it->is_array()) ? *it : kEmpty;
 }
 
-// Resolve an observable's final action list: its kind's defaults, then per-spot
+// Resolve an encounter's final action list: its kind's defaults, then per-spot
 // remove / replace / add overrides (from the `actions` block in its json).
-void resolveActions(Observable& o, const nlohmann::json& e, const ActionKinds& kinds)
+void resolveActions(Encounter& o, const nlohmann::json& e, const ActionKinds& kinds)
 {
     if (const auto it = kinds.find(o.kind); it != kinds.end())
         o.actions = it->second; // start from kind defaults
     else if (!o.kind.empty())
         // A non-empty kind that matches no action-kind = a typo or a missing actions.json
-        // entry: the observable silently gets NO default actions. Log the gap.
-        std::fprintf(stderr, "[observe] observable '%s' has kind '%s' with no action-kind\n",
-                     o.id.c_str(), o.kind.c_str());
+        // entry: the encounter silently gets NO default actions. Log the gap.
+        std::fprintf(stderr, "[encounter] '%s' has kind '%s' with no action-kind\n", o.id.c_str(),
+                     o.kind.c_str());
 
     const auto ov = e.find("actions");
     if (ov == e.end() || !ov->is_object())
@@ -529,6 +529,33 @@ void resolveActions(Observable& o, const nlohmann::json& e, const ActionKinds& k
     for (const auto& a : arrayOr(*ov, "add"))
         o.actions.push_back(parseAction(a));
 }
+
+// An Encounter is a glowing spot the player can OBSERVE or ACT ON -- so it must offer BOTH:
+// at least one reading to perceive and at least one deed to take. The two are independent at
+// play time (you may go through a walk observing everything and acting on nothing, or the
+// reverse), but a spot that authors only one half is a content gap, not a design: a
+// deed-less spot can't be acted on, a reading-less spot can't be observed. Caught at load --
+// dropped and logged, the same way a kind with no action-defaults is (see resolveActions) --
+// so the invariant lives in the code, not in the author's memory.
+//
+// `actions` is already resolved here (kind defaults + per-spot add/remove/replace), so this
+// sees the deeds the spot will actually offer, not just its authored block.
+bool offersBoth(const Encounter& o)
+{
+    if (o.tiers.empty())
+    {
+        std::fprintf(stderr, "[encounter] '%s' has no readings -- nothing to observe; dropped\n",
+                     o.id.c_str());
+        return false;
+    }
+    if (o.actions.empty())
+    {
+        std::fprintf(stderr, "[encounter] '%s' has no deeds -- nothing to act on; dropped\n",
+                     o.id.c_str());
+        return false;
+    }
+    return true;
+}
 } // namespace
 
 Trigger triggerFromString(const std::string& s)
@@ -551,12 +578,12 @@ void load(State& state, const std::string& path, const std::string& actions_path
     state.interact_reach = j.value("interact_reach", state.interact_reach);
 
     const ActionKinds kinds = loadActionKinds(actions_path);
-    for (const auto& e : j.value("observables", nlohmann::json::array()))
+    for (const auto& e : j.value("encounters", nlohmann::json::array()))
     {
-        Observable o = parseObservable(e);
-        resolveActions(o, e, kinds); // kind defaults + per-spot overrides
-        if (!o.id.empty() && !o.tiers.empty())
-            state.observables.push_back(std::move(o));
+        Encounter o = parseEncounter(e);
+        resolveActions(o, e, kinds); // kind defaults + per-spot overrides (fills o.actions)
+        if (!o.id.empty() && offersBoth(o))
+            state.encounters.push_back(std::move(o));
     }
 
     for (const auto& e : j.value("thoughts", nlohmann::json::array()))
@@ -595,7 +622,7 @@ PlacementReport applyPlacements(State& state, const std::vector<Placement>& plac
     {
         placed.insert(p.id);
         bool matched = false;
-        for (auto& o : state.observables)
+        for (auto& o : state.encounters)
             if (o.id == p.id)
             {
                 o.placement_id = p.placement_id;
@@ -607,11 +634,11 @@ PlacementReport applyPlacements(State& state, const std::vector<Placement>& plac
                 matched = true;
             }
         if (!matched)
-            report.placements_without_observable.push_back(p.id);
+            report.placements_without_encounter.push_back(p.id);
     }
-    for (const auto& o : state.observables)
+    for (const auto& o : state.encounters)
         if (!placed.count(o.id))
-            report.observables_without_placement.push_back(o.id);
+            report.encounters_without_placement.push_back(o.id);
     return report;
 }
 
@@ -697,8 +724,8 @@ namespace
 // Reveal a specific observable's deepest satisfied tier and run the ambient engine over
 // what changed -- the shared core of both the deliberate observe verb and the ambient
 // enter/approach triggers. `o` is the resolved observable (already located + eligible).
-ObserveResult fireObservable(State& state, const growth::GrowthState& growth, const Observable& o,
-                             const RollRng& rng)
+ObserveResult observeEncounter(State& state, const growth::GrowthState& growth, const Encounter& o,
+                               const RollRng& rng)
 {
     std::unordered_set<std::string> observedIds;
     std::unordered_map<std::string, int> statLevels;
@@ -759,22 +786,30 @@ unlock::Knowledge buildKnowledge(const State& state, const growth::GrowthState& 
 ObserveResult observe(State& state, const growth::GrowthState& growth, float px, float py,
                       const RollRng& rng)
 {
-    const Observable* o = nearestInReach(state, growth, px, py);
+    const Encounter* o = nearestInReach(state, growth, px, py);
     if (!o)
         return {Outcome::None, 0};
-    return fireObservable(state, growth, *o, rng);
+    return observeEncounter(state, growth, *o, rng);
+}
+
+bool visible(const State& state, const growth::GrowthState& growth, const std::string& id)
+{
+    std::unordered_set<std::string> observedIds;
+    std::unordered_map<std::string, int> statLevels;
+    const unlock::Knowledge k = makeKnowledge(state, growth, observedIds, statLevels);
+    for (const auto& o : state.encounters)
+        if (o.id == id)
+            return encounterVisible(o, k);
+    return false;
 }
 
 ObserveResult observeById(State& state, const growth::GrowthState& growth, const std::string& id,
                           const RollRng& rng)
 {
-    std::unordered_set<std::string> observedIds;
-    std::unordered_map<std::string, int> statLevels;
-    const unlock::Knowledge k = makeKnowledge(state, growth, observedIds, statLevels);
-    for (const auto& o : state.observables)
+    for (const auto& o : state.encounters)
         if (o.id == id)
-            return observableVisible(o, k) ? fireObservable(state, growth, o, rng)
-                                           : ObserveResult{Outcome::None, 0};
+            return visible(state, growth, id) ? observeEncounter(state, growth, o, rng)
+                                              : ObserveResult{Outcome::None, 0};
     return {Outcome::None, 0};
 }
 
@@ -784,14 +819,14 @@ ObserveResult triggerProximity(State& state, const growth::GrowthState& growth, 
     // Ambient triggers: an ENTER observable fires when the player reaches its box.
     // Fires ONCE (edge-triggered on `fired`), then reveals + runs the engine like a
     // deliberate observe. Visibility gating and the per-tier EXP-once rules are shared via
-    // fireObservable. Called every frame.
+    // observeEncounter. Called every frame.
     int earned = 0;
     Outcome outcome = Outcome::None;
     std::vector<std::string> landed;
     std::unordered_set<std::string> observedIds;
     std::unordered_map<std::string, int> statLevels;
     const unlock::Knowledge k = makeKnowledge(state, growth, observedIds, statLevels);
-    for (auto& o : state.observables)
+    for (auto& o : state.encounters)
     {
         if (o.trigger != Trigger::Enter || o.fired)
             continue;
@@ -800,7 +835,7 @@ ObserveResult triggerProximity(State& state, const growth::GrowthState& growth, 
         if (o.distanceTo(px, py) > state.interact_reach)
             continue; // not within reach yet
         o.fired = true;
-        ObserveResult res = fireObservable(state, growth, o, rng);
+        ObserveResult res = observeEncounter(state, growth, o, rng);
         earned += res.earned;
         if (res.outcome != Outcome::None)
             outcome = res.outcome;
@@ -845,9 +880,9 @@ ObserveResult evaluateStats(State& state, const growth::GrowthState& growth, con
 
 namespace
 {
-const Observable* observableById(const State& s, const std::string& id)
+const Encounter* encounterById(const State& s, const std::string& id)
 {
-    for (const auto& o : s.observables)
+    for (const auto& o : s.encounters)
         if (o.id == id)
             return &o;
     return nullptr;
@@ -876,7 +911,7 @@ std::vector<const Action*> availableActions(const State& state, const growth::Gr
                                             const std::string& spot)
 {
     std::vector<const Action*> out;
-    const Observable* o = observableById(state, spot);
+    const Encounter* o = encounterById(state, spot);
     if (!o)
         return out;
     std::unordered_set<std::string> observedIds;
@@ -891,7 +926,7 @@ std::vector<const Action*> availableActions(const State& state, const growth::Gr
 ObserveResult takeAction(State& state, const growth::GrowthState& growth, const std::string& spot,
                          const std::string& action_id, const RollRng& rng)
 {
-    const Observable* o = observableById(state, spot);
+    const Encounter* o = encounterById(state, spot);
     if (!o)
         return {Outcome::None, 0};
     std::unordered_set<std::string> observedIds;
@@ -947,9 +982,9 @@ std::unordered_set<std::string> availableUnlocks(const State& state,
     std::unordered_map<std::string, int> statLevels;
     const unlock::Knowledge k = makeKnowledge(state, growth, observedIds, statLevels);
 
-    for (const auto& o : state.observables)
+    for (const auto& o : state.encounters)
     {
-        if (!observableVisible(o, k))
+        if (!encounterVisible(o, k))
             continue; // hidden spots aren't "available to go back to" yet
 
         // Only a spot you've already observed can pull you BACK -- an unseen spot
@@ -1078,7 +1113,7 @@ std::vector<std::string> explainCentrality(const State& state, const Thought& r)
         out.emplace_back("  upstream (what led here, by base worth):");
         for (const auto& id : up)
         {
-            const bool obs = observableById(state, id) != nullptr;
+            const bool obs = encounterById(state, id) != nullptr;
             out.push_back("    " + id + (obs ? " (obs value " : " (thought opening ") +
                           std::to_string(baseWorth(state, id)) + ")");
         }

@@ -790,15 +790,15 @@ void enactPageAction(Engine& engine, EntityManager& em, GameState& gs, pause_pag
     }
 }
 
-// Despawn the world entity for an observable id (its glimmer + interactable), e.g. when a
+// Despawn the world entity for an encounter id (its glimmer + interactable), e.g. when a
 // consumes_spot take removes the whole thing, and remember that it's gone -- otherwise the
 // next visit rebuilds the spot from the authored placements and it's back. No-op if the
 // spot has no world entity.
-void despawnObservableEntity(EntityManager& em, GameState& gs, const std::string& observableId)
+void despawnEncounterEntity(EntityManager& em, GameState& gs, const std::string& encounterId)
 {
     auto& reg = em.registry();
     for (auto [e, inter] : reg.view<interaction::Interactable>().each())
-        if (inter.observe_id == observableId)
+        if (inter.observe_id == encounterId)
         {
             if (!inter.placement_id.empty())
                 gs.gone.insert(inter.placement_id);
@@ -819,12 +819,12 @@ void enactConfirm(EntityManager& em, GameState& gs, const thought_box::ConfirmRe
     for (const auto& recipeId : r.taught) // a deed handed over a recipe -> learn it (+ reward)
         learnRecipe(gs, recipeId);
     if (!r.consumed_spot.empty())
-        despawnObservableEntity(em, gs, r.consumed_spot);
+        despawnEncounterEntity(em, gs, r.consumed_spot);
     markProgress(gs); // a deed was taken -- worth keeping
 }
 
 // Follow-up after the InteractionSystem fired. A direct actionable-only item already deposited
-// its find -> toast it. For an observable spot, the STANCE is the verb: WALKING observes (the
+// its find -> toast it. For an encounter spot, the STANCE is the verb: WALKING observes (the
 // reading only), RUNNING acts (the deed menu only). The stance badge teaches this; there is no
 // per-spot prompt and no reading->menu handoff.
 void onInteractionFired(GameState& gs, const interaction::Outcome& out)
@@ -966,7 +966,7 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // Player position -- observation glow + interaction are proximity-based (no facing).
     const auto& pt = reg.get<Transform>(gs.player);
 
-    // Ambient triggers: Enter observables (areas, moods) fire on their own when the player
+    // Ambient triggers: Enter encounters (areas, moods) fire on their own when the player
     // is within range -- no observe verb. Deliberate object observing stays in
     // handleObserveInput. Fires once each; earns Spirit EXP like a deliberate reading, and
     // its thoughts are written down like one.
@@ -1002,13 +1002,16 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
                                        gs.items,
                                        gs.loot_tables,
                                        gs.observations.interact_reach};
+        // Decide which encounters are present THIS frame before resolving a target, so a
+        // hidden one is never interactable and a just-revealed one is.
+        glimmer::refreshPresence(em, gs.observations, gs.growth);
         const interaction::Outcome fired = interaction::update(em, intent, ctx);
         gs.growth.spirit_exp += fired.earned;
         if (fired.fired)
             onInteractionFired(gs, fired);
     }
 
-    // World glimmer: an observable glows only while it's the active target; its brightness is
+    // World glimmer: an encounter glows only while it's the active target; its brightness is
     // the Perception formula (same for every spot). Fades to 0 otherwise -- nothing lingers.
     // Runs after the InteractionSystem set `active`.
     glimmer::update(em, gs.growth, gs.formulas, gs.glimmer_config, static_cast<float>(dt));

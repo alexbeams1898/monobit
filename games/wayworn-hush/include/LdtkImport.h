@@ -27,13 +27,13 @@ struct Object
     float wy = 0.0f;
 };
 
-// Where an observation lives in the world, read from an Observable box on the
-// Observables layer (observability is its own concern -- physical entities carry no such
+// Where an observation lives in the world, read from an Encounter box on the
+// Encounters layer (observability is its own concern -- physical entities carry no such
 // field). The box AABB (center + size) marks the spot; you interact when within
 // interact_reach of it. `trigger` is its trigger field. Kept as a neutral struct (a
 // trigger STRING, not the observations enum) so the importer takes no dependency on the
 // observation system -- the game maps it to observations::Placement at load.
-struct ObservablePlacement
+struct EncounterPlacement
 {
     // WHICH placed thing this is -- stable across edits, unique among placements, and the
     // handle the game records permanent world changes against (a spot consumed, a thing
@@ -60,7 +60,7 @@ struct PickupPlacement
         Item, // `target` is an item id (a static drop)
         Loot  // `target` is a loot table id (a gather node)
     };
-    // WHICH placed thing this is -- see ObservablePlacement::placement_id. A pickup that's
+    // WHICH placed thing this is -- see EncounterPlacement::placement_id. A pickup that's
     // been taken is remembered by this, so it doesn't come back on the next visit.
     std::string placement_id;
     Kind kind = Kind::Item;
@@ -104,10 +104,10 @@ struct Region
     TileMap map;       // flat 32px tile grid (top tile per cell wins for v1)
     TileConfig config; // tileset atlas path + per-id uv/walkable
     std::vector<Object> objects;
-    std::vector<Prop> props;                      // tile-carrying entities -> Y-sorted sprite
-    std::vector<ObservablePlacement> observables; // entities carrying an `observable` field
-    std::vector<PickupPlacement> pickups;         // Pickup/Gather entities on the Pickups layer
-    int fill_uv_col = 0;                          // border-fill tile (beyond the bounds)
+    std::vector<Prop> props;                    // tile-carrying entities -> Y-sorted sprite
+    std::vector<EncounterPlacement> encounters; // entities carrying an `encounter` field
+    std::vector<PickupPlacement> pickups;       // Pickup/Gather entities on the Pickups layer
+    int fill_uv_col = 0;                        // border-fill tile (beyond the bounds)
     int fill_uv_row = 0;
     // Tile id -> surface name (from the tileset's surface tags). The runtime maps the
     // tile under the player to its surface for footsteps; a tile absent here is

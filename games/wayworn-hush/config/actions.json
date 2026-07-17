@@ -1,5 +1,5 @@
 {
-    "_comment": "Action-kind defaults (see docs/design/ACTIONS.md). Each observable in observations.json names a `kind` and inherits its default actions; a spot may add/remove/replace via its own `actions` block. An action: id, label, optional unlock_when (when it's OFFERED), result_text (the deed's own voice, surfaced on take), set_flag (world-state it changes -> the ambient engine re-checks -> a missed thought can come back), one_shot (leaves the menu once taken). Start small: inanimate, water, clearing, remains.",
+    "_comment": "Action-kind defaults (see docs/design/ACTIONS.md). Each encounter in observations.json names a `kind` and inherits its default actions; a spot may add/remove/replace via its own `actions` block. An action: id, label, optional unlock_when (when it's OFFERED), result_text (the deed's own voice, surfaced on take), set_flag (world-state it changes -> the ambient engine re-checks -> a missed thought can come back), one_shot (leaves the menu once taken). Start small: inanimate, water, clearing, remains.",
     "action_kinds": {
         "inanimate": {
             "actions": [

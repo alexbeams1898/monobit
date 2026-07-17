@@ -78,7 +78,7 @@ void updateOutlines(EntityManager& em, const Config& cfg)
     auto& reg = em.registry();
     for (auto [e, inter] : reg.view<interaction::Interactable>().each())
     {
-        // Only actionable items get the rim cue (observables use the glimmer). Active ->
+        // Only actionable items get the rim cue (encounters use the glimmer). Active ->
         // outline on; not active -> off.
         if (inter.action == interaction::ActionKind::None)
             continue;

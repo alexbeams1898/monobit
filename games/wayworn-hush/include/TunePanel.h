@@ -18,7 +18,7 @@ void toggle();
 // Draw the panel (no-op when hidden). Edits `player_config` (movement/cadence)
 // and `growth` stat values in place; the grade is read from / written to the
 // pixel target. `obs` is shown read-only in the Cognition tab (the live tree:
-// observables, thoughts, inputs/yields, runtime status). Save buttons patch
+// encounters, thoughts, inputs/yields, runtime status). Save buttons patch
 // player.json / atmosphere.json; stat edits are live-only. Call from the ImGui hook.
 void render(PlayerConfig& player_config, growth::GrowthState& growth,
             const observations::State& obs);

@@ -52,7 +52,7 @@ struct Config
 void load(Config& cfg, const std::string& path);
 
 // Spawn one glow entity per Observe-mode observable (warm tint, alpha 0, layer 3 above the
-// prop it marks). Enter-mode observables fire ambiently and carry no glimmer.
+// prop it marks). Enter-mode encounters fire ambiently and carry no glimmer.
 //
 // `gone` is the set of placement ids this pilgrim has removed for good
 // (savegame::World::gone): a spot consumed on a previous visit is skipped, so it doesn't
@@ -60,9 +60,15 @@ void load(Config& cfg, const std::string& path);
 void spawn(EntityManager& em, const observations::State& obs, const Config& cfg,
            const std::unordered_set<std::string>& gone = {});
 
-// Per-frame: each observable glimmer glows (lerps toward its peak) only while its Interactable
+// Per-frame: each encounter glimmer glows (lerps toward its peak) only while its Interactable
 // is the active target; the peak = formulas::glowBrightness(Perception), the same for every
 // spot. Otherwise it fades to 0. Breathing rides on top. dt = frame seconds.
+// Set each interactable's `present` from live encounter visibility -- call BEFORE the
+// interaction resolve, so a hidden encounter is no target (neither verb) and a revealed one
+// becomes interactable the same frame. The one gate that keeps observe + act in agreement.
+void refreshPresence(EntityManager& em, const observations::State& obs,
+                     const growth::GrowthState& growth);
+
 void update(EntityManager& em, const growth::GrowthState& growth, const formulas::Config& formulas,
             const Config& cfg, float dt);
 } // namespace glimmer

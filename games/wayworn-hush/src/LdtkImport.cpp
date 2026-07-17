@@ -252,7 +252,7 @@ std::string placementIdOf(const json& e)
     return e.value("iid", std::string{});
 }
 
-// A string-valued entity field instance by identifier ("observable", "trigger"), or
+// A string-valued entity field instance by identifier ("encounter", "trigger"), or
 // empty if absent/not a string. LDtk stores custom fields in fieldInstances as
 // {__identifier, __value}.
 std::string entityField(const json& e, const char* identifier)
@@ -268,13 +268,13 @@ std::string entityField(const json& e, const char* identifier)
     return {};
 }
 
-// If entity `e` carries a non-empty `observable` field, append its placement: the box
-// AABB (center + size, x2 to world px) marks WHERE the observable is -- you interact when
-// within interact_reach of it. Also reads the optional `trigger` mode. Only the Observable
+// If entity `e` carries a non-empty `encounter` field, append its placement: the box
+// AABB (center + size, x2 to world px) marks WHERE the encounter is -- you interact when
+// within interact_reach of it. Also reads the optional `trigger` mode. Only the Encounter
 // box carries this field; physical entities stay field-free. px is top-left (authoring px).
-void collectObservable(const json& e, Region& r)
+void collectEncounter(const json& e, Region& r)
 {
-    const std::string id = entityField(e, "observable");
+    const std::string id = entityField(e, "encounter");
     if (id.empty())
         return;
     const std::string placementId = placementIdOf(e);
@@ -285,7 +285,7 @@ void collectObservable(const json& e, Region& r)
         return;
     const float wx = static_cast<float>((*px)[0].get<int>() * 2);
     const float wy = static_cast<float>((*px)[1].get<int>() * 2);
-    ObservablePlacement p;
+    EncounterPlacement p;
     p.placement_id = placementId;
     p.id = id;
     p.w = static_cast<float>(e.value("width", 16) * 2);
@@ -293,20 +293,20 @@ void collectObservable(const json& e, Region& r)
     p.x = wx + p.w * 0.5f; // px is top-left for a resizable box -> center it
     p.y = wy + p.h * 0.5f;
     p.trigger = entityField(e, "trigger");
-    r.observables.push_back(std::move(p));
+    r.encounters.push_back(std::move(p));
 }
 
-// Scan an entity-carrying layer for observable placements (entities with an `observable`
+// Scan an entity-carrying layer for encounter placements (entities with an `observable`
 // field). Used for both the Entities layer (props that opt in) and the dedicated
-// Observables layer (standalone area/point triggers).
-void collectObservablesInLayer(const json& level, const char* layerName, Region& r)
+// Encounters layer (standalone area/point triggers).
+void collectEncountersInLayer(const json& level, const char* layerName, Region& r)
 {
     const json* lay = findLayer(level, layerName);
     if (!lay)
         return;
     if (const auto ei = lay->find("entityInstances"); ei != lay->end() && ei->is_array())
         for (const auto& e : *ei)
-            collectObservable(e, r);
+            collectEncounter(e, r);
 }
 
 // Append a world pickup for entity `e`: a static drop if it carries an `item` field, a
@@ -635,12 +635,12 @@ Region loadImpl(const std::string& ldtk_path, const std::string& tileset_path,
     parseStructures(level, structureCfg, g, uvById, r);
     fillTileConfig(uvById, tileset_path, r);
     parseEntities(atlas, level, structureCfg, r);
-    // Observation PLACEMENTS come ONLY from the dedicated Observables layer. Observability
-    // is its own concern -- a resizable Observable box placed anywhere (over a bridge
+    // Observation PLACEMENTS come ONLY from the dedicated Encounters layer. Observability
+    // is its own concern -- a resizable Encounter box placed anywhere (over a bridge
     // piece, an area, an object). Physical entities (Rock, Tree, Bridge) stay purely
     // physical; they carry no observation fields. The content lives in observations.json;
     // the box is just where + how it fires. See docs/design/OBSERVATION-SYSTEM.md.
-    collectObservablesInLayer(level, "Observables", r);
+    collectEncountersInLayer(level, "Encounters", r);
     // Pickups: items lying in the world, authored on their own Pickups layer (a Pickup entity
     // carrying an `item` id, or a Gather entity carrying a `loot` table id). Bound to
     // inventory/loot at load, spawned as floor sprites (world_items::spawn). See

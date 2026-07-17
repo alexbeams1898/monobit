@@ -39,7 +39,7 @@ struct ObservationTier
 {
     unlock::Condition unlock_when; // when this depth is perceivable (empty = base)
     std::string text;
-    int spirit_exp = 0; // DERIVED at load from the observable's `value` (not authored)
+    int spirit_exp = 0; // DERIVED at load from the encounter's `value` (not authored)
 };
 
 // A deed offered on a spot after observing it (the action menu; see
@@ -57,14 +57,14 @@ struct Action
     // Item effects, declared as OPAQUE ids (like set_flag): the observation system carries
     // them but never interprets them -- the GAME enacts the grant (it owns the satchel/loot).
     // grant_item -> deposit that item; grant_table -> roll that loot table. So a "Pick up" /
-    // "Gather" deed on an observable-and-takeable thing lives in the same deed list as its
+    // "Gather" deed on an encounter-and-takeable thing lives in the same deed list as its
     // readings-deeds, with no inventory dependency here.
     std::string grant_item;   // item id to deposit on take (empty = none)
     std::string grant_table;  // loot table id to roll on take (empty = none)
     std::string grant_recipe; // recipe id to TEACH on take (empty = none) -- a deed that hands you
                               // a recipe outright (e.g. reading a cleared rock teaches the draught)
     bool one_shot = false;    // true = leaves the menu once taken
-    // true = taking this deed REMOVES the observable from the world (you took THE thing --
+    // true = taking this deed REMOVES the encounter from the world (you took THE thing --
     // a lone pebble). false (default) = the spot persists (you took FROM it -- a sprig off
     // the bush, still there to examine). The game does the despawn (it owns the world entity).
     bool consumes_spot = false;
@@ -118,7 +118,7 @@ struct Thought
     int value = 0;      // importance_weight*importance + opening_weight*opening
     int difficulty = 1; // 1..max_band, structural (+ quiet value nudge); the roll bar
     int spirit_exp = 0; // reward, proportional to value
-    // Thoughts float free -- they are NOT owned by an observable. They fire
+    // Thoughts float free -- they are NOT owned by an encounter. They fire
     // ambiently whenever their unlock_when becomes true (DE-passive style),
     // wherever the player is. What lights a spot's signal is a query over
     // unlock_when, not ownership.
@@ -143,13 +143,13 @@ Trigger triggerFromString(const std::string& s);
 // An authored observable in the world. `value` is the one authored worth knob -- "how
 // much noticing this matters" -- feeding tier EXP + every thought VALUE downstream (see
 // docs/design/PROCESSING-MODEL.md).
-struct Observable
+struct Encounter
 {
     std::string id;
     // WHICH placed thing locates this observable -- set by applyPlacements, carried so the
     // game can record a spot being consumed against the map. Empty until placed.
     std::string placement_id;
-    // Placement is an AABB authored in LDtk (the Observable box) and applied at load. The
+    // Placement is an AABB authored in LDtk (the Encounter box) and applied at load. The
     // box marks WHERE the thing is; you interact when within `interact_reach` of it (glow +
     // observe). (x, y) is the box CENTER, (w, h) its size, all world px. observations.json
     // holds the CONTENT (tiers/thoughts/actions), not the location.
@@ -237,10 +237,10 @@ struct PendingLine
 // serialize this).
 struct State
 {
-    std::vector<Observable> observables; // authored
-    std::vector<Thought> thoughts;       // authored (thoughts + conclusions, one type)
-    RollConfig roll;                     // authored tuning
-    // Interaction reach (world px from an observable's box edge). Dead simple: get within
+    std::vector<Encounter> encounters; // authored
+    std::vector<Thought> thoughts;     // authored (thoughts + conclusions, one type)
+    RollConfig roll;                   // authored tuning
+    // Interaction reach (world px from an encounter's box edge). Dead simple: get within
     // this of a box and it GLOWS + can be observed (Space); step away and it's dark. One
     // number drives both -- the object marks the spot, you walk up, it lights, you press.
     // (Souls-style: a trigger volume = box + reach.) One tuning knob for the whole game.
@@ -260,9 +260,9 @@ struct State
     std::deque<PendingLine> pending; // lines waiting to surface
 };
 
-// Loads authored observables + thoughts from config/observations.json and
+// Loads authored encounters + thoughts from config/observations.json and
 // builds the trigger index. `actions_path` (optional) loads action-kind defaults
-// from config/actions.json and resolves each observable's action list
+// from config/actions.json and resolves each encounter's action list
 // (kind defaults + per-spot overrides); omit/empty for no actions.
 void load(State& state, const std::string& path, const std::string& actions_path = {});
 
@@ -284,14 +284,14 @@ struct Placement
     Trigger trigger = Trigger::Observe;
 };
 
-// Bind each placement onto the matching loaded Observable (its x/y/w/h/trigger).
-// Returns the ids that had NO loaded observable AND the observables that got NO
+// Bind each placement onto the matching loaded Encounter (its x/y/w/h/trigger).
+// Returns the ids that had NO loaded observable AND the encounters that got NO
 // placement (both are authoring gaps worth surfacing: content with nowhere to be, or a
 // placement pointing at nothing). Idempotent.
 struct PlacementReport
 {
-    std::vector<std::string> placements_without_observable; // placed id has no content
-    std::vector<std::string> observables_without_placement; // content has no location
+    std::vector<std::string> placements_without_encounter; // placed id has no content
+    std::vector<std::string> encounters_without_placement; // content has no location
 };
 PlacementReport applyPlacements(State& state, const std::vector<Placement>& placements);
 
@@ -327,12 +327,12 @@ struct ObserveResult
     // the grants above: the game notes when they happened (observations doesn't know what a
     // notebook is). Empty when nothing new landed.
     std::vector<std::string> landed;
-    // Set to the observable's id when a taken deed's consumes_spot fires -- the game removes
+    // Set to the encounter's id when a taken deed's consumes_spot fires -- the game removes
     // that spot's world entity (glimmer + interactable). Empty otherwise.
     std::string consumed_spot;
 };
 
-// Observe the observable within interact_reach of (px,py) -- reveal the deepest objective
+// Observe the encounter within interact_reach of (px,py) -- reveal the deepest objective
 // tier your stats meet (deterministic; EXP once per tier), then run the ambient engine
 // over the keys that changed (this spot observed + its tier), which rolls any newly-
 // available thoughts. Queues the surfaced lines and reports the outcome + total EXP.
@@ -350,13 +350,19 @@ ObserveResult observe(State& state, const growth::GrowthState& growth, float px,
 
 // Observe a SPECIFIC observable by id (what the interaction system calls once it has
 // resolved the active target). Same reveal + ambient-engine as observe(); no-op if the id
-// is unknown or the observable is currently hidden (visible_when unmet).
+// is unknown or the encounter is currently hidden (visible_when unmet).
 ObserveResult observeById(State& state, const growth::GrowthState& growth, const std::string& id,
                           const RollRng& rng);
 
+// Is the encounter with this id present in the world right now? False if unknown or its
+// visible_when is unmet. THE public answer to "does this spot exist" -- a hidden encounter
+// is neither observable nor actionable, so this one query gates its interactable + glow, and
+// observe/act can never disagree about whether it's there.
+bool visible(const State& state, const growth::GrowthState& growth, const std::string& id);
+
 // Ambient triggers, checked every frame from the player's position: an ENTER observable
 // fires when the player is within interact_reach of its box. Each fires ONCE (edge-
-// surfaces like a deliberate observe. OBSERVE-mode observables are ignored here (they
+// surfaces like a deliberate observe. OBSERVE-mode encounters are ignored here (they
 // need the verb). This is what makes areas/moods wash over you without a button press.
 // Returns EXP earned.
 ObserveResult triggerProximity(State& state, const growth::GrowthState& growth, float px, float py,
@@ -397,7 +403,7 @@ ObserveResult takeAction(State& state, const growth::GrowthState& growth, const 
 std::unordered_set<std::string> availableUnlocks(const State& state,
                                                  const growth::GrowthState& growth);
 
-// The world-legibility signal for an observable (drives the glimmer). Deliberately
+// The world-legibility signal for an encounter (drives the glimmer). Deliberately
 // minimal: the glimmer marks only "there is something HERE TO LOOK AT." Thoughts
 // are the emergent, subjective layer -- they fire ambiently as you observe / act /
 // grow, and are NOT signposted (a quest-marker for thoughts would turn the
@@ -409,7 +415,7 @@ enum class Signal
     Observed,   // already observed -> quiet (nothing to signpost)
 };
 
-// Derive an observable's signal: Unobserved until it has been observed to any
+// Derive an encounter's signal: Unobserved until it has been observed to any
 // tier, then Observed. Pure; reads only the record.
 Signal signalFor(const State& state, const growth::GrowthState& growth, const std::string& spot);
 

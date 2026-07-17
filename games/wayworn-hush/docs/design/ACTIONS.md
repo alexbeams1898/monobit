@@ -48,9 +48,23 @@ observe a spot ─▶ read what's there ─▶ [action menu] ─▶ take an acti
                    (a deeper reading / a closed thought opens)
 ```
 
+## Encounters have two halves (the coupling)
+
+An **Encounter** is a glowing spot in the world. It offers two verbs, and it must
+offer **both**: you can **observe** it (its reading tiers — OBSERVATION-SYSTEM.md)
+or **act on** it (its deeds — this doc). The two are independent at play time — a
+walk could lean entirely on observing, or entirely on acting, and either is a
+valid way through — but a spot that authors only one half is a content gap, not a
+design: a deed-less Encounter can't be acted on, a reading-less one can't be
+observed. Enforced at load (a spot missing either half is dropped and logged).
+
+The name matters: the container is an *Encounter*, not an "observable." Calling it
+by one of its two verbs is what let deeds drift in as a second-class add-on; naming
+the whole thing makes "both halves, always" the obvious rule.
+
 ## What an action is (the model)
 
-An **action** is a menu option on an observable. Its shape is grounded in how
+An **action** is a menu option on an encounter. Its shape is grounded in how
 doing a thing works in real life — a deed *speaks in the moment*, *changes the
 world*, and is either done-forever or something you can always do again:
 
@@ -82,7 +96,7 @@ Actions are **not** owned globally; they're presented *on a spot*, sourced as:
 
 ### Defaults by kind + per-spot overrides
 
-Every observable has a **kind** (inanimate object, water, plant, structure,
+Every encounter has a **kind** (inanimate object, water, plant, structure,
 remains, …). Each kind declares a **default action set** — the deeds that make
 sense for that sort of thing:
 
@@ -93,13 +107,13 @@ sense for that sort of thing:
 | plant | Touch · Gather · Smell |
 | remains | Sit with · Search · Bury |
 
-A specific observable then **inherits** its kind's defaults, and may **override**:
+A specific encounter then **inherits** its kind's defaults, and may **override**:
 add a bespoke action, remove one that doesn't fit, or replace an option's
 `unlock_when`/effect. Authoring stays concise (most spots just name a kind);
 bespoke DE moments are a small override, not a from-scratch tree.
 
 *(The exact default sets per kind are content, authored in config alongside the
-observables — not fixed in code. Kinds and their defaults are data.)*
+encounters — not fixed in code. Kinds and their defaults are data.)*
 
 ## Actions and the missed thought (fail = a "not yet")
 
@@ -142,10 +156,10 @@ a spot's glimmer to its faculty hue — so the signal and the menu are one syste
 - **Source** = defaults by `kind` + per-spot `add`/`remove`/`replace` overrides;
   kinds + their default action sets are data (config), not hardcoded.
 - **Config home** = `config/actions.json` holds `action_kinds` (each kind → its
-  default action list). Observables carry a `kind` name (+ optional overrides) in
+  default action list). Encounters carry a `kind` name (+ optional overrides) in
   `observations.json`. Separate authored surface from spots/thoughts.
 - **Resolution** = merged **once at load** into a `std::vector<Action>` stored on
-  the `Observable` (kind defaults + `add`/`remove`/`replace`), the same
+  the `Encounter` (kind defaults + `add`/`remove`/`replace`), the same
   compute-once pattern as tiers. The menu just reads the resolved list.
 - **Taken-state** = which one-shot actions have fired lives in the record
   (`State`), like `fired` thoughts and `flags` — the taken set survives save. It
@@ -169,7 +183,7 @@ a spot's glimmer to its faculty hue — so the signal and the menu are one syste
 }
 ```
 ```json
-// config/observations.json -- an observable references a kind + optional overrides
+// config/observations.json -- an encounter references a kind + optional overrides
 { "id": "stone", "kind": "inanimate", "value": 2, "tiers": [ ... ],
   "actions": {
     "add":     [ { "id": "clear_moss", "label": "Clear the moss",
@@ -202,7 +216,7 @@ filters to offered-and-not-taken(one_shot) when the menu opens.
 
 ## Open questions (to resolve before / during build)
 
-- **The kinds taxonomy** — the actual list of observable kinds and each one's
+- **The kinds taxonomy** — the actual list of encounter kinds and each one's
   default action set. Content; needs a first pass (start small: `inanimate`,
   `water`, `plant`, `remains`).
 - **Menu UX** — how the action menu presents (list under the reading? a radial?),

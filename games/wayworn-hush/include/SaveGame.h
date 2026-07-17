@@ -33,7 +33,7 @@ namespace savegame
 inline constexpr int kSchemaVersion = 2;
 
 // What the pilgrim has come to know: the observation record. Mirrors the
-// "record" half of observations::State (the authored observables/thoughts are
+// "record" half of observations::State (the authored encounters/thoughts are
 // reloaded from config, not saved).
 struct Record
 {
@@ -47,7 +47,7 @@ struct Record
 // same every run; this is the record of what this pilgrim did to it.
 //
 // One set, keyed by PLACEMENT ID (the stable identity every placed thing carries --
-// see ldtk::ObservablePlacement::placement_id), holding the things that are GONE: a
+// see ldtk::EncounterPlacement::placement_id), holding the things that are GONE: a
 // pickup taken, a spot consumed. Every placed system reads it the same way, so a new
 // one needs no new field here -- the alternative, a taken-list per system, grows a
 // field every time something new can be removed, and each one is another thing to

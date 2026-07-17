@@ -1,6 +1,8 @@
 #include "Growth.h"
 #include "Observations.h"
 
+#include <nlohmann/json.hpp>
+
 #include <algorithm>
 #include <cstdio>
 #include <fstream>
@@ -9,8 +11,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 using growth::GrowthState;
+using observations::Encounter;
 using observations::LineKind;
-using observations::Observable;
 using observations::ObservationTier;
 using observations::ObserveResult;
 using observations::Outcome;
@@ -57,7 +59,7 @@ State makeWorld()
     State s;
     // You observe an observable within interact_reach of its box. These tests observe each
     // at its own center (obsAt helper), and the coords are distinct so each is unambiguous.
-    Observable stone;
+    Encounter stone;
     stone.id = "stone";
     stone.x = 100;
     stone.y = 0;
@@ -65,12 +67,12 @@ State makeWorld()
         ObservationTier{{}, "a stone", 5},
         ObservationTier{unlock::Condition{{statClause("perception", 3)}}, "a stone, mossy", 5},
     };
-    Observable water;
+    Encounter water;
     water.id = "water";
     water.x = 0;
     water.y = 100;
     water.tiers = {ObservationTier{{}, "a dry channel", 5}};
-    s.observables = {stone, water};
+    s.encounters = {stone, water};
 
     Thought moss;
     moss.id = "moss_thought";
@@ -125,7 +127,7 @@ State makeWorld()
 ObserveResult obsAt(State& s, const GrowthState& g, const std::string& id,
                     const observations::RollRng& rng)
 {
-    for (const auto& o : s.observables)
+    for (const auto& o : s.encounters)
         if (o.id == id)
             return observations::observe(s, g, o.x, o.y, rng);
     return {Outcome::None, 0};
@@ -263,10 +265,23 @@ namespace
 State loadFromJson(const std::string& json)
 {
     const std::string path = "value_derivation_test_tmp.json";
-    {
-        std::ofstream(path) << json;
-    }
     State s;
+    // These tests exercise the OBSERVATION half -- tiers, thoughts, the value graph -- and
+    // load NO actions.json, so a fixture's `kind` resolves to no deeds here. But an Encounter
+    // must offer BOTH halves to load (observe AND act). So give every fixture a stock deed
+    // unless it already adds one itself. Keeps the invariant honest without making every
+    // observation test spell out deeds it doesn't care about.
+    nlohmann::json doc = nlohmann::json::parse(json);
+    if (auto it = doc.find("encounters"); it != doc.end())
+        for (auto& e : *it)
+        {
+            const auto acts = e.find("actions");
+            const bool addsADeed =
+                acts != e.end() && acts->contains("add") && !acts->at("add").empty();
+            if (!addsADeed)
+                e["actions"]["add"].push_back({{"id", "touch"}, {"label", "Touch it"}});
+        }
+    std::ofstream(path) << doc.dump();
     observations::load(s, path);
     std::remove(path.c_str());
     return s;
@@ -288,7 +303,7 @@ TEST_CASE("VALUE = observation value a thought sets in motion (forward graph)",
     // sets knows_settlement, which reveals ruin(8). So firing it opens value 8
     // that wasn't reachable before -> VALUE 8. clearing_stillness opens nothing.
     const State s = loadFromJson(R"({
-      "observables": [
+      "encounters": [
         { "id": "stone",    "value": 1, "x": 0, "y": 0,   "tiers": [{ "text": "a stone" }] },
         { "id": "water",    "value": 2, "x": 0, "y": 100, "tiers": [{ "text": "a channel" }] },
         { "id": "clearing", "value": 1, "x": 100,"y": 0,  "tiers": [{ "text": "a clearing" }] },
@@ -333,7 +348,7 @@ TEST_CASE(
     // but authored emotional_weight 6 carries it. `discovery` reveals ruin(9) with
     // no emotion -- worth via the opening road. Both must land as valuable.
     const State s = loadFromJson(R"({
-      "observables": [
+      "encounters": [
         { "id": "bedside", "value": 1, "x": 0,  "y": 0, "tiers": [{ "text": "bedside" }] },
         { "id": "trail",   "value": 1, "x": 50, "y": 0, "tiers": [{ "text": "a trail" }] },
         { "id": "ruin",    "value": 9, "x": 0,  "y": 80,
@@ -371,7 +386,7 @@ TEST_CASE("Difficulty is STRUCTURAL (breadth + feeders), value only a quiet nudg
     // low difficulty: "obvious major lore." Its structural load is 1 (breadth 1,
     // no feeders); the quiet value nudge (0.15 * value) can't lift it to the top.
     const State s = loadFromJson(R"({
-      "observables": [
+      "encounters": [
         { "id": "clue", "value": 1, "x": 0, "y": 0, "tiers": [{ "text": "a clue" }] },
         { "id": "grand", "value": 40, "x": 0, "y": 100,
           "visible_when": [{ "flag": "seen" }], "tiers": [{ "text": "grand" }] }
@@ -401,7 +416,7 @@ TEST_CASE("Centrality: a terminal payoff (opens nothing) is valuable via UPSTREA
     // Its upstream base worth = stone(1)+water(2)+ruin(8) + middle's opening.
     // So a dead-end conclusion still reads as important -- much LED to it.
     const State s = loadFromJson(R"({
-      "observables": [
+      "encounters": [
         { "id": "stone", "value": 1, "x": 0, "y": 0,   "tiers": [{ "text": "s" }] },
         { "id": "water", "value": 2, "x": 0, "y": 100, "tiers": [{ "text": "w" }] },
         { "id": "ruin",  "value": 8, "x": 0, "y": 200,
@@ -435,7 +450,7 @@ TEST_CASE("A hidden observable can't be observed until its visible_when holds",
           "[observations][value]")
 {
     State s = loadFromJson(R"({
-      "observables": [
+      "encounters": [
         { "id": "ruin", "value": 8,
           "visible_when": [{ "flag": "knows_settlement" }], "tiers": [{ "text": "a ruin" }] }
       ],
@@ -458,7 +473,7 @@ TEST_CASE("A hidden observable can't be observed until its visible_when holds",
 TEST_CASE("a re-observed tier is not new the second time", "[observations][is_new]")
 {
     State s = loadFromJson(R"({
-      "observables": [
+      "encounters": [
         { "id": "rock", "kind": "inanimate", "x": 0, "y": 0,
           "tiers": [{ "text": "a rock, half-sunk" }] }
       ],
@@ -485,7 +500,7 @@ TEST_CASE("a re-observed tier is not new the second time", "[observations][is_ne
 TEST_CASE("only the newly-reached tier is new, not the ones below it", "[observations][is_new]")
 {
     State s = loadFromJson(R"({
-      "observables": [
+      "encounters": [
         { "id": "rock", "kind": "inanimate", "x": 0, "y": 0,
           "tiers": [
             { "text": "a rock" },
@@ -520,7 +535,7 @@ TEST_CASE("observing REPORTS the thoughts that landed, by id", "[observations][l
     // pilgrim thinks it and never records it -- invisible, because `pending` (the reading on
     // screen) is populated from a different path and still looks right.
     State s = loadFromJson(R"({
-      "observables": [
+      "encounters": [
         { "id": "rock", "kind": "inanimate", "x": 0, "y": 0,
           "tiers": [{ "text": "a rock" }] }
       ],
@@ -545,7 +560,7 @@ TEST_CASE("a landed thought is never reported as a granted item", "[observations
     // ObserveResult carries several id lists; `landed` is not the first of them. A positional
     // init would load thought ids into `granted` and the game would deposit them as items.
     State s = loadFromJson(R"({
-      "observables": [
+      "encounters": [
         { "id": "rock", "kind": "inanimate", "x": 0, "y": 0,
           "tiers": [{ "text": "a rock" }] }
       ],
@@ -565,11 +580,11 @@ TEST_CASE("a landed thought is never reported as a granted item", "[observations
 
 TEST_CASE("walking into an ambient spot reports its thoughts too", "[observations][landed]")
 {
-    // The enter-trigger path shares fireObservable with the deliberate verb, and accumulates
+    // The enter-trigger path shares observeEncounter with the deliberate verb, and accumulates
     // across every spot that came within reach this frame -- a walk past two of them must
     // report both, not just the last.
     State s = loadFromJson(R"({
-      "observables": [
+      "encounters": [
         { "id": "grove", "kind": "place", "tiers": [{ "text": "a grove" }] },
         { "id": "brook", "kind": "water", "tiers": [{ "text": "a brook" }] }
       ],
@@ -581,7 +596,7 @@ TEST_CASE("walking into an ambient spot reports its thoughts too", "[observation
       ]
     })");
     // The box + trigger are placement, which the map supplies (not the observations config).
-    for (auto& o : s.observables)
+    for (auto& o : s.encounters)
     {
         o.trigger = observations::Trigger::Enter;
         o.x = 0;
@@ -597,7 +612,7 @@ TEST_CASE("walking into an ambient spot reports its thoughts too", "[observation
 TEST_CASE("a thought fires -- and is new -- exactly once", "[observations][is_new]")
 {
     State s = loadFromJson(R"({
-      "observables": [
+      "encounters": [
         { "id": "rock", "kind": "inanimate", "x": 0, "y": 0,
           "tiers": [{ "text": "a rock" }] }
       ],
@@ -647,9 +662,9 @@ State loadWithActions(const std::string& obs, const std::string& actions)
     return s;
 }
 
-const observations::Observable* findObs(const State& s, const std::string& id)
+const observations::Encounter* findObs(const State& s, const std::string& id)
 {
-    for (const auto& o : s.observables)
+    for (const auto& o : s.encounters)
         if (o.id == id)
             return &o;
     return nullptr;
@@ -667,7 +682,7 @@ const std::string kKinds = R"({
 TEST_CASE("Actions resolve at load: kind defaults + add/remove/replace overrides", "[actions]")
 {
     const State s = loadWithActions(R"({
-      "observables": [
+      "encounters": [
         { "id": "plain", "kind": "inanimate", "x": 0, "y": 0, "tiers": [{ "text": "t" }] },
         { "id": "fancy", "kind": "inanimate", "x": 0, "y": 0, "tiers": [{ "text": "t" }],
           "actions": {
@@ -680,8 +695,8 @@ TEST_CASE("Actions resolve at load: kind defaults + add/remove/replace overrides
     })",
                                     kKinds);
 
-    const observations::Observable* plain = findObs(s, "plain");
-    const observations::Observable* fancy = findObs(s, "fancy");
+    const observations::Encounter* plain = findObs(s, "plain");
+    const observations::Encounter* fancy = findObs(s, "fancy");
     REQUIRE(plain != nullptr);
     REQUIRE(fancy != nullptr);
     // plain inherits both kind defaults.
@@ -708,7 +723,7 @@ TEST_CASE("Actions resolve at load: kind defaults + add/remove/replace overrides
 TEST_CASE("availableActions filters by unlock_when and one_shot-taken", "[actions]")
 {
     State s = loadWithActions(R"({
-      "observables": [
+      "encounters": [
         { "id": "stone", "kind": "inanimate", "x": 0, "y": 0, "tiers": [{ "text": "t" }],
           "actions": { "add": [
             { "id": "gated", "label": "Pry",
@@ -738,7 +753,7 @@ TEST_CASE("A one-shot deed taken at one spot stays available at another spot", "
     // Two spots share the same kind-default deed id ("search"). Taking it at one must NOT mark
     // it taken at the other -- caches/yields depend on this per-spot scoping.
     State s = loadWithActions(R"({
-      "observables": [
+      "encounters": [
         { "id": "cairn_a", "kind": "inanimate", "x": 0, "y": 0, "tiers": [{ "text": "a" }] },
         { "id": "cairn_b", "kind": "inanimate", "x": 99, "y": 0, "tiers": [{ "text": "b" }] }
       ],
@@ -777,7 +792,7 @@ TEST_CASE("takeAction recovers a thought that observing alone couldn't reach", "
     // stone alone can't land it; the clear_moss ACTION sets the flag -> the ambient
     // engine fires it. This is the fail/locked-thought recovery path.
     State s = loadWithActions(R"({
-      "observables": [
+      "encounters": [
         { "id": "stone", "kind": "inanimate", "x": 0, "y": 0,
           "tiers": [{ "text": "a stone" }],
           "actions": { "add": [
@@ -818,7 +833,7 @@ TEST_CASE("A deed with grant_item / grant_table / grant_recipe returns those ids
     // Deeds on an observable-and-takeable stone. observations is inventory/recipe-ignorant:
     // takeAction returns the opaque ids; the GAME does the deposit / teaches the recipe.
     State s = loadWithActions(R"({
-      "observables": [
+      "encounters": [
         { "id": "stone", "kind": "inanimate", "x": 0, "y": 0,
           "tiers": [{ "text": "a smooth stone" }],
           "actions": { "add": [
@@ -854,7 +869,7 @@ TEST_CASE("A consumes_spot take reports the spot id for the game to despawn", "[
     // "Pick up the whole pebble" removes the observable; "take a sample" leaves it. Only the
     // consuming deed reports consumed_spot -- the game removes that world entity.
     State s = loadWithActions(R"({
-      "observables": [
+      "encounters": [
         { "id": "pebble", "kind": "inanimate", "x": 0, "y": 0,
           "tiers": [{ "text": "a small pebble" }],
           "actions": { "add": [
@@ -882,7 +897,7 @@ TEST_CASE("availableUnlocks: a deeper tier becomes reachable after growth (the p
     // perception 1 (only the base surfaces). Growing perception to 3 makes the
     // moss tier reachable-but-unobserved -> it shows up as "stone@2".
     State s = loadFromJson(R"({
-      "observables": [
+      "encounters": [
         { "id": "stone", "value": 1, "x": 0, "y": 0,
           "tiers": [
             { "text": "a stone" },
@@ -906,7 +921,7 @@ TEST_CASE("availableUnlocks: actions announce only for OBSERVED spots; hidden sp
           "[actions][notify]")
 {
     State s = loadWithActions(R"({
-      "observables": [
+      "encounters": [
         { "id": "stone", "kind": "inanimate", "x": 0, "y": 0,
           "tiers": [{ "text": "s" }] },
         { "id": "ruin",  "kind": "inanimate", "x": 200, "y": 0,
@@ -937,7 +952,7 @@ State loadForPlacement()
 {
     // Content only -- no x/y/w/h/trigger here; placement is the map's job now.
     return loadFromJson(R"({
-      "observables": [
+      "encounters": [
         { "id": "stone", "kind": "inanimate", "tiers": [{ "text": "a boulder" }] },
         { "id": "river", "kind": "water",     "tiers": [{ "text": "the water" }] }
       ],
@@ -955,12 +970,12 @@ TEST_CASE("applyPlacements binds map location + trigger onto loaded observation 
         {"river", "p_river", 464.0f, 400.0f, 128.0f, 128.0f, observations::Trigger::Enter},
     };
     const auto rep = observations::applyPlacements(s, places);
-    REQUIRE(rep.placements_without_observable.empty());
-    REQUIRE(rep.observables_without_placement.empty());
+    REQUIRE(rep.placements_without_encounter.empty());
+    REQUIRE(rep.encounters_without_placement.empty());
 
-    const Observable* stone = nullptr;
-    const Observable* river = nullptr;
-    for (const auto& o : s.observables)
+    const Encounter* stone = nullptr;
+    const Encounter* river = nullptr;
+    for (const auto& o : s.encounters)
     {
         if (o.id == "stone")
             stone = &o;
@@ -992,10 +1007,10 @@ TEST_CASE("applyPlacements reports authoring gaps both ways", "[observations][pl
          observations::Trigger::Observe}, // no such observable
     };
     const auto rep = observations::applyPlacements(s, places);
-    REQUIRE(rep.placements_without_observable.size() == 1);
-    REQUIRE(rep.placements_without_observable[0] == "ghost");
-    REQUIRE(rep.observables_without_placement.size() == 1);
-    REQUIRE(rep.observables_without_placement[0] == "river"); // content with no location
+    REQUIRE(rep.placements_without_encounter.size() == 1);
+    REQUIRE(rep.placements_without_encounter[0] == "ghost");
+    REQUIRE(rep.encounters_without_placement.size() == 1);
+    REQUIRE(rep.encounters_without_placement[0] == "river"); // content with no location
 }
 
 // --- ambient proximity triggers (enter/approach) -----------------------------
@@ -1022,7 +1037,7 @@ TEST_CASE("An ENTER observable fires once when the player reaches its box, not b
     REQUIRE(r.outcome == Outcome::None);
 }
 
-TEST_CASE("Proximity triggering ignores OBSERVE-mode observables (they need the verb)",
+TEST_CASE("Proximity triggering ignores OBSERVE-mode encounters (they need the verb)",
           "[observations][trigger]")
 {
     State s = loadForPlacement();
@@ -1032,4 +1047,103 @@ TEST_CASE("Proximity triggering ignores OBSERVE-mode observables (they need the 
     const GrowthState g = self({});
     const auto r = observations::triggerProximity(s, g, 0.0f, 0.0f, kNoNudge);
     REQUIRE(r.outcome == Outcome::None); // observe-mode is silent to proximity
+}
+
+TEST_CASE("an Encounter must offer BOTH halves -- observe AND act", "[observations][invariant]")
+{
+    // An Encounter is a glowing spot you can observe OR act on. The two are independent at
+    // play time, but a spot that authors only one half is a content gap: a reading-less spot
+    // can't be observed, a deed-less spot can't be acted on. Both are dropped at load. (The
+    // harness normally injects a stock deed -- these fixtures opt out to exercise the rule.)
+
+    // loadFromJson injects a stock deed so observation tests need not author one; these test
+    // the un-helped rule, so they load the raw JSON directly.
+    auto loadRaw = [](const char* json)
+    {
+        const std::string path = "encounter_invariant_test.tmp.json";
+        std::ofstream(path) << json;
+        State s;
+        observations::load(s, path);
+        std::remove(path.c_str());
+        return s;
+    };
+
+    SECTION("a reading-less Encounter is dropped")
+    {
+        const State s = loadRaw(R"({
+          "encounters": [
+            { "id": "no_reading", "x": 0, "y": 0,
+              "actions": { "add": [{ "id": "touch", "label": "Touch" }] } }
+          ]
+        })");
+        REQUIRE(s.encounters.empty());
+    }
+
+    SECTION("a deed-less Encounter is dropped")
+    {
+        const State s = loadRaw(R"({
+          "encounters": [
+            { "id": "no_deed", "x": 0, "y": 0,
+              "tiers": [{ "text": "a plain thing" }] }
+          ]
+        })");
+        REQUIRE(s.encounters.empty());
+    }
+
+    SECTION("an Encounter with both halves loads")
+    {
+        const State s = loadRaw(R"({
+          "encounters": [
+            { "id": "whole", "x": 0, "y": 0,
+              "tiers": [{ "text": "a plain thing" }],
+              "actions": { "add": [{ "id": "touch", "label": "Touch" }] } }
+          ]
+        })");
+        REQUIRE(s.encounters.size() == 1);
+        REQUIRE(s.encounters.front().id == "whole");
+    }
+}
+
+TEST_CASE("visible() gates a hidden Encounter -- the one answer observe + act share",
+          "[observations][invariant]")
+{
+    // An Encounter hidden by visible_when must offer NEITHER verb. Before the fix, observe
+    // checked visibility and act didn't, so they disagreed (a hidden log: act opened a menu,
+    // observe showed nothing). visible() is now the single gate -- the interactable's presence
+    // reads it, so a hidden spot isn't a target at all.
+    const State s = loadFromJson(R"({
+      "encounters": [
+        { "id": "shown",  "x": 0, "y": 0, "tiers": [{ "text": "here" }] },
+        { "id": "hidden", "x": 0, "y": 100,
+          "visible_when": [{ "flag": "revealed" }],
+          "tiers": [{ "text": "there" }] }
+      ]
+    })");
+    const GrowthState g = self({});
+
+    REQUIRE(observations::visible(s, g, "shown"));          // no gate -> always present
+    REQUIRE_FALSE(observations::visible(s, g, "hidden"));   // flag unmet -> not present
+    REQUIRE_FALSE(observations::visible(s, g, "nonesuch")); // unknown id -> not present
+
+    // observeById agrees with visible(): a hidden spot surfaces nothing.
+    const ObserveResult r = observations::observeById(const_cast<State&>(s), g, "hidden", kNoNudge);
+    REQUIRE(r.outcome == Outcome::None);
+}
+
+TEST_CASE("a revealed Encounter becomes visible the moment its flag is set",
+          "[observations][invariant]")
+{
+    // Live, not one-time: forming the conclusion that sets the flag makes the spot present.
+    State s = loadFromJson(R"({
+      "encounters": [
+        { "id": "log", "x": 0, "y": 0,
+          "visible_when": [{ "flag": "knows_settlement" }],
+          "tiers": [{ "text": "a fallen beam" }] }
+      ]
+    })");
+    const GrowthState g = self({});
+
+    REQUIRE_FALSE(observations::visible(s, g, "log")); // hidden at first
+    s.flags.insert("knows_settlement");
+    REQUIRE(observations::visible(s, g, "log")); // the same query now says present
 }

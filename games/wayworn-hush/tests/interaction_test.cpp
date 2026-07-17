@@ -194,7 +194,7 @@ TEST_CASE("An observable-AND-actionable spot observes (the take is a deed, not d
     EntityManager em;
     auto& reg = em.registry();
 
-    // A spot carrying BOTH an observe_id and a direct action. Observable wins: interacting
+    // A spot carrying BOTH an observe_id and a direct action. Encounter wins: interacting
     // opens the reading; the action does NOT fire directly (its "take" would be a deed).
     inventory::Registry items;
     items.defs["river_stone"] = inventory::ItemDef{"river_stone", "Worn River Stone"};

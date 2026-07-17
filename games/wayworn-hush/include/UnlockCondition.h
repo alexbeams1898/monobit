@@ -9,7 +9,7 @@
 
 // The unlock primitive -- the spine of the cognition engine. Every thing that can
 // become newly available (a thought-roll, an action option, a re-lit signal, a
-// conclusion, an observable unlock) carries an `unlock_when`: a list of clauses,
+// conclusion, an encounter unlock) carries an `unlock_when`: a list of clauses,
 // satisfied if ANY clause holds (OR of ANDs). Each clause is an AND of its set
 // fields. A clause with no fields set is trivially true.
 //
@@ -27,7 +27,7 @@ namespace unlock
 // primitive never depends on those concrete types.
 struct Knowledge
 {
-    // Memory ids held -- observed observables AND fired thoughts both live
+    // Memory ids held -- observed encounters AND fired thoughts both live
     // here (a fired thought is a memory you can reference later). Reaching a
     // deeper objective tier is itself a memory ("<spot>@<tier>"), so tier-depth
     // gates flow through `observed` like everything else -- no separate concept.
