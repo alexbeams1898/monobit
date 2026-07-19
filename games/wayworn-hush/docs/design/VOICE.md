@@ -88,26 +88,32 @@ once stated.
 uncomfortable, so he deflects. Late, alone is fine, so he plays. Peace is when
 your own company is good company.
 
-## 3b. Punishment is funny **[LOCKED — pillar]**
+## 3b. The mundane carries the character **[LOCKED — pillar]**
 
-The game has no fail-state ([GAME-SYSTEMS.md](GAME-SYSTEMS.md) §4: "you can't
-lose"), but it does have **cost** — a missed moment, a ruined material, a door
-that shuts until tomorrow. The rule that makes cost survivable in a gentle game:
+**No mundane system is exempt from personality.** The chores of being a game —
+saving, menus, inventory, item descriptions, failure, the pause screen — are
+surface for the voice, not plumbing to get through. EarthBound's most-remembered
+moments are pure UI: calling your dad to save, an ATM, a phone call home. The
+boring parts are where the character lives.
 
-**When the player is punished, it lands as a joke — silly, crude, absurd.**
+This game has a lot of mundane — crafting, foraging, camping, the notebook, the
+Self tab. Each is either a spreadsheet or it is him. It should be him.
+
+**Punishment is the same rule applied to cost.** The game has no fail-state
+([GAME-SYSTEMS.md](GAME-SYSTEMS.md) §4: "you can't lose"), but it does have cost
+— a missed moment, a ruined material, a way that shuts for a while. Cost is
+allowed. It has to be *interesting*, and usually funny.
 
 - **The joke is on HIM, never on the player.** If the player feels mocked for a
   mistake, it is punitive and it is wrong. If *he* is the one who looked stupid,
   the player laughs with him. Same event, opposite feel.
 - **The world embarrasses him; it does not threaten him.** He slips on the wet
-  rock. He spooks the thing he was watching. The cost is real and the register is
-  comic.
-- **No lockout is permanent.** A soft lock, not a hard one: the door reopens —
-  come back tomorrow, at dusk, when the tide is out. The world is not waiting for
-  him, but it is not done with him either. (This is the first real job for the
-  world clock.)
-- **Cost + comedy from the same beat.** One event carries the consequence and the
-  laugh; the game never has to choose between weight and warmth.
+  rock. He spooks the thing he was watching.
+- **Cost is not permanent.** A soft lock, never a hard one — the way back is
+  always there eventually. (How that reopening works is a design question, not
+  settled here.)
+- **Cost + comedy from the same beat**, so the game never chooses between weight
+  and warmth.
 
 **It measures the arc.** Early, something goes wrong and he is embarrassed —
 defensive, deflecting, keen to leave. Late, the same pratfall just amuses him.
