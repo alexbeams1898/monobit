@@ -7,7 +7,8 @@
         "max_band": 5,
         "value_weight": 0.15,
         "value_nudge_cap": 1,
-        "exp_per_value": 5
+        "exp_per_value": 5,
+        "stat_exp_per_value": 4
     },
     "interact_reach": 40,
     "encounters": [

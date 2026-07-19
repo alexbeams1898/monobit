@@ -64,7 +64,7 @@ TEST_CASE("the cursor steps OVER the disabled Load Game", "[title]")
 
 TEST_CASE("down moves through the entries and wraps", "[title]")
 {
-    fresh(); // with a save, every row is live: [New Game, Load Game, Settings, Leave]
+    fresh(); // with a save, every row is live: [New Game, Load Game, Settings, Quit]
     REQUIRE(title_screen::step(false, false, true, /*has_save=*/true) == Action::NewGame);
 
     title_screen::step(false, /*down=*/true, false, true);

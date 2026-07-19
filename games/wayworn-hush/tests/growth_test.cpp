@@ -141,3 +141,102 @@ TEST_CASE("Loading the authored config reads faculties + secondary stats, no buf
     REQUIRE(s.secondary[1] == "craftsmanship");
     REQUIRE(s.buff_defs.empty()); // effects are content-driven; none authored yet
 }
+
+TEST_CASE("recordUse accumulates exp; statLevel derives a diminishing level", "[growth][use]")
+{
+    // A stat rises by being EXERCISED. The level is derived from accumulated use via a log
+    // curve: exp_per_level buys level 1, each further level costs progressively more.
+    GrowthState s = makeState();
+    s.exp_per_level = 20.0f;
+
+    REQUIRE(growth::statLevel(s, "perception") == 0); // no use yet
+
+    growth::recordUse(s, "perception", 20);           // exactly one "level" of exp
+    REQUIRE(growth::statLevel(s, "perception") == 1); // floor(log2(20/20 + 1)) = floor(log2 2) = 1
+
+    growth::recordUse(s, "perception", 40); // total 60 -> log2(60/20+1)=log2(4)=2
+    REQUIRE(growth::statLevel(s, "perception") == 2);
+
+    // Diminishing: it took 20 for level 1, but 60 total for level 2, and 140 total for level 3.
+    growth::recordUse(s, "perception", 80); // total 140 -> log2(140/20+1)=log2(8)=3
+    REQUIRE(growth::statLevel(s, "perception") == 3);
+}
+
+TEST_CASE("use-derived level stacks on top of the base", "[growth][use]")
+{
+    GrowthState s = makeState();
+    s.exp_per_level = 20.0f;
+    s.stat_levels["reason"] = 5; // authored base
+    growth::recordUse(s, "reason", 20);
+    REQUIRE(growth::statLevel(s, "reason") == 6); // 5 base + 1 from use
+}
+
+TEST_CASE("recordUse ignores empty name and non-positive exp", "[growth][use]")
+{
+    GrowthState s = makeState();
+    growth::recordUse(s, "", 50);
+    growth::recordUse(s, "wonder", 0);
+    growth::recordUse(s, "wonder", -10);
+    REQUIRE(s.stat_use.empty());
+    REQUIRE(growth::statLevel(s, "wonder") == 0);
+}
+
+TEST_CASE("any stat grows by use -- mental or physical, no distinction", "[growth][use]")
+{
+    // The principle: the mechanism doesn't care which family. A physical stat grows exactly
+    // like a mental one; content decides what gets exercised.
+    GrowthState s = makeState();
+    s.exp_per_level = 20.0f;
+    growth::recordUse(s, "survival", 20); // physical
+    growth::recordUse(s, "wonder", 20);   // mental
+    REQUIRE(growth::statLevel(s, "survival") == 1);
+    REQUIRE(growth::statLevel(s, "wonder") == 1);
+}
+
+TEST_CASE("statProgress: a fresh stat is level 0, empty bar", "[growth][use]")
+{
+    GrowthState s = makeState();
+    s.exp_per_level = 20.0f;
+    const auto p = growth::statProgress(s, "wonder");
+    REQUIRE(p.level == 0);
+    REQUIRE(p.fill == 0.0f);
+}
+
+TEST_CASE("statProgress: the bar renormalizes each level (fill resets after a level-up)",
+          "[growth][use]")
+{
+    // The Skyrim-style bar: fill is 0..1 through THIS level's span, so it resets to ~empty
+    // just after crossing into a new level and approaches full just before the next.
+    GrowthState s = makeState();
+    s.exp_per_level = 20.0f;
+
+    // Level 0 spans use 0..20. Halfway (use 10) -> ~half full.
+    growth::recordUse(s, "reason", 10);
+    auto p = growth::statProgress(s, "reason");
+    REQUIRE(p.level == 0);
+    REQUIRE(p.fill > 0.4f);
+    REQUIRE(p.fill < 0.6f);
+
+    // Cross into level 1 (use 20): bar RESETS toward empty against level 1's larger span (20..60).
+    growth::recordUse(s, "reason", 10); // total 20
+    p = growth::statProgress(s, "reason");
+    REQUIRE(p.level == 1);
+    REQUIRE(p.fill < 0.1f); // just crossed -> near empty
+
+    // Fill level 1 toward its end (use ~55 of the 20..60 span) -> near full.
+    growth::recordUse(s, "reason", 35); // total 55
+    p = growth::statProgress(s, "reason");
+    REQUIRE(p.level == 1);
+    REQUIRE(p.fill > 0.8f);
+}
+
+TEST_CASE("statProgress into/span describe the current level's raw exp window", "[growth][use]")
+{
+    GrowthState s = makeState();
+    s.exp_per_level = 20.0f;
+    growth::recordUse(s, "wonder", 30); // level 1 (20..60), 10 into a 40-wide span
+    const auto p = growth::statProgress(s, "wonder");
+    REQUIRE(p.level == 1);
+    REQUIRE(p.into == 10);
+    REQUIRE(p.span == 40);
+}

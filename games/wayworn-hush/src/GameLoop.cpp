@@ -29,6 +29,7 @@
 #include <SDL.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <random>
 
@@ -187,6 +188,34 @@ void noteLanded(GameState& gs, const std::vector<std::string>& landed)
         return;
     for (const auto& id : landed)
         notebook::note(gs.notebook, id, gs.clock.seconds);
+}
+
+// Bank everything an observe/act result earned: Spirit currency, faculty EXP (passive stat
+// growth), and the notebook note. The ONE place a cognition result is applied, so the five
+// call sites (observe, ambient, deed confirm, deed take, stat re-check) can't drift on which
+// rewards they remember to grant. Templated over the result type -- ObserveResult and
+// ConfirmResult both carry earned / stat_gains / landed.
+// Grow a stat by exp AND toast it -- the ONE hook every exp source flows through, so a new
+// source (a deed, crafting, a tree node) gets the notification for free. Color is the stat's
+// own hue; the toast reads "+N <Stat>". Capitalizes the first letter for display.
+void grantStatExp(GameState& gs, const std::string& stat, int exp)
+{
+    if (stat.empty() || exp <= 0)
+        return;
+    growth::recordUse(gs.growth, stat, exp);
+    std::string label = stat;
+    if (!label.empty())
+        label[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(label[0])));
+    const growth::Rgb hue = growth::facultyColor(gs.growth, stat);
+    notify::push("+" + std::to_string(exp) + " " + label, {hue.r, hue.g, hue.b, 1.0f});
+}
+
+template <typename Result> void applyGains(GameState& gs, const Result& r)
+{
+    gs.growth.spirit_exp += r.earned;
+    for (const auto& [stat, exp] : r.stat_gains)
+        grantStatExp(gs, stat, exp);
+    noteLanded(gs, r.landed);
 }
 
 // Drop this frame's one-shot input after every consumer has seen it (the engine fills the
@@ -549,8 +578,7 @@ void pumpStatChangeThoughts(GameState& gs)
     sLastStatSum = statSum;
     const observations::ObserveResult r =
         observations::evaluateStats(gs.observations, gs.growth, observeNudge);
-    gs.growth.spirit_exp += r.earned;
-    noteLanded(gs, r.landed); // a stat rising can land a thought -- it gets written down too
+    applyGains(gs, r); // a stat rising can land a thought -- banked, grown, written down
 }
 
 // Conclusions are just deeper observations -- they surface the same way.
@@ -799,8 +827,7 @@ void despawnEncounterEntity(EntityManager& em, GameState& gs, const std::string&
 // both input paths enact them identically.
 void enactConfirm(EntityManager& em, GameState& gs, const thought_box::ConfirmResult& r)
 {
-    gs.growth.spirit_exp += r.earned;
-    noteLanded(gs, r.landed);
+    applyGains(gs, r);
     if (!r.granted.empty() || !r.gathered.empty())
         grantAndToast(gs, r.granted, r.gathered);
     for (const auto& recipeId : r.taught) // a deed handed over a recipe -> learn it (+ reward)
@@ -841,8 +868,7 @@ void onInteractionFired(GameState& gs, const interaction::Outcome& out)
     // so they don't toast "1 new action available"; only later-unlocked deeds announce.
     const observations::ObserveResult observed =
         thought_box::pushObserve(gs.observations, gs.growth, spot, observeNudge);
-    gs.growth.spirit_exp += observed.earned;
-    noteLanded(gs, observed.landed);
+    applyGains(gs, observed);
     seedObservedActionsAsKnown(gs, spot);
     markProgress(gs); // a reading landed -- worth keeping
 }
@@ -970,8 +996,7 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // its thoughts are written down like one.
     const observations::ObserveResult ambient =
         observations::triggerProximity(gs.observations, gs.growth, pt.x, pt.y, observeNudge);
-    gs.growth.spirit_exp += ambient.earned;
-    noteLanded(gs, ambient.landed);
+    applyGains(gs, ambient);
 
     // Read the left-click ONCE (mouseClicked consumes it) so the same click can't both
     // advance a reading AND fire an interactable / leak to the pause page.

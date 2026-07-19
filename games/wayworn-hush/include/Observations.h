@@ -40,6 +40,7 @@ struct ObservationTier
     unlock::Condition unlock_when; // when this depth is perceivable (empty = base)
     std::string text;
     int spirit_exp = 0; // DERIVED at load from the encounter's `value` (not authored)
+    int stat_exp = 0;   // DERIVED: faculty EXP for observing this tier
 };
 
 // A deed offered on a spot after observing it (the action menu; see
@@ -68,6 +69,13 @@ struct Action
     // a lone pebble). false (default) = the spot persists (you took FROM it -- a sprig off
     // the bush, still there to examine). The game does the despawn (it owns the world entity).
     bool consumes_spot = false;
+    // Which stat taking this deed EXERCISES, and by how much (passive growth, §5). ANY stat --
+    // a contemplative deed may name a mental faculty, a laboring one a physical stat; the verb
+    // doesn't restrict it. Empty grows_stat = the deed grows nothing directly (it may still
+    // grow a stat via a thought it triggers). Authored, not derived: a deed is a discrete
+    // choice with no `value` to scale from.
+    std::string grows_stat;
+    int grows_exp = 0;
 };
 
 // A subjective thought -- ONE struct for both "thoughts" (fed by one
@@ -117,7 +125,8 @@ struct Thought
     int importance = 0; // wObj*centrality + wEmo*emotional_weight
     int value = 0;      // importance_weight*importance + opening_weight*opening
     int difficulty = 1; // 1..max_band, structural (+ quiet value nudge); the roll bar
-    int spirit_exp = 0; // reward, proportional to value
+    int spirit_exp = 0; // Spirit currency reward, proportional to value
+    int stat_exp = 0;   // faculty EXP reward (own faculty), proportional to value
     // Thoughts float free -- they are NOT owned by an encounter. They fire
     // ambiently whenever their unlock_when becomes true (DE-passive style),
     // wherever the player is. What lights a spot's signal is a query over
@@ -208,6 +217,11 @@ struct RollConfig
     float value_weight = 0.15f;
     int value_nudge_cap = 1; // most bands value alone can add to difficulty
     int exp_per_value = 5;   // Spirit EXP earned per point of value (reward scaling)
+    // Faculty EXP earned per point of value -- feeds the passive, use-based stat growth
+    // (docs/design/OBSERVATION-SYSTEM.md §5). A thought grants THIS to its own faculty; a
+    // reading grants it to the reading's faculty. Rarity/tier already fold into `value`, so a
+    // rare thought grows its faculty more, automatically.
+    int stat_exp_per_value = 4;
 };
 
 // Which kind a surfaced line is -- drives how the box styles it (plain objective
@@ -327,6 +341,10 @@ struct ObserveResult
     // the grants above: the game notes when they happened (observations doesn't know what a
     // notebook is). Empty when nothing new landed.
     std::vector<std::string> landed;
+    // Faculty EXP earned this call: (faculty name, exp) per thought/reading that landed. The
+    // game applies these via growth::recordUse -- observations reports the reward, like
+    // `earned`, but never mutates the self (it takes growth const). Passive stat growth (§5).
+    std::vector<std::pair<std::string, int>> stat_gains;
     // Set to the encounter's id when a taken deed's consumes_spot fires -- the game removes
     // that spot's world entity (glimmer + interactable). Empty otherwise.
     std::string consumed_spot;

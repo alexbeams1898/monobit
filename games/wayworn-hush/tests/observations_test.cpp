@@ -1147,3 +1147,39 @@ TEST_CASE("a revealed Encounter becomes visible the moment its flag is set",
     s.flags.insert("knows_settlement");
     REQUIRE(observations::visible(s, g, "log")); // the same query now says present
 }
+
+TEST_CASE("a landed thought reports faculty EXP for passive stat growth", "[observations][growth]")
+{
+    // Passive growth: when a thought lands, the result carries (its faculty, stat_exp) so the
+    // game grows that stat. stat_exp derives from value like spirit_exp (rarity/tier fold in).
+    State s = loadFromJson(R"({
+      "roll": { "stat_exp_per_value": 3 },
+      "encounters": [
+        { "id": "rock", "value": 4, "x": 0, "y": 0, "tiers": [{ "text": "a rock" }] },
+        { "id": "ruin", "value": 8, "x": 0, "y": 200,
+          "visible_when": [{ "flag": "knows_it" }], "tiers": [{ "text": "a ruin" }] }
+      ],
+      "thoughts": [
+        { "id": "rock_thought", "text": "shaped by water", "faculty": "wonder",
+          "set_flag": "knows_it",
+          "unlock_when": [{ "observed": "rock" }] }
+      ]
+    })");
+    const GrowthState g = self({{"wonder", 20}, {"perception", 5}});
+
+    const ObserveResult r = observations::observeById(const_cast<State&>(s), g, "rock", kMaxNudge);
+    REQUIRE(s.fired.count("rock_thought") == 1);
+
+    // The thought grew its OWN faculty (wonder), by value * stat_exp_per_value.
+    bool grewWonder = false;
+    for (const auto& [faculty, exp] : r.stat_gains)
+        if (faculty == "wonder")
+        {
+            grewWonder = true;
+            REQUIRE(exp > 0); // derived from the thought's value
+        }
+    REQUIRE(grewWonder);
+    // No spurious growth of a faculty the thought didn't exercise.
+    for (const auto& [faculty, exp] : r.stat_gains)
+        REQUIRE(faculty != "reason");
+}

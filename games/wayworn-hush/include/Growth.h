@@ -47,9 +47,22 @@ struct GrowthState
 
     int spirit_exp = 0; // earned-and-unspent currency (spent to raise buffs)
 
+    // Faculty EXP needed for the first level; the log curve stretches from here. A stat's
+    // use-derived level is floor(log2(use / exp_per_level + 1)) -- so `exp_per_level` exp buys
+    // level 1, then each further level costs progressively more (diminishing returns). Config
+    // (faculties.json); a feel knob for how fast faculties climb.
+    float exp_per_level = 20.0f;
+
     // Base value per stat, keyed by name -- holds BOTH tiers (faculties and
-    // secondary). Absent = 0. This is progression state, not authored config.
+    // secondary). Absent = 0. The authored STARTING point + any non-use source.
     std::unordered_map<std::string, int> stat_levels;
+
+    // How much each stat has been EXERCISED (raw use), keyed by name. A stat rises by
+    // DOING its verb -- exercising a faculty grows it (see docs/design/OBSERVATION-SYSTEM.md
+    // §5). The displayed level is base + a diminishing curve over this (statLevel), so early
+    // use raises fast and later use slowly. This is the saved progression; the level is
+    // derived, never stored.
+    std::unordered_map<std::string, int> stat_use;
 
     // buff id -> level owned (absent = level 0). Faculty levels add these on top
     // of their base; the sum of all buff levels is Spirit.
@@ -60,8 +73,25 @@ struct GrowthState
 // config/faculties.json.
 void load(GrowthState& state, const std::string& path);
 
-// Base value of any stat by name (faculty or secondary). Unknown name -> 0.
+// Effective level of any stat by name: its base (stat_levels) plus the level its accumulated
+// USE has earned, via the diminishing log curve (see exp_per_level). Unknown name -> 0.
 int statLevel(const GrowthState& state, const std::string& name);
+
+// Record exercising a stat: add `exp` to its use, so its level rises (see docs §5). Called
+// when a thought/reading of that faculty lands. No-op for empty name or exp <= 0.
+void recordUse(GrowthState& state, const std::string& name, int exp);
+
+// A stat's progress toward its next level, for the Self-tab bar (Skyrim-style: a normalized
+// fill through THIS level's span, no raw numbers on screen). `fill` is 0..1 within the current
+// level; `into`/`span` are the raw exp for a hover/debug readout. Level 0 with no use -> fill 0.
+struct StatProgress
+{
+    int level = 0;     // current level (== statLevel minus base; the USE-derived part)
+    float fill = 0.0f; // 0..1 through the current level
+    int into = 0;      // exp accumulated INTO the current level
+    int span = 0;      // exp the current level spans (into..span fills the bar)
+};
+StatProgress statProgress(const GrowthState& state, const std::string& name);
 
 // Depth of the self: the sum of all buff levels owned. Monotonic in practice
 // (levels only rise), so systems can read it as the overall growth readout --

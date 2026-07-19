@@ -30,6 +30,7 @@ void load(GrowthState& state, const std::string& path)
 
     loadNames(j, "faculties", state.faculties);
     loadNames(j, "secondary", state.secondary);
+    state.exp_per_level = j.value("exp_per_level", state.exp_per_level);
 
     // Starting stat levels (everything else begins at 0). Placeholder until the EXP->faculty
     // progression is built -- see faculties.json.
@@ -57,8 +58,51 @@ void load(GrowthState& state, const std::string& path)
 
 int statLevel(const GrowthState& state, const std::string& name)
 {
-    const auto it = state.stat_levels.find(name);
-    return it != state.stat_levels.end() ? it->second : 0;
+    const auto base = state.stat_levels.find(name);
+    int level = base != state.stat_levels.end() ? base->second : 0;
+    // Add the level earned by USE: floor(log2(use / exp_per_level + 1)) -- diminishing, so the
+    // first level is cheap and later ones cost progressively more. The level is DERIVED here,
+    // never stored (stat_use is the saved fact).
+    const auto use = state.stat_use.find(name);
+    if (use != state.stat_use.end() && use->second > 0 && state.exp_per_level > 0.0f)
+    {
+        const float ratio = static_cast<float>(use->second) / state.exp_per_level + 1.0f;
+        level += static_cast<int>(std::floor(std::log2(ratio)));
+    }
+    return level;
+}
+
+void recordUse(GrowthState& state, const std::string& name, int exp)
+{
+    if (name.empty() || exp <= 0)
+        return;
+    state.stat_use[name] += exp;
+}
+
+StatProgress statProgress(const GrowthState& state, const std::string& name)
+{
+    StatProgress p;
+    if (state.exp_per_level <= 0.0f)
+        return p;
+    const auto it = state.stat_use.find(name);
+    const int use = it != state.stat_use.end() ? it->second : 0;
+    // Level L begins at k*(2^L - 1) use and the next at k*(2^(L+1) - 1) -- inverting the
+    // curve level = floor(log2(use/k + 1)). The bar fills across THIS level's span, so it
+    // renormalizes each level (a rising span, a fixed-width bar; see docs §5 / research).
+    const float k = state.exp_per_level;
+    if (use <= 0)
+        return p; // no use -> level 0, empty bar
+    // The USE-derived level (the bar's level). The stat's DISPLAYED level is base + this
+    // (statLevel); the bar tracks progress of the use portion, which is what grows.
+    p.level = static_cast<int>(std::floor(std::log2(static_cast<float>(use) / k + 1.0f)));
+    const int levelStart = static_cast<int>(k * (std::pow(2.0f, p.level) - 1.0f));
+    const int nextStart = static_cast<int>(k * (std::pow(2.0f, p.level + 1) - 1.0f));
+    p.into = use - levelStart;
+    p.span = nextStart - levelStart;
+    p.fill = p.span > 0
+                 ? std::clamp(static_cast<float>(p.into) / static_cast<float>(p.span), 0.0f, 1.0f)
+                 : 0.0f;
+    return p;
 }
 
 int spirit(const GrowthState& state)

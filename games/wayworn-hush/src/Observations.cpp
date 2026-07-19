@@ -371,12 +371,16 @@ void deriveValues(State& state)
         t.value = static_cast<int>(std::lround(val));
         t.difficulty = difficultyFor(state, t); // structure + quiet value nudge
         t.spirit_exp = t.value * state.roll.exp_per_value;
+        t.stat_exp = t.value * state.roll.stat_exp_per_value;
     }
 
     // Observation tier EXP = the encounter's value (scaled), earned once per tier.
     for (auto& o : state.encounters)
         for (auto& t : o.tiers)
+        {
             t.spirit_exp = o.value * state.roll.exp_per_value;
+            t.stat_exp = o.value * state.roll.stat_exp_per_value;
+        }
 }
 } // namespace
 
@@ -398,6 +402,7 @@ void parseRollConfig(const nlohmann::json& j, RollConfig& roll)
     roll.importance_weight = it->value("importance_weight", roll.importance_weight);
     roll.opening_weight = it->value("opening_weight", roll.opening_weight);
     roll.exp_per_value = it->value("exp_per_value", roll.exp_per_value);
+    roll.stat_exp_per_value = it->value("stat_exp_per_value", roll.stat_exp_per_value);
 }
 
 Action parseAction(const nlohmann::json& a)
@@ -412,6 +417,8 @@ Action parseAction(const nlohmann::json& a)
     act.grant_recipe = a.value("grant_recipe", std::string{});
     act.one_shot = a.value("one_shot", false);
     act.consumes_spot = a.value("consumes_spot", false);
+    act.grows_stat = a.value("grows_stat", std::string{});
+    act.grows_exp = a.value("grows_exp", 0);
     if (const auto it = a.find("unlock_when"); it != a.end())
         act.unlock_when = unlock::parseCondition(*it);
     return act;
@@ -659,7 +666,8 @@ namespace
 // when they happened -- observations doesn't know what a notebook is, the same way
 // it doesn't know what a satchel is). Fire-once bounds the cascade.
 int runEngine(State& state, const growth::GrowthState& growth, std::vector<std::string> changedKeys,
-              const RollRng& rng, std::vector<std::string>& landed)
+              const RollRng& rng, std::vector<std::string>& landed,
+              std::vector<std::pair<std::string, int>>& stat_gains)
 {
     int earned = 0;
     std::unordered_set<std::string> observedIds;
@@ -705,6 +713,8 @@ int runEngine(State& state, const growth::GrowthState& growth, std::vector<std::
                                                 /*is_new=*/true, r.spirit_exp});
             earned += r.spirit_exp;
             landed.push_back(r.id);
+            if (!r.faculty.empty() && r.stat_exp > 0)
+                stat_gains.emplace_back(r.faculty, r.stat_exp); // grows the thought's faculty
 
             // Yields cascade: a fired thought is itself a held memory, and may
             // set a flag -> new changed keys re-checked this same run. State
@@ -763,7 +773,8 @@ ObserveResult observeEncounter(State& state, const growth::GrowthState& growth, 
     }
 
     std::vector<std::string> landed;
-    earned += runEngine(state, growth, std::move(changedKeys), rng, landed);
+    std::vector<std::pair<std::string, int>> stat_gains;
+    earned += runEngine(state, growth, std::move(changedKeys), rng, landed, stat_gains);
     if (!landed.empty())
         outcome = Outcome::Thought;
     // The ids ride out with the result: the caller is what writes them into the notebook,
@@ -772,6 +783,7 @@ ObserveResult observeEncounter(State& state, const growth::GrowthState& growth, 
     // thought ids into `granted` and spawn items out of them.
     ObserveResult r{outcome, earned};
     r.landed = std::move(landed);
+    r.stat_gains = std::move(stat_gains);
     return r;
 }
 } // namespace
@@ -856,9 +868,11 @@ ObserveResult setFlag(State& state, const growth::GrowthState& growth, const std
     if (!state.flags.insert(flag).second)
         return {Outcome::None, 0}; // already set
     std::vector<std::string> landed;
-    const int earned = runEngine(state, growth, {keyFlag(flag)}, rng, landed);
+    std::vector<std::pair<std::string, int>> stat_gains;
+    const int earned = runEngine(state, growth, {keyFlag(flag)}, rng, landed, stat_gains);
     ObserveResult r{landed.empty() ? Outcome::None : Outcome::Thought, earned};
     r.landed = std::move(landed);
+    r.stat_gains = std::move(stat_gains);
     return r;
 }
 
@@ -872,9 +886,11 @@ ObserveResult evaluateStats(State& state, const growth::GrowthState& growth, con
         if (key.rfind("stat:", 0) == 0)
             keys.push_back(key);
     std::vector<std::string> landed;
-    const int earned = runEngine(state, growth, std::move(keys), rng, landed);
+    std::vector<std::pair<std::string, int>> stat_gains;
+    const int earned = runEngine(state, growth, std::move(keys), rng, landed, stat_gains);
     ObserveResult r{landed.empty() ? Outcome::None : Outcome::Thought, earned};
     r.landed = std::move(landed);
+    r.stat_gains = std::move(stat_gains);
     return r;
 }
 
@@ -904,6 +920,25 @@ bool actionOffered(const State& s, const std::string& spot, const Action& a,
     if (a.one_shot && s.taken.count(takenKey(spot, a.id)))
         return false;
     return unlock::satisfied(a.unlock_when, k);
+}
+
+// A deed's DECLARED effects, gathered into a result: item/table/recipe grants (ids only --
+// the game enacts them), the spot it consumes, and the stat it exercises. Not the triggered-
+// thought rewards (those come from runEngine); this is only what the deed itself declares.
+ObserveResult deedEffects(const Action& act, const std::string& spot)
+{
+    ObserveResult r;
+    if (!act.grant_item.empty())
+        r.granted.push_back(act.grant_item);
+    if (!act.grant_table.empty())
+        r.gathered.push_back(act.grant_table);
+    if (!act.grant_recipe.empty())
+        r.taught.push_back(act.grant_recipe);
+    if (act.consumes_spot)
+        r.consumed_spot = spot; // the game despawns this encounter's world entity
+    if (!act.grows_stat.empty() && act.grows_exp > 0)
+        r.stat_gains.emplace_back(act.grows_stat, act.grows_exp);
+    return r;
 }
 } // namespace
 
@@ -953,24 +988,19 @@ ObserveResult takeAction(State& state, const growth::GrowthState& growth, const 
     if (!act->set_flag.empty() && state.flags.insert(act->set_flag).second)
         changedKeys.push_back(keyFlag(act->set_flag));
 
-    // Item effects are passed up as ids (the game does the grant -- observations is
-    // inventory-ignorant). Captured before runEngine so the return carries them.
-    ObserveResult result;
-    if (!act->grant_item.empty())
-        result.granted.push_back(act->grant_item);
-    if (!act->grant_table.empty())
-        result.gathered.push_back(act->grant_table);
-    if (!act->grant_recipe.empty())
-        result.taught.push_back(act->grant_recipe);
-    if (act->consumes_spot)
-        result.consumed_spot = spot; // the game despawns this observable's world entity
+    // The deed's DECLARED effects (ids only; the game enacts grants -- observations is
+    // inventory-ignorant), plus the stat it exercises. Gathered before runEngine so the
+    // triggered-thought gains append to the same result.
+    ObserveResult result = deedEffects(*act, spot);
+    std::vector<std::pair<std::string, int>> stat_gains = std::move(result.stat_gains);
 
     // Run the ambient engine over the new flag -- this is what recovers a missed
     // thought or opens a deeper tier gated on the deed.
     std::vector<std::string> landed;
-    result.earned = runEngine(state, growth, std::move(changedKeys), rng, landed);
+    result.earned = runEngine(state, growth, std::move(changedKeys), rng, landed, stat_gains);
     result.outcome = landed.empty() ? Outcome::Surfaced : Outcome::Thought;
     result.landed = std::move(landed);
+    result.stat_gains = std::move(stat_gains);
     return result;
 }
 

@@ -27,7 +27,7 @@ struct Entry
 constexpr Entry kEntries[] = {{"New Game", Action::NewGame},
                               {"Load Game", Action::LoadGame},
                               {"Settings", Action::Settings},
-                              {"Leave", Action::Quit}};
+                              {"Quit", Action::Quit}};
 constexpr int kEntryCount = 4;
 
 // Whether an entry can be chosen right now. Load Game needs someone to load.

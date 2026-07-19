@@ -91,7 +91,8 @@ struct ConfirmResult
     std::vector<std::string> gathered; // loot table ids a "gather" deed rolled
     std::vector<std::string> taught;   // recipe ids a deed taught (the game marks them known)
     std::vector<std::string> landed;   // thought ids that landed (the game writes them down)
-    std::string consumed_spot;         // observable id to despawn (a consumes_spot take)
+    std::vector<std::pair<std::string, int>> stat_gains; // faculty EXP a landed thought earned
+    std::string consumed_spot;                           // observable id to despawn (consumes_spot)
 };
 
 // Input while the box is up:

@@ -63,6 +63,7 @@ struct Self
 {
     int spirit_exp = 0;
     std::unordered_map<std::string, int> stat_levels; // both tiers, keyed by stat name
+    std::unordered_map<std::string, int> stat_use;    // faculty EXP accumulated (use-growth)
     std::unordered_map<std::string, int> buff_levels; // buff id -> level owned
 };
 

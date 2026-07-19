@@ -76,6 +76,7 @@ json encodeSelf(const Self& s)
 {
     return json{{"spirit_exp", s.spirit_exp},
                 {"stat_levels", s.stat_levels},
+                {"stat_use", s.stat_use},
                 {"buff_levels", s.buff_levels}};
 }
 
@@ -84,6 +85,7 @@ Self decodeSelf(const json& j)
     Self s;
     s.spirit_exp = j.value("spirit_exp", 0);
     toIntMap(j, "stat_levels", s.stat_levels);
+    toIntMap(j, "stat_use", s.stat_use);
     toIntMap(j, "buff_levels", s.buff_levels);
     return s;
 }
@@ -320,6 +322,7 @@ void capture(const GameState& gs, float player_x, float player_y, Data& d)
 
     d.self.spirit_exp = gs.growth.spirit_exp;
     d.self.stat_levels = gs.growth.stat_levels;
+    d.self.stat_use = gs.growth.stat_use;
     d.self.buff_levels = gs.growth.buff_levels;
 
     // This CLEARS first. capture() writes into an existing pilgrim (so their identity
@@ -354,6 +357,7 @@ void apply(const Data& data, GameState& gs)
     // pilgrimage; a save is where this one got to).
     for (const auto& [name, level] : data.self.stat_levels)
         gs.growth.stat_levels[name] = level;
+    gs.growth.stat_use = data.self.stat_use; // the earned faculty EXP (use-growth)
     gs.growth.buff_levels = data.self.buff_levels;
 
     gs.satchel.items.clear();

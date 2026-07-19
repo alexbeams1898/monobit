@@ -91,28 +91,66 @@ void drawTab(const std::string& label, float x, float y, float w, float h, bool 
 
 // --- Tab content ---------------------------------------------------------
 
-void renderSelf(const growth::GrowthState& g, float cx, float y)
+// The window size, bundled so layout code passes one thing (both dims are always needed together
+// to derive the 16:9 safe area).
+struct Canvas
 {
-    softTextCentered("Spirit  " + std::to_string(growth::spirit(g)), cx, y, kText);
-    y += lineH() * 1.6f;
-    // The reading-self (tier 1): faculty level = base + buffs.
+    int w = 0;
+    int h = 0;
+};
+
+// The page's content band width: a fraction of the 16:9 SAFE AREA (not the raw window), so it
+// scales with resolution like the rest of the HUD and stays a cohesive centered panel on a wide
+// window instead of sprawling to the edges. Shared by every tab's layout.
+float contentBandW(Canvas c)
+{
+    return hud::scale(c.w, c.h) * 0.72f;
+}
+
+// One stat row: name (left) + level (right) + a fill bar under them showing progress through
+// the current level (Skyrim-style -- a normalized fill, no raw numbers on screen). `hue` tints
+// the bar; `dim` fades a secondary stat. Returns the y past the row.
+float drawStatRow(const std::string& name, int level, const growth::StatProgress& prog,
+                  const Color& hue, float x, float y, float w, bool dim)
+{
+    const Color label = dim ? kTextDim : kText;
+    softText(name, x, y, label);
+    const std::string lv = std::to_string(level);
+    softText(lv, x + w - UIRenderer::measureText(sFont, lv).width, y, label);
+
+    const float by = y + lineH() * 0.95f;
+    const float bh = lineH() * 0.18f;
+    UIRenderer::drawRect(x, by, w, bh, {kText.r, kText.g, kText.b, 0.10f}); // trough
+    if (prog.fill > 0.0f)
+        UIRenderer::drawRect(x, by, w * prog.fill, bh,
+                             {hue.r, hue.g, hue.b, dim ? 0.55f : 0.9f}); // fill
+    return by + bh + lineH() * 0.5f;
+}
+
+void renderSelf(const growth::GrowthState& g, float cx, float y, Canvas canvas)
+{
+    const float w = contentBandW(canvas) * 0.62f; // the bars' column width
+    const float x = cx - w * 0.5f;
+
+    // The banked, unspent currency (spirit_exp) -- what rises when you earn Spirit. Distinct from
+    // growth::spirit(), which is the sum of buff levels already BOUGHT with it (0 until buffs exist).
+    softTextCentered("Spirit  " + std::to_string(g.spirit_exp), cx, y, kText);
+    y += lineH() * 1.8f;
+
+    // Faculties (the mind): level = base + buffs + use; the bar tracks use-growth.
     for (const auto& faculty : g.faculties)
     {
-        softTextCentered(faculty + "   " + std::to_string(growth::facultyLevel(g, faculty)), cx, y,
-                         kText);
-        y += lineH();
+        const growth::Rgb rgb = growth::facultyColor(g, faculty);
+        y = drawStatRow(faculty, growth::facultyLevel(g, faculty), growth::statProgress(g, faculty),
+                        {rgb.r, rgb.g, rgb.b, 1.0f}, x, y, w, /*dim=*/false);
     }
-    // The doing layer (tier 2): survival / craftsmanship base values, dimmer to
-    // read as secondary.
+    // Secondary (the body): peers of the faculties, drawn dimmer to read as the grounded layer.
     if (!g.secondary.empty())
     {
-        y += lineH() * 0.6f;
+        y += lineH() * 0.4f;
         for (const auto& stat : g.secondary)
-        {
-            softTextCentered(stat + "   " + std::to_string(growth::statLevel(g, stat)), cx, y,
-                             kTextDim);
-            y += lineH();
-        }
+            y = drawStatRow(stat, growth::statLevel(g, stat), growth::statProgress(g, stat), kText,
+                            x, y, w, /*dim=*/true);
     }
 }
 
@@ -205,22 +243,6 @@ constexpr int kListRows = 6;
 float listRegionH()
 {
     return static_cast<float>(kListRows) * listRowH();
-}
-
-// The window size, bundled so layout code passes one thing (both dims are always needed together
-// to derive the 16:9 safe area).
-struct Canvas
-{
-    int w = 0;
-    int h = 0;
-};
-
-// The page's content band width: a fraction of the 16:9 SAFE AREA (not the raw window), so it
-// scales with resolution like the rest of the HUD and stays a cohesive centered panel on a wide
-// window instead of sprawling to the edges. Shared by every tab's layout.
-float contentBandW(Canvas c)
-{
-    return hud::scale(c.w, c.h) * 0.72f;
 }
 
 // The row index the mouse is over within a vertical list of `count` rows starting at (x,y),
@@ -932,7 +954,7 @@ Action renderTabContent(PauseState& pause, const growth::GrowthState& growth,
     switch (pause.tab)
     {
     case PauseState::Tab::Self:
-        renderSelf(growth, cx, contentY);
+        renderSelf(growth, cx, contentY, canvas);
         break;
     case PauseState::Tab::Satchel:
     {

@@ -133,30 +133,46 @@ which, its text, where, when first made. Serves as:
 
 (The review UI is a later step; the record *data* is what §5 needs.)
 
-## 5. Progression — souls-esque currency + skill tree
+## 5. Progression — two axes: stats you GROW, a tree you CHOOSE
 
-**Observing grants a soul-like currency; you spend it at a skill tree.** This
-replaces the earlier "XP → level" MVP and is *simpler* than Selva's three-counter
-cognition model (one currency, not three stats).
+**Stats rise by use; a Spirit tree is spent by choice. They never touch the same
+numbers.** One axis is *who you're becoming* (habit); the other is *who you decide
+to be* (intent). A "build" is the intersection.
 
-- **New observations grant currency.** A first-tier notice grants a small
-  amount; reaching a **deeper tier** grants more; forming a **conclusion** grants
-  the most (connecting dots is the higher-order act). Amounts are authored per
-  observation/conclusion (config, not hardcoded). Re-reading an already-earned
-  tier grants nothing — currency tracks *new understanding*, not repetition
-  (Selva's rule: "re-examining gives nothing").
-- **Currency spends at a skill tree.** Skills are acquired, not leveled
-  (DESIGN.md: "skills learned, not grown") — the tree is a set of unlockable
-  nodes bought with observation-currency. What skills *are* (cold-crossing,
-  plant-lore, wildlife-calming per DESIGN.md) is separate design; this system
-  provides the **currency and the spend surface**.
-- **Souls-esque, curated:** like Dark Souls souls — a single fungible currency
-  earned by the core verb, spent deliberately. Unlike souls: not lost on death
-  (no death register here), and earned by *noticing*, not killing.
+**Stats (passive, use-based — Oblivion).** A stat rises from being *exercised*. WHICH
+stat a thing exercises is a property of the *content*, not the verb: a thought names
+its stat (its `faculty`), a deed names its stat — and either can be ANY stat, mental
+or physical. A tracking observation may grow *survival*; a contemplative deed may
+grow *wonder*. Verb and stat correlate (most observing is mental, most acting
+physical) but it is never enforced — the author decides per thing, the system stays
+neutral. No hierarchy: mind and body stats are peers, same curve; the "lore-accurate"
+mind-heavy pilgrim is a *characterization the framing suggests*, not a mechanical
+privilege (Souls-style — play the canon build or your own). Silent, automatic, no
+menu — how you play *is* who you become. Stats are read everywhere (glow, roll
+weighting, tier gates, craft quality); the tree never raises them.
 
-Selva's stat-derivation math (`stat = 1 + floor(log2(growth+1))`, diminishing
-returns) is a good reference if a skill-tree cost curve needs one, but the
-currency itself is a plain accumulating count.
+**Spirit (currency, earned by noticing).** New observations grant it — deeper tier
+> first tier, a conclusion most; re-reading an earned tier grants nothing (tracks
+*new* understanding). A single fungible count, spent deliberately. Souls-esque, but
+not lost on death and earned by attention, not killing.
+
+**The tree (acquired, not leveled).** Nodes are unlocked, not raised (DESIGN.md:
+"skills learned, not grown"). A node costs **Spirit + stat thresholds** — so your
+grown stats *gate* which paths you can take. Observed all walk → observer paths
+open; a low-perception pilgrim can't buy them however much Spirit he holds. **Habit
+gates build.** This is where habit becomes identity (cf. the Mind-arc endings, and
+KCD2's path commitments).
+
+A node's **effect** is one of two general kinds (capabilities — bespoke new verbs —
+are added ad hoc later, not part of the foundation):
+- **modifier** — tweaks a number the game already reads (glow range, roll odds,
+  tier-unlock threshold).
+- **flag** — sets a world-state flag things react to (reuses the unlock/visibility
+  flag system).
+
+`BuffDef` (include/Growth.h) is the stub this grows from. Selva's
+`stat = 1 + floor(log2(growth+1))` is a reference if a cost or use→stat curve needs
+diminishing returns.
 
 ## 6. Sound design — the primary feedback channel
 
