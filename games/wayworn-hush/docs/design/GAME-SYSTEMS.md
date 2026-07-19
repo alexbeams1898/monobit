@@ -26,6 +26,34 @@ Outer Wilds (knowledge *is* the key that opens the world), Disco Elysium
 (observe → inner voices → identity), Selva (gather → craft). Closest kin is
 Outer Wilds: **the loot is understanding.**
 
+## Minimalism is the method **[PILLAR — always was, stated here]**
+
+**Reduce every system to the least it can be while keeping its quality and its
+function.** Not "small scope," and never "cheap": minimal like minimal synth —
+few voices, each chosen precisely, given room. The restraint is where the power
+comes from. Sparseness makes each element land because nothing crowds it.
+
+What it means in practice:
+
+- **Few verbs, deeply expressive.** The answer to "the game needs more depth" is
+  almost never a new system. It is an existing verb reading the player in a way
+  it did not before.
+- **Repetition as structure, not filler.** A loop that shifts slightly is the
+  form, not a shortfall — which is exactly why the woods are small and revisited
+  ([OPENING.md](OPENING.md)).
+- **Space is an instrument.** The walking between observations, the quiet, the
+  emptiness — load-bearing, not unfinished content.
+- **One change lands hard because everything else is still.** Rarity is what
+  makes a shift uncanny; frequent change reads as noise.
+- **Many small reactive touches, almost no branching.** Reactivity is cheap when
+  it is the *same* content read differently (tiers, flags, faculty gates) and
+  expensive when it forks into authored variants. Prefer a hundred things that
+  notice the player over three that branch for him.
+
+**"Tighten up" means this.** When the instruction is to tighten, simplify, or
+consolidate a system, it means: make it as minimal as it can possibly be while
+retaining its quality and its function — not merely tidy it.
+
 ## Two stat layers
 
 The whole stat model is two tiers, and the second always feeds the first:
