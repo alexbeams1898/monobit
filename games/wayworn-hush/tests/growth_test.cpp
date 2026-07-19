@@ -240,3 +240,23 @@ TEST_CASE("statProgress into/span describe the current level's raw exp window", 
     REQUIRE(p.into == 10);
     REQUIRE(p.span == 40);
 }
+
+// The doing layer grows exactly like the reading layer -- crafting routes its XP into the
+// recipe's xp_stat through the same recordUse hook observing uses (GameLoop::attemptCraft).
+// That call site needs a live GameState (SDL/GL), so it is integration-tested by playing;
+// what is pinned here is the property it depends on: a secondary stat is not special.
+TEST_CASE("secondary stats grow on the same curve as faculties", "[growth][use]")
+{
+    GrowthState s = makeState();
+    s.exp_per_level = 20.0f;
+
+    growth::recordUse(s, "craftsmanship", 60);
+    growth::recordUse(s, "wonder", 60);
+    REQUIRE(growth::statLevel(s, "craftsmanship") == growth::statLevel(s, "wonder"));
+    REQUIRE(growth::statLevel(s, "craftsmanship") == 2);
+
+    // And it reports progress for the Self-tab bar like any other stat.
+    const auto p = growth::statProgress(s, "craftsmanship");
+    REQUIRE(p.level == 2);
+    REQUIRE(p.span > 0);
+}

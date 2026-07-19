@@ -40,6 +40,13 @@ struct Scaling
     float base = 1.0f;
 };
 
+// One stat a craft exercises, with its relative share of the craft's XP.
+struct StatShare
+{
+    std::string stat;
+    float weight = 1.0f;
+};
+
 // An authored recipe (one JSON per file, config/recipes/*.json), keyed by a stable id.
 struct Recipe
 {
@@ -48,9 +55,13 @@ struct Recipe
     std::string output_item;        // -> inventory::ItemDef
     int output_qty = 1;
     OutputKind kind = OutputKind::Consumable;
-    Scaling scaling;          // consumable outcome scaling (ignored for Permanent)
-    std::string xp_stat;      // doing-layer stat the craft feeds (empty = none)
-    int xp_base = 0;          // pre-inverse-mastery XP
+    Scaling scaling; // consumable outcome scaling (ignored for Permanent)
+    // Which stats this craft exercises, and in what proportion -- a tool-like make weights
+    // craftsmanship over survival, an organic one the reverse. Shares are relative, not
+    // percentages: the craft's total XP (xp_base through the mastery curve) is split across
+    // them. Empty = the whole reward goes to Config::default_xp_stat.
+    std::vector<StatShare> xp_stats;
+    int xp_base = 0;          // pre-inverse-mastery XP, split across xp_stats
     std::string reveals_flag; // set on first successful craft (opens new understanding)
 };
 
@@ -88,12 +99,16 @@ struct Config
     float xp_mastery_falloff = 0.1f;
     float xp_floor = 0.15f; // a mastered craft still pays a little
     float xp_ceiling = 2.0f;
+    // The stat a craft feeds when its recipe names none. Making things is workmanship by
+    // default; a recipe whose act is really something else overrides it with its own xp_stats.
+    std::string default_xp_stat = "craftsmanship";
     // The reward for LEARNING a recipe (its first successful craft -- discovery, not repetition):
-    // a direct bump to a reading faculty + a Spirit EXP grant. The game layer enacts these on
-    // Outcome.first_time; the pure model just reports the discovery. (A placeholder slice of the
-    // wider growth economy still to be built.)
+    // EXP into a reading faculty + a Spirit EXP grant. The game layer enacts these on
+    // Outcome.first_time; the pure model just reports the discovery. The faculty reward is exp,
+    // not levels, so discovery feeds the same use curve every other gain does -- one path a stat
+    // can rise by, and a fixed grant keeps its meaning as levels get more expensive.
     std::string learn_faculty = "perception"; // which faculty a first craft deepens
-    int learn_faculty_gain = 1;               // levels added to that faculty's base
+    int learn_faculty_exp = 25;               // EXP into that faculty for the discovery
     int learn_spirit_exp = 10;                // Spirit EXP granted for the discovery
 };
 
@@ -128,10 +143,16 @@ Match match(const std::vector<std::string>& selectedTypes, const Registry& regis
 float outcomeQuality(const Recipe& recipe, int craftStat, const observations::RollRng& rng,
                      const Config& cfg);
 
-// The XP this craft feeds its xp_stat, INVERSE to mastery: reaching above your level (good
-// outcome, low craft stat) pays more; routine work (high craft stat) pays little. 0 if the
-// recipe grants no XP.
+// The total XP this craft earns, INVERSE to mastery: reaching above your level (good outcome,
+// low craft stat) pays more; routine work (high craft stat) pays little. 0 if the recipe grants
+// no XP. Split across the recipe's stats by splitXp.
 int xpGained(const Recipe& recipe, int craftStat, float quality, const Config& cfg);
+
+// Divide a craft's total XP across the stats it exercises, by their authored weights. A recipe
+// naming no stats sends the whole reward to cfg.default_xp_stat. Largest-remainder, so the parts
+// sum to exactly `total` and no named stat with a positive weight is rounded away to nothing.
+std::vector<std::pair<std::string, int>> splitXp(const Recipe& recipe, int total,
+                                                 const Config& cfg);
 
 // The result of a craft attempt.
 struct Outcome
@@ -139,9 +160,11 @@ struct Outcome
     bool made = false;       // did the craft succeed (had the materials)?
     std::string output_item; // what was made (empty on failure)
     int output_qty = 0;
-    float quality = 1.0f;      // consumable outcome quality
-    std::string xp_stat;       // the stat the XP feeds
-    int xp = 0;                // XP earned (inverse-mastery)
+    float quality = 1.0f; // consumable outcome quality
+    // The stats this craft exercised and the XP each earned (the recipe's shares applied to the
+    // inverse-mastery total). Same shape observing reports, so both feed the one growth hook.
+    std::vector<std::pair<std::string, int>> stat_gains;
+    int xp = 0;                // total XP earned (inverse-mastery), before the share split
     std::string revealed_flag; // a flag to set (first-craft reveal), empty otherwise
     bool first_time = false;   // was this the recipe's first successful craft?
 };

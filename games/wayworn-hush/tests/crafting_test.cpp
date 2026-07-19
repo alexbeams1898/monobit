@@ -26,7 +26,8 @@ Recipe teaRecipe()
     r.kind = OutputKind::Consumable;
     r.scaling.stat = "survival";
     r.scaling.base = 1.0f;
-    r.xp_stat = "survival";
+    r.xp_stats = {crafting::StatShare{"survival", 7.0f},
+                  crafting::StatShare{"craftsmanship", 3.0f}};
     r.xp_base = 10;
     r.reveals_flag = "brewed_tea_once";
     return r;
@@ -123,7 +124,8 @@ TEST_CASE("craft consumes inputs, grants output, records discovery + reveal", "[
     REQUIRE(out.first_time);
     REQUIRE(out.revealed_flag == "brewed_tea_once");
     REQUIRE(cs.known.empty()); // craft did not mark it known
-    REQUIRE(out.xp_stat == "survival");
+    REQUIRE(out.stat_gains.size() == 2);
+    REQUIRE(out.stat_gains[0].first == "survival");
     REQUIRE(out.xp > 0);
 
     // The caller learns the recipe (as GameLoop's learnRecipe does), then a re-make is NOT
@@ -153,4 +155,65 @@ TEST_CASE("craft fails (changes nothing) without enough materials", "[crafting]"
     REQUIRE(inventory::count(sat, "thyme") == 1); // unchanged -- all-or-nothing
     REQUIRE(inventory::count(sat, "tea") == 0);
     REQUIRE(cs.known.empty());
+}
+
+TEST_CASE("a recipe naming no stats sends the whole reward to the default", "[crafting]")
+{
+    // Making things is workmanship unless the recipe says otherwise -- an author who omits
+    // xp_stats gets the default rather than silently-zero XP.
+    Recipe r = teaRecipe();
+    r.xp_stats.clear();
+
+    crafting::Config cfg;
+    cfg.default_xp_stat = "craftsmanship";
+    crafting::State cs;
+    inventory::Registry items;
+    inventory::Satchel sat;
+    inventory::add(sat, items, inventory::ItemInstance{"thyme", 2});
+    inventory::add(sat, items, inventory::ItemInstance{"water", 1});
+
+    const crafting::Outcome out = crafting::craft(r, sat, items, /*craftStat=*/1, kZero, cfg, cs);
+    REQUIRE(out.made);
+    REQUIRE(out.stat_gains.size() == 1);
+    REQUIRE(out.stat_gains[0].first == "craftsmanship");
+    REQUIRE(out.stat_gains[0].second == out.xp);
+}
+
+TEST_CASE("a craft splits its XP across the stats it exercises, by weight", "[crafting]")
+{
+    // A tool-like make weights workmanship; an organic one weights the field knowledge. The
+    // split is by relative weight and always sums to the craft's total.
+    Recipe r = teaRecipe();
+    r.xp_stats = {crafting::StatShare{"survival", 7.0f},
+                  crafting::StatShare{"craftsmanship", 3.0f}};
+
+    const crafting::Config cfg;
+    const auto gains = crafting::splitXp(r, 100, cfg);
+    REQUIRE(gains.size() == 2);
+    REQUIRE(gains[0] == std::pair<std::string, int>{"survival", 70});
+    REQUIRE(gains[1] == std::pair<std::string, int>{"craftsmanship", 30});
+}
+
+TEST_CASE("splitXp never rounds a real share away, and always sums to the total", "[crafting]")
+{
+    Recipe r = teaRecipe();
+    // 1 XP across two stats, and an awkward 3-way split -- the parts must still sum exactly.
+    r.xp_stats = {crafting::StatShare{"survival", 1.0f},
+                  crafting::StatShare{"craftsmanship", 1.0f}};
+    const crafting::Config cfg;
+
+    auto gains = crafting::splitXp(r, 1, cfg);
+    int sum = 0;
+    for (const auto& g : gains)
+        sum += g.second;
+    REQUIRE(sum == 1); // the single point goes somewhere, not nowhere
+
+    r.xp_stats = {crafting::StatShare{"survival", 1.0f}, crafting::StatShare{"craftsmanship", 1.0f},
+                  crafting::StatShare{"wonder", 1.0f}};
+    gains = crafting::splitXp(r, 10, cfg);
+    sum = 0;
+    for (const auto& g : gains)
+        sum += g.second;
+    REQUIRE(sum == 10);
+    REQUIRE(gains.size() == 3);
 }

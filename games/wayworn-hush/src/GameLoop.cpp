@@ -705,7 +705,7 @@ bool learnRecipe(GameState& gs, const std::string& recipeId)
     if (!gs.crafting_state.known.insert(recipeId).second)
         return false; // already known -- no repeat reward
     const crafting::Config& cc = gs.crafting_config;
-    gs.growth.stat_levels[cc.learn_faculty] += cc.learn_faculty_gain;
+    grantStatExp(gs, cc.learn_faculty, cc.learn_faculty_exp);
     gs.growth.spirit_exp += cc.learn_spirit_exp;
     notify::push("New recipe learned", kUnlockColor);
     return true;
@@ -748,11 +748,11 @@ void attemptCraft(GameState& gs)
         gs.pause.craft_selected.clear();
         return;
     }
-    // Bank the craft XP + fire any first-craft reveal, toast the made item. NOTE: there is no
-    // per-secondary-stat XP pool yet (issue #142), so the doing-layer XP is banked into Spirit
-    // EXP for now -- the crafting model already ATTRIBUTES it to xp_stat, ready to route once
-    // the progression system lands.
-    gs.growth.spirit_exp += out.xp;
+    // Bank the craft XP into the stat the recipe attributes it to, fire any first-craft reveal,
+    // toast the made item. Doing exercises the doing-layer stat exactly as observing exercises a
+    // faculty -- the same hook, so a craft toasts and curves like everything else.
+    for (const auto& [stat, exp] : out.stat_gains)
+        grantStatExp(gs, stat, exp);
     if (!out.revealed_flag.empty())
         gs.observations.flags.insert(out.revealed_flag);
     if (const inventory::ItemDef* def = gs.items.find(out.output_item))

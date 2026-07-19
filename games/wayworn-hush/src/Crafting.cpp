@@ -42,7 +42,11 @@ Recipe parseRecipe(const nlohmann::json& j, const std::string& fallbackId)
         r.scaling.stat = s->value("stat", std::string{});
         r.scaling.base = s->value("base", 1.0f);
     }
-    r.xp_stat = j.value("xp_stat", std::string{});
+    // "xp_stats": {"craftsmanship": 8, "survival": 2} -- relative shares of the craft's XP.
+    if (const auto it = j.find("xp_stats"); it != j.end() && it->is_object())
+        for (const auto& [stat, weight] : it->items())
+            if (weight.is_number())
+                r.xp_stats.push_back(StatShare{stat, weight.get<float>()});
     r.xp_base = j.value("xp_base", 0);
     r.reveals_flag = j.value("reveals_flag", std::string{});
     return r;
@@ -95,7 +99,8 @@ void loadConfig(Config& cfg, const std::string& path)
     cfg.xp_floor = j.value("xp_floor", cfg.xp_floor);
     cfg.xp_ceiling = j.value("xp_ceiling", cfg.xp_ceiling);
     cfg.learn_faculty = j.value("learn_faculty", cfg.learn_faculty);
-    cfg.learn_faculty_gain = j.value("learn_faculty_gain", cfg.learn_faculty_gain);
+    cfg.default_xp_stat = j.value("default_xp_stat", cfg.default_xp_stat);
+    cfg.learn_faculty_exp = j.value("learn_faculty_exp", cfg.learn_faculty_exp);
     cfg.learn_spirit_exp = j.value("learn_spirit_exp", cfg.learn_spirit_exp);
 }
 
@@ -158,7 +163,7 @@ float outcomeQuality(const Recipe& recipe, int craftStat, const observations::Ro
 
 int xpGained(const Recipe& recipe, int craftStat, float quality, const Config& cfg)
 {
-    if (recipe.xp_base <= 0 || recipe.xp_stat.empty())
+    if (recipe.xp_base <= 0)
         return 0;
     // Inverse-mastery: a good outcome relative to a low craft stat pays more; routine work
     // (high craft stat) pays little. Never zero (a mastered craft still trickles).
@@ -166,6 +171,51 @@ int xpGained(const Recipe& recipe, int craftStat, float quality, const Config& c
         cfg.xp_reach_gain * quality - cfg.xp_mastery_falloff * static_cast<float>(craftStat) + 1.0f,
         cfg.xp_floor, cfg.xp_ceiling);
     return static_cast<int>(std::max(1L, std::lround(static_cast<float>(recipe.xp_base) * factor)));
+}
+
+std::vector<std::pair<std::string, int>> splitXp(const Recipe& recipe, int total, const Config& cfg)
+{
+    std::vector<std::pair<std::string, int>> gains;
+    if (total <= 0)
+        return gains;
+    if (recipe.xp_stats.empty())
+    {
+        if (!cfg.default_xp_stat.empty())
+            gains.emplace_back(cfg.default_xp_stat, total);
+        return gains;
+    }
+
+    float sum = 0.0f;
+    for (const auto& s : recipe.xp_stats)
+        if (!s.stat.empty() && s.weight > 0.0f)
+            sum += s.weight;
+    if (sum <= 0.0f)
+        return gains;
+
+    // Floor each share, then hand the leftover to the largest fractional parts, so the parts sum
+    // to exactly `total` and a small-but-real share never floors away to zero.
+    std::vector<float> frac;
+    int assigned = 0;
+    for (const auto& s : recipe.xp_stats)
+    {
+        if (s.stat.empty() || s.weight <= 0.0f)
+            continue;
+        const float exact = static_cast<float>(total) * s.weight / sum;
+        const int whole = static_cast<int>(exact);
+        gains.emplace_back(s.stat, whole);
+        frac.push_back(exact - static_cast<float>(whole));
+        assigned += whole;
+    }
+    for (int left = total - assigned; left > 0; --left)
+    {
+        std::size_t best = 0;
+        for (std::size_t i = 1; i < frac.size(); ++i)
+            if (frac[i] > frac[best])
+                best = i;
+        gains[best].second += 1;
+        frac[best] = -1.0f; // spent -- don't win the next unit too
+    }
+    return gains;
 }
 
 Outcome craft(const Recipe& recipe, inventory::Satchel& satchel, const inventory::Registry& items,
@@ -184,8 +234,8 @@ Outcome craft(const Recipe& recipe, inventory::Satchel& satchel, const inventory
     out.output_item = recipe.output_item;
     out.output_qty = recipe.output_qty;
     out.quality = outcomeQuality(recipe, craftStat, rng, cfg);
-    out.xp_stat = recipe.xp_stat;
     out.xp = xpGained(recipe, craftStat, out.quality, cfg);
+    out.stat_gains = splitXp(recipe, out.xp, cfg);
     inventory::add(satchel, items, inventory::ItemInstance{recipe.output_item, recipe.output_qty});
 
     // first_time = the recipe wasn't known before this craft (a genuine discovery-by-making, as
