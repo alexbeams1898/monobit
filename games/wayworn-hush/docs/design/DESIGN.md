@@ -14,7 +14,7 @@ natural landscapes, dedicated to a lost friend.
 Melancholic-uplifting register. Short (~10-20 hours). Minimal dialogue.
 Mostly the protagonist's inner thoughts + small interactions along the way.
 No moral binary, no epic stakes — just walking, camping, gathering, the
-occasional turn-based encounter, ambient music, and the quiet accumulation
+occasional weighty encounter, ambient music, and the quiet accumulation
 of self-knowledge that only long walking produces.
 
 ## Core concept
@@ -28,7 +28,7 @@ what. As the game progresses, what he's looking for shifts — not because
 the goal changed, but because *he* changed. The ending is the return
 home carrying the answer. The answer is the change itself.
 
-The point of the game is the traveling, the landscapes, the quiet. Combat
+The point of the game is the traveling, the landscapes, the quiet. Encounters
 and skills are seasoning. The map is the meal.
 
 ## Tonal references
@@ -146,24 +146,38 @@ narrative resolution.
 - **Acquisition**: learned from small encounters (a person met on the
   road teaches something; observing a specific animal reveals a
   method; finding a specific item unlocks a technique).
-- Not gated behind combat.
+- Not gated behind any fight — they are learned by attention and encounter.
 
-### Combat (turn-based, strategic)
+### Encounters — the "combat" is metaphorical **[LOCKED]**
 
-- **Turn-based menu combat**, Earthbound/Undertale/Chrono Trigger
-  register.
-- **Strategic depth without grinding.** Player wins encounters by
-  reading them, not by out-leveling. Undertale-style ACT-and-observe
-  options where combat has non-violence solutions for many encounters
-  — talk to the creature, offer food, wait it out.
-- **Rare, meaningful encounters.** Not constant grinding. When
-  combat happens, it MATTERS. Contrast Pokemon's frequent random
-  encounters — Wayworn Hush uses fewer, weightier encounters.
-- **Stats + buffs** exist but light — a health pool, some resistance
-  categories, temporary buffs from food/rest/skills. No deep RPG
-  numbers.
-- **Combat music** shifts to a distinct register per region (calm
-  regions = calm combat music; higher-tension areas = more urgent).
+**There are no hostile enemies and no battle system.** Nothing in this world
+attacks him; there is nothing here that wants to hurt him, and the reason is
+structural rather than tonal ([THEME.md](THEME.md)). Combat exists only as an
+*analogy* for how an encounter is engaged: you read it rather than beat it
+([GAME-SYSTEMS.md](GAME-SYSTEMS.md) — "observing is the combat").
+
+What the strategic-encounter register keeps, expressed through observation and
+deeds instead of a fight:
+
+- **You win by reading, never by out-levelling.** Attention and the right
+  approach, not numbers.
+- **Rare and weighty.** A handful of encounters that matter, against many quiet
+  ones — never the frequent-random-encounter rhythm.
+- **Non-violent solutions were always the point.** Wait it out, offer something,
+  approach differently. With no violent option at all, this stops being an
+  alternative and becomes the whole verb set.
+- **Pacing may tighten** — an encounter can carry tension, weight, a beat that
+  is not leisurely. Achieving that feel through observation/action rather than
+  threat is an open craft problem (see Open questions).
+- **Music** may shift register for a weighty encounter and return to the ambient
+  bed after.
+
+Light stats and buffs still exist (food, rest, skills) — they feed reading and
+doing, not survivability. There is **no health pool and no losing.**
+
+*Origin note: the original concept ([ORIGINAL_NOTES.md](ORIGINAL_NOTES.md))
+described turn-based combat in an Undertale/EarthBound register. That register
+survives; the battles do not.*
 
 ### Gathering / inventory
 
@@ -194,7 +208,7 @@ narrative resolution.
 - Ambient, layered, region-specific.
 - The composer is you + your friend.
 - Ambient beds shift by region, weather, and time of day.
-- Combat music breaks the ambient bed briefly, then returns.
+- A weighty encounter may break the ambient bed briefly, then return to it.
 - Long stretches of very-little-music are OK. Silence is used.
 
 ## Art direction
@@ -231,21 +245,32 @@ narrative resolution.
 - Not: infinite / procgen open world — the world is finite and
   authored
 
+## Settled since this list was written
+
+- **Regions** — a shore (the hub he begins on) and a small woods that keeps
+  opening. Deep rather than wide. See [OPENING.md](OPENING.md).
+- **Home / family** — never seen, only ever described. The shore is the *home
+  away from the home he references*; the story decides when they surface.
+- **Combat** — cut as a system; kept as metaphor. See Encounters above.
+- **Dungeons** — possible, but they cannot lean on combat. The open craft
+  problem is what resists the player instead (navigation, item-gating,
+  comprehension as the lock).
+
 ## Open questions
 
-- **Which regions specifically ship in v1** — needs a map plan
-- **Which skills specifically exist** — needs a skill list
-- **Camping mechanic depth** — pass-time-only or full narrative
-  vignettes
-- **Combat encounter frequency and pacing** — rare-and-weighty vs
-  moderate-frequency
-- **Inner-monologue authoring workload** — how many triggers, how
-  deep per trigger
-- **How the protagonist's home / family are introduced and reintroduced**
-- **Whether the game has any actual "dungeons"** or if it's pure
-  overworld
-- **Save system** — camping-as-save-point vs anywhere-save
-- **Whether the composer authors regions before art or vice versa**
+- **What draws him back into the woods.** Recognition needs a reason to return.
+- **How an encounter earns tension** without threat — the "combat pacing" feel,
+  not yet achieved in the build.
+- **Which skills specifically exist** — needs a skill list.
+- **Camping mechanic depth** — pass-time-only or full narrative vignettes.
+- **Inner-monologue authoring workload** — how many triggers, how deep per
+  trigger. Sized by the both-registers rule in [VOICE.md](VOICE.md).
+- **Save system** — camping-as-save-point vs anywhere-save. Note the pillar that
+  saving is a personality surface, not plumbing ([VOICE.md](VOICE.md) §3b).
+- **Palette** — muted vs. brighter Emerald/EarthBound warmth. See
+  [AESTHETIC.md](AESTHETIC.md).
+- **Whether the composer authors regions before art or vice versa.**
+- **Whether the shore and woods carry the whole walk** or are the first two.
 
 ## Cross-references
 
