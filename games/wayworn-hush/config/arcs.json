@@ -1,0 +1,19 @@
+{
+    "_comment": "Story arcs -- AUTHORING apparatus, never a runtime system. An arc is one goal_flag reached by any of several routes, so a looker, a reasoner and a maker arrive at the same understanding by different means. A route's unlock_when uses the same clause grammar as everything else (OR of ANDs). Nothing in the game reads this file; it is checked at boot and reported to stderr, so a renamed flag that strands a route is caught here rather than in play. Delete this file and the game plays identically. See docs/design/MAP-ARCHITECTURE.md section 6.",
+    "arcs": [
+        {
+            "id": "example_shape_only",
+            "goal_flag": "rock_moss_cleared",
+            "routes": [
+                {
+                    "label": "by looking",
+                    "unlock_when": [{ "observed": ["rock"], "stat": { "perception": 3 } }]
+                },
+                {
+                    "label": "by doing",
+                    "unlock_when": [{ "flag": "rock_moss_cleared" }]
+                }
+            ]
+        }
+    ]
+}

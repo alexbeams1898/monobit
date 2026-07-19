@@ -1,3 +1,4 @@
+#include "Arcs.h"
 #include "Engine.h"
 #include "FontManager.h"
 #include "Footsteps.h"
@@ -443,6 +444,17 @@ int main(int argc, char* argv[])
     crafting::loadConfig(gs.crafting_config, "config/crafting.json"); // outcome/XP tuning
 
     head_marker::load(gs.head_marker_config, "config/head_marker.json");
+
+    // Story arcs are authoring apparatus, not a runtime system: nothing below reads them.
+    // Loading them here checks the authored threads against what the content can actually
+    // produce, so a renamed flag that strands a route is reported at boot rather than found
+    // in play. Warnings only -- a broken arc never blocks the game.
+    {
+        arcs::Registry authored;
+        arcs::load(authored, "config/arcs.json");
+        for (const auto& p : arcs::validate(authored, arcs::survey(gs.observations)))
+            std::fprintf(stderr, "[arc] '%s' %s\n", p.arc.c_str(), p.detail.c_str());
+    }
 
     // UI fonts by ROLE on a 1.25 (Major-Third) scale, authored as canvas FRACTIONS
     // (config/fonts.json): body = reading text; label = headings / notifications /

@@ -8,6 +8,7 @@ add_library(wayworn-systems STATIC
     src/WorldInit.cpp
     src/PlayerMovement.cpp
     src/PlayerConfig.cpp
+    src/Arcs.cpp
     src/Observations.cpp
     src/UnlockCondition.cpp
     src/Growth.cpp
@@ -88,6 +89,7 @@ endif()
 # ---------------------------------------------------------------------------
 add_executable(wayworn-tests
     tests/scaffold_test.cpp
+    tests/arcs_test.cpp
     tests/observations_test.cpp
     tests/growth_test.cpp
     tests/pause_page_test.cpp
