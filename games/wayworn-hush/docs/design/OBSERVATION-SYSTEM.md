@@ -170,6 +170,41 @@ are added ad hoc later, not part of the foundation):
 - **flag** — sets a world-state flag things react to (reuses the unlock/visibility
   flag system).
 
+**Seeds (found, not earned).** World-placed items that raise a stat directly — a
+third texture beside habit and intent: what you *stumbled on*. They reward wandering
+(the game's actual activity) and offer a small mercy against being over-locked into
+one build. Rare; never a grind source.
+
+**The anti-linearity rule.** Passive exp is a homogenising force: if progressing the
+story grows a stat, then every pilgrim grows that stat and the builds converge no
+matter what else they do. So the mandatory and the build-defining must not be the
+same currency:
+
+- **Observation is the key** — it unlocks thoughts, encounters, the way forward.
+  Everyone observes; it is the core verb and it stays universal.
+- **Story-required observations pay near-nothing** in stat exp. Enough that the
+  world nudges upward, not enough to shape a build.
+- **The real exp sits behind what the player opted into** — sought-out encounters,
+  deep tiers only reachable by having invested, deeds chosen over alternatives.
+
+Two pilgrims should see the same story beats and still own visibly different selves.
+This needs an authored distinction between a *required* and an *optional-depth*
+thing, so the scale is consistent rather than eyeballed per-encounter.
+
+**One story, many pilgrims.** Routes are NOT separate storylines — that multiplies
+the writing and makes each build a rail. There is one authored walk; what differs is
+who you were while walking it. Where the game signals "lean here and this deepens,"
+that is an *encounter that visibly favours a stat* (a shrine paying wonder, a hard
+crossing paying survival) — optional, findable, never a marker. The player learns
+where their build's food lives, Souls-style.
+
+**The ending reads the weighting.** Peace is the constant; the *kind* of peace is
+what the grown self determines — understanding, capability, presence, sufficiency.
+No route ranks above another and none is a failure state: the game's claim is that
+there is no single correct way to be at ease with yourself. A pilgrim with no
+dominant stat is not scolded for it; unspecialised-but-whole is its own arrival.
+(Held general deliberately — the shapes are not fixed here.)
+
 `BuffDef` (include/Growth.h) is the stub this grows from. Selva's
 `stat = 1 + floor(log2(growth+1))` is a reference if a cost or use→stat curve needs
 diminishing returns.
