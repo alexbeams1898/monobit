@@ -1,19 +1,18 @@
 {
-    "_comment": "Story arcs -- AUTHORING apparatus, never a runtime system. An arc is one goal_flag reached by any of several routes, so a looker, a reasoner and a maker arrive at the same understanding by different means. A route's unlock_when uses the same clause grammar as everything else (OR of ANDs). Nothing in the game reads this file; it is checked at boot and reported to stderr, so a renamed flag that strands a route is caught here rather than in play. Delete this file and the game plays identically. See docs/design/MAP-ARCHITECTURE.md section 6.",
-    "arcs": [
-        {
-            "id": "example_shape_only",
-            "goal_flag": "rock_moss_cleared",
-            "routes": [
-                {
-                    "label": "by looking",
-                    "unlock_when": [{ "observed": ["rock"], "stat": { "perception": 3 } }]
-                },
-                {
-                    "label": "by doing",
-                    "unlock_when": [{ "flag": "rock_moss_cleared" }]
-                }
-            ]
-        }
-    ]
+    "_comment": "Story arcs -- AUTHORING apparatus, never a runtime system. An arc is one goal_flag reached by any of several ROUTES, so a looker, a reasoner and a maker arrive at the same understanding by different means. A route's unlock_when uses the same clause grammar as everything else (OR of ANDs: `observed` requires ALL listed memories, `flag` requires that flag, `stat` requires each named stat at that level). Nothing in the game reads this file -- it is checked at boot and findings go to wayworn-hush.log, so a renamed flag or a deleted encounter that strands a route is caught here rather than in play. Delete this file and the game plays identically. An arc with fewer than two routes is reported: a thread with one path is a design bug. See docs/design/MAP-ARCHITECTURE.md section 6.",
+    "_example_not_loaded": {
+        "id": "the_shore",
+        "goal_flag": "shore_understood",
+        "routes": [
+            {
+                "label": "by looking",
+                "unlock_when": [{ "observed": ["tide_line", "whelk_case"], "stat": { "perception": 3 } }]
+            },
+            {
+                "label": "by doing",
+                "unlock_when": [{ "flag": "cleared_the_reeds" }]
+            }
+        ]
+    },
+    "arcs": []
 }
