@@ -10,7 +10,7 @@
         "craftsmanship"
     ],
     "starting_levels": {
-        "_comment": "The levels the pilgrim BEGINS with (stat name -> level). Everything else starts at 0. Placeholder while the EXP->faculty progression is unbuilt: perception 2 gives a visible starting glow (glowBrightness scales with Perception -- see config/formulas.json; at 0 the world is dark). Remove/retune once progression lands.",
+        "_comment": "The levels the pilgrim BEGINS with (stat name -> level). Everything else starts at 0. Perception starts above 0 because the glow scales with it (see config/formulas.json) and at 0 no spot is findable -- you could never observe, so Perception could never grow. This is the faint searching light the walk opens with; it deepens as you use it.",
         "perception": 2
     },
     "faculty_colors": {
