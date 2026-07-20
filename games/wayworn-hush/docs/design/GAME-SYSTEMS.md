@@ -190,20 +190,38 @@ no prerequisites — the simplest thing that works.
   - the true-ending gate (fullness of understanding),
   - ambient formulas — the world grade warms, thoughts deepen as it rises.
 
-  (Buried: Spirit *is* the soul's accumulating peace — never named, never shown
-  as "Spirit: 47." Felt, not displayed.)
+  Spirit is the currency fed into the soul — earned by understanding, spent to
+  take shape as the tree below. It IS displayed (you cannot choose what to become
+  without knowing what you have to spend). What stays buried is what it *means*:
+  the soul's accumulating peace, never named as such and never explained.
 
-### "Class" is emergent; routes stay decoupled
+### The tree IS the soul **[LOCKED]**
 
-**Your "class" is solely which buffs you invested in** — a Wonder-heavy self
-*is* the dreamer; a Reason-heavy self *is* the scholar. **No class selection, no
-class screen**, never named in UI. The three faculties are **fully decoupled** —
-three independent sets of buffs, no cross-links or shared prerequisites (the
-simple topology you chose). Cross-faculty magic (a reading only a
-Wonder-*and*-Perception self gets) still exists, but it's authored as a **gate on
-the observation itself** (`requires Wonder≥2 AND Perception≥2`), not as a tree
-node — so the growth side stays flat and simple while the *world* holds the
-combinatorics.
+**Spirit is potential; the tree is what he has become of it.** Nothing is
+consumed by spending — the Spirit leaves the pool and takes shape as him. An
+empty tree is a person who has not become anything yet; a filled one is a
+specific person. A node is therefore not a perk but **a part of him**: something
+he can now see, do, or bear that he could not before. The tree can never be
+filled, so every soul is partial and particular.
+
+**Your "class" is solely what you spent yourself on** — a Wonder-heavy self *is*
+the dreamer; a Reason-heavy self *is* the scholar. **No class selection, no class
+screen**, never named in UI, and never called a skill tree in game — it is not a
+menu of abilities.
+
+**The faculties are NOT decoupled.** A soul has no crafting compartment: growth
+anywhere changes him everywhere. Cross-links and shared prerequisites are
+correct, and a part grown for one reason should change something apparently
+unrelated (what you gained by being patient changes what you can bear, not only
+what you can see). Cross-faculty gating is *also* authored on the content
+(`requires Wonder>=2 AND Perception>=2`) — both, not either: the world holds
+combinatorics and so does he.
+
+This is the game's central ambition, and it is meant literally rather than as
+decoration: **the systems are structured the way the thing they model actually
+works.** Everything the pilgrim does converts into one place; everything he can
+see, do and endure reads back out of it. The ending reads the tree because there
+is nothing else to read.
 
 **Replay engine:** a second run spends Spirit EXP on different buffs → a
 different class → different keys → a genuinely different reading of the same
