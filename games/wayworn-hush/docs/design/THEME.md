@@ -15,10 +15,42 @@ game is about **a person moving through the afterlife, coming to peace with who
 they were.** The pilgrim is a soul. The "something" he leaves home to find, that
 shifts as he changes, is himself. The return home at the end is arrival at peace.
 
+**More precisely: it is about someone who could not see their own worth, coming
+to see it before they can rest.** He arrives frightened, diminished, and convinced
+of very little about himself. He leaves at peace, having recognised what he
+actually was — his capability, and that he mattered to others. The unresolved
+feeling is the thing keeping him here; resolving it is the whole arc.
+
+This is the premise, not a layer on top of one. The observation, the crafting, the
+shore — those are the *surface* the arc happens through, and at the start of the
+game they will look like the point. They are not the point. They are how a person
+who cannot value himself is slowly shown otherwise, by a world that answers what
+he does.
+
+**The subject is general, not particular.** It is the common shape of a life
+ending with that self-perception unresolved — not one person's story. The game
+must never read as being *about* a specific individual; anyone who has carried
+that feeling should be able to walk into it.
+
 This was always the shape underneath the concept (ORIGINAL_NOTES: "melancholic
 but uplifting," "learns more about himself and what he's actually looking for,"
 "that's the treasure he finds at the end"). Naming it here does not add a theme;
 it records the one that was already there.
+
+## What this demands of the design
+
+- **Worth is demonstrated, never asserted.** No character, thought, or line may
+  tell the pilgrim he is capable or that he mattered. The world proves it by
+  *responding to what he does* — and by him, gradually, no longer flinching. If
+  a draft ever states it, the draft has failed.
+- **The arc is the hook.** The promise to the player is the journey from
+  frightened-and-small to at ease. Not a mechanic, not a mystery — the change
+  itself. Everything mechanical serves that or is decoration.
+- **Capability must be real, not flattery.** He has to actually become able —
+  which is what the use-based growth is for ([VOICE.md](VOICE.md)). A world that
+  praises him without his having grown would be a lie the player can feel.
+- **The ending is recognition, not revelation.** Nothing is *revealed* to him.
+  He arrives at seeing plainly what was true the whole time.
 
 ## Why it stays submerged
 
