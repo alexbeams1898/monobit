@@ -204,6 +204,13 @@ specific person. A node is therefore not a perk but **a part of him**: something
 he can now see, do, or bear that he could not before. The tree can never be
 filled, so every soul is partial and particular.
 
+**Where becoming happens: the lean-to.** Spirit accrues in the world (gathering,
+observing, understanding) but is spent only at a lean-to — the safe, still place
+where the soul is tended ([STORY-FRAME.md](STORY-FRAME.md) §4b). This gives the
+game its rhythm — wander and accrue, arrive and become — and makes the reshaping
+fictionally earned: you do not become someone else mid-walk; you do it stopped and
+safe. **world = gather, lean-to = spend/become.**
+
 **Your "class" is solely what you spent yourself on** — a Wonder-heavy self *is*
 the dreamer; a Reason-heavy self *is* the scholar. **No class selection, no class
 screen**, never named in UI, and never called a skill tree in game — it is not a

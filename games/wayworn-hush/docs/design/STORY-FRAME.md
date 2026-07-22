@@ -85,6 +85,40 @@ never information. It's him.
   something worth seeing the other routes shouldn't get — a pocket only certain
   pilgrims reach, never a parallel forest.
 
+## 4b. The lean-to — where you become **[LOCKED in shape; function scoped]**
+
+The rhythm of the whole game: **world = gather, lean-to = spend/become.**
+
+- **Found, not built.** Lean-tos already exist in the woods — pre-existing,
+  scattered, plural. He comes upon them (the bonfire relation: an anchor you find,
+  not a thing you make).
+- **The feeling is shelter, safety, rest** — a break from the isolation. In a game
+  about learning to be alone, the lean-to is where being alone is bearable, even
+  good. Its feeling may shift over the walk: early, relief from an unbearable
+  aloneness; late, a good place to be alone (the arc, read through the object).
+- **The deeper meaning (never stated):** a lean-to is a *memory made place* — a
+  shelter from a real camping trip that meant belonging. The woods handing back
+  the good nights. It feels, inexplicably, like *his*. That is why it reads as a
+  break from isolation: not company arriving, but the residue of company that
+  once was. On the surface it is just a shelter in the trees.
+- **Function: it is where the soul is tended.** The one place still and safe
+  enough to *become*. You rest, and you spend Spirit into the tree — shape who you
+  are ([GAME-SYSTEMS.md](GAME-SYSTEMS.md): the tree IS the soul). Nowhere else can
+  this be done. The gating is fictionally earned: you do not reshape yourself
+  trudging through the woods; you do it stopped, safe, reflecting. Underneath —
+  the place you were most yourself, among people who loved you, is where you can
+  most become yourself.
+- **The lean-tos are the true hub, and the hub travels.** Each is a waypoint south
+  where you become more yourself; the beach is only the *first* one. This gives
+  the game its cadence: **wander and accrue -> arrive and become -> wander
+  changed.** The lean-tos are the beats of that rhythm, spaced down the walk.
+- **Scope:** for now the lean-to does *only* soul-tending — not crafting, not the
+  notebook, not a rest/time mechanic. Craft stays in the world; the notebook is
+  carried and always-on. Other functions may join later if they cohere around
+  *why you stopped here*, but nothing is reached for to fill space.
+- **Not a Souls rest-point.** It does not reset the world (no enemies) and is not
+  merely a save spot. Its purpose is becoming, not recovery.
+
 ## 5. Questions ARE the quest system **[LOCKED]**
 
 The consolidation that ties character, loop, and structure into one thing. He was
