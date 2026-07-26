@@ -138,6 +138,39 @@ region = **ground tiles only** (prove the atlas + importer); props land next.
 5. **Render** the imported region through `TileMapRenderer`.
 6. **Props sub-step:** `objects.png` prop stamps + the object/overhang layer.
 
+## Naming conventions (doctrine — follow these when authoring)
+
+One vocabulary across the project file, the configs, and the code, so nothing needs a
+lookup table to correlate. The first one is ENFORCED by the importer; the rest are how
+things are named so they stay legible at fifty levels.
+
+| What | Convention | Examples |
+|---|---|---|
+| Tileset files | source sheet -> lowercase atlas twin: `X.png` -> `assets/tilesets/x.png` (×2 nearest). **Enforced**: the importer resolves each level's atlas this way from the tileset its Ground layer was painted with. | `Inner.png` -> `inner.png` |
+| Levels | PascalCase, named for the PLACE; an interior is named for whose inside it is. Never `Level_0`-style defaults. | `Yard`, `Town`, `PlayerHouse`, `RichardsTrail` |
+| Spawn ids | `from_<where you came from>`, lower_snake. The one spawn with NO id is the new-game start (exactly one, in the start level). Spawns are for arrivals that are NOT a doorway (a cutscene drop, a first entrance); doorways need none — see warp hygiene below. | `from_yard`, `from_upstairs` |
+| Entity defs | PascalCase singular. | `House`, `Warp`, `Pickup` |
+| Entity/level fields | lower_snake. | `target_level`, `music`, `collider_height` |
+| Flags / content ids | lower_snake (as everywhere in config). | `rock_moss_cleared` |
+
+Warp hygiene (the shipped model — a warp is a thin directional threshold strip):
+
+- A doorway is TWO warps, one per side, whose `target_level`s point at each other.
+  That is ALL a simple door needs: arrival auto-pairs by return address (the warp in
+  the destination whose `target_level` names the level you came from), and the game
+  steps the player clear of the arrival strip automatically.
+- Place the strip STRADDLING the threshold line itself (the door's face, the mat's
+  outer edge) — thin along the crossing axis, as wide as the passage. It fires when
+  the player's intended path crosses it while pushing against its `facing`, so a
+  strip buried where feet can never reach still works, but the honest placement is
+  on the line being crossed.
+- `facing` = the way you step OUT when arriving here (a house door's exterior strip
+  faces south; the interior mat faces north). Entering is always the opposite push.
+- `id` + `target` exist ONLY for disambiguation: several passages joining the same
+  two levels (the game logs the ambiguity when it guesses). Don't author them
+  otherwise.
+- The importer drops a Warp with no position or no `target_level` and logs it.
+
 ## Cross-references
 
 - [MAP-ARCHITECTURE.md](MAP-ARCHITECTURE.md) — the LOCKED data model + LDtk choice.

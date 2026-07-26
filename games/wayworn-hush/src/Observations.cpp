@@ -624,6 +624,12 @@ void load(State& state, const std::string& path, const std::string& actions_path
 PlacementReport applyPlacements(State& state, const std::vector<Placement>& placements)
 {
     PlacementReport report;
+    // Placements describe ONE level's map. Clear every encounter's placement first, so
+    // content located in some other level is UNPLACED here (empty placement_id) rather
+    // than keeping a stale box from the last level -- a ghost spot the glimmer/proximity
+    // systems would still act on. Unplaced content simply isn't in this part of the world.
+    for (auto& o : state.encounters)
+        o.placement_id.clear();
     std::unordered_set<std::string> placed;
     for (const auto& p : placements)
     {
@@ -842,6 +848,8 @@ ObserveResult triggerProximity(State& state, const growth::GrowthState& growth, 
     {
         if (o.trigger != Trigger::Enter || o.fired)
             continue;
+        if (o.placement_id.empty())
+            continue; // not placed in the current level -- no box to walk into
         if (!unlock::satisfied(o.visible_when, k))
             continue; // not yet present in the world
         if (o.distanceTo(px, py) > state.interact_reach)

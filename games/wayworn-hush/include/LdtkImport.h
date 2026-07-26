@@ -18,13 +18,47 @@ namespace ldtk
 {
 
 // An object from LDtk's entity layer, spawned into the ECS at load. `type` is the
-// LDtk entity identifier ("PlayerSpawn", later NPC/Warp/...); (wx,wy) is its
-// top-left in WORLD pixels (32px grid). Typed fields come later as systems land.
+// LDtk entity identifier (e.g. a future NPC); (wx,wy) is its top-left in WORLD
+// pixels (32px grid). PlayerSpawn and Warp are typed out into their own structs
+// below rather than travelling as bare objects.
 struct Object
 {
     std::string type;
     float wx = 0.0f;
     float wy = 0.0f;
+};
+
+// A named arrival point (a PlayerSpawn entity). `id` empty = where a NEW game
+// starts; a warp arrives at the spawn whose id it names. `facing` is the cardinal
+// the player faces on arrival ("south" when absent -- walking out of a door you
+// face away from it).
+struct SpawnPoint
+{
+    std::string id;
+    float wx = 0.0f;
+    float wy = 0.0f;
+    std::string facing; // "north" | "south" | "east" | "west" (empty = south)
+};
+
+// A passage's end: a thin directional threshold strip laid across a doorway. It fires
+// when the player's intended path crosses it while pushing AGAINST `facing` (see
+// GameLoop's warp test), and it is where the matching warp in the other level arrives
+// -- you emerge at the strip's center and step out along `facing`. A doorway is two
+// warps whose `target_level`s point at each other; arrival auto-pairs by that return
+// address, so `id`/`target` are only needed when several passages join the same two
+// levels. Standing on a strip never re-fires it (the latch re-arms off-strip).
+struct WarpPlacement
+{
+    std::string id; // this side's name -- what the other side's `target` names
+    float x = 0.0f; // box center, world px
+    float y = 0.0f;
+    float w = 32.0f; // box size, world px
+    float h = 32.0f;
+    std::string target_level; // LDtk level identifier to load
+    // Where to arrive: a Warp id in the target level first, else a SpawnPoint id,
+    // else auto-pair by return address, else the level's default spawn.
+    std::string target;
+    std::string facing; // the cardinal you step out with when arriving HERE (empty = south)
 };
 
 // Where an observation lives in the world, read from an Encounter box on the
@@ -101,9 +135,17 @@ struct Prop
 // + config fill the engine's TileMap/TileConfig; objects + props spawn ECS entities.
 struct Region
 {
-    TileMap map;       // flat 32px tile grid (top tile per cell wins for v1)
-    TileConfig config; // tileset atlas path + per-id uv/walkable
+    std::string level_id; // the LDtk level identifier this region came from
+    TileMap map;          // flat 32px tile grid (first tile per cell = base; rest stack)
+    TileConfig config;    // tileset atlas path + per-id uv/walkable
     std::vector<Object> objects;
+    std::vector<SpawnPoint> spawns; // named arrival points (PlayerSpawn entities)
+    std::vector<WarpPlacement> warps;
+    // Per-level properties (LDtk level fields). Parsed now, consumed as the systems land:
+    // `music` names the level's ambient track; `interior` marks an inside space (light,
+    // sound, and the camera's void treatment differ indoors).
+    std::string music;
+    bool interior = false;
     std::vector<Prop> props;                    // tile-carrying entities -> Y-sorted sprite
     std::vector<EncounterPlacement> encounters; // entities carrying an `encounter` field
     std::vector<PickupPlacement> pickups;       // Pickup/Gather entities on the Pickups layer
@@ -120,19 +162,44 @@ struct Region
     bool ok = false; // false if the file was missing / unparseable
 };
 
-// Load a region from an .ldtk file. `tileset_path` is the engine's 32px RENDER
-// atlas (e.g. "assets/tilesets/overworld.png") -- the authoring source in the
-// .ldtk is 16px, but the atlas cell indices match, so the importer just points at
-// the render atlas. `surfaces` resolves each ground tile's surface tag to walkability
-// (terrain collision -- no hand-painted layer). `structures` tiles resizable structure
-// entities (bridges, docks) across their rect (9-slice deck + walkable + surface).
-// Region{ok=false} on failure.
+// A facing name ("north"|"south"|"east"|"west") -> unit direction. Empty/unknown =
+// south -- walking out of a door you face away from it, and south is this world's
+// "out of the door". The one mapping every consumer of an authored `facing` shares.
+inline void facingVec(const std::string& facing, float& dx, float& dy)
+{
+    dx = 0.0f;
+    dy = 1.0f;
+    if (facing == "north")
+        dy = -1.0f;
+    else if (facing == "east")
+    {
+        dx = 1.0f;
+        dy = 0.0f;
+    }
+    else if (facing == "west")
+    {
+        dx = -1.0f;
+        dy = 0.0f;
+    }
+}
+
+// Load ONE level of an .ldtk project as a region. `level` is the LDtk level
+// identifier; empty loads the project's first level (the single-level case and the
+// fallback when no start is configured). A named level that doesn't exist fails
+// (ok=false) rather than silently loading the wrong place. `tileset_path` is the
+// engine's 32px RENDER atlas (e.g. "assets/tilesets/overworld.png") -- the authoring
+// source in the .ldtk is 16px, but the atlas cell indices match, so the importer just
+// points at the render atlas. `surfaces` resolves each ground tile's surface tag to
+// walkability (terrain collision -- no hand-painted layer). `structures` tiles
+// resizable structure entities (bridges, docks) across their rect (9-slice deck +
+// walkable + surface). Region{ok=false} on failure.
 Region load(const std::string& ldtk_path, const std::string& tileset_path,
-            const surfaces::Config& surfaces, const structures::Config& structures);
+            const surfaces::Config& surfaces, const structures::Config& structures,
+            const std::string& level = {});
 
 // Spawn the region's props (tile-carrying LDtk entities -- trees, rocks) as ONE
 // Y-sorted sprite each, sorted by its base world-Y, so the engine's depth-sort draws
 // the player in front/behind by position. Call once after load, before the loop.
-void spawnProps(EntityManager& em, const Region& region, const std::string& tileset_path);
+void spawnProps(EntityManager& em, const Region& region);
 
 } // namespace ldtk

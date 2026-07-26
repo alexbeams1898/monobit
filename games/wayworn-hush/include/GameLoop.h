@@ -10,6 +10,7 @@
 #include "HudCanvas.h"
 #include "InteractionMode.h"
 #include "Inventory.h"
+#include "LdtkImport.h"
 #include "Notebook.h"
 #include "Observations.h"
 #include "PlayerConfig.h"
@@ -135,6 +136,40 @@ struct GameState
     // a placed thing records it here. See savegame::World.
     std::unordered_set<std::string> gone;
 
+    // Where the pilgrim is in the world: the current LDtk level and its warps. Set by
+    // setupRegion on every load/switch; `region` is what the save carries so a walk
+    // resumes in the level it left. A warp fires only on the frame the player ENTERS
+    // its box (warp_armed re-arms once outside every box), so arriving on the
+    // destination's own warp -- the doormat you step out of -- never bounces back.
+    std::string region;                            // current LDtk level identifier
+    std::vector<ldtk::WarpPlacement> region_warps; // this level's exits
+    bool region_interior = false;                  // inside space (light/sound/camera differ)
+    bool warp_armed = false;
+    // A warp crossed this tick, applied at the TOP of a later update -- a safe point
+    // where no system holds references into the registry the switch will clear. The
+    // fade below decides WHICH update: the swap happens at full black.
+    struct PendingWarp
+    {
+        bool active = false;
+        std::string level;
+        std::string spawn;
+    } pending_warp;
+    // The fade a warp travels through: the screen darkens (Out), the region swaps at
+    // full black, then the new place lightens (In). Movement is frozen while a phase
+    // runs -- the step that crossed the threshold is committed. Phase length is
+    // world_config.warp_fade_seconds; zero disables the fade (instant swap).
+    struct WarpFade
+    {
+        enum class Phase
+        {
+            None,
+            Out,
+            In
+        };
+        Phase phase = Phase::None;
+        float t = 0.0f; // seconds into the current phase
+    } warp_fade;
+
     // Autosave bookkeeping (ephemeral -- never saved). `progress_events` counts the
     // things worth keeping (a deed enacted, a craft made, a find granted, a reading
     // landed) -- NOT the clock, which moves every frame and would make any
@@ -174,6 +209,22 @@ inline constexpr float kAmbientB = 0.24f;
 using WorldEnterFn = bool (*)(Engine& engine, EntityManager& em, GameState& gs,
                               const std::string& id);
 void setWorldEnter(WorldEnterFn fn);
+
+// Swap the world to another level mid-walk (a warp crossed): tears down the region's
+// entities and rebuilds from `level`, arriving at the SpawnPoint named `spawn`. The
+// pilgrim's state (growth, satchel, record) lives in GameState and is untouched.
+// Returns false -- and leaves the current region standing -- if the target level
+// cannot be loaded. Installed by main, same seam as WorldEnterFn.
+using RegionSwitchFn = bool (*)(Engine& engine, EntityManager& em, GameState& gs,
+                                const std::string& level, const std::string& spawn);
+void setRegionSwitch(RegionSwitchFn fn);
+
+// Where the camera is ALLOWED to be: clamped to the map's bounds per axis, and when
+// the map is smaller than the view (an interior room), pinned to its center. The one
+// rule for camera placement -- the tick applies it after following the player, and
+// placement applies it when snapping the camera, so the first frame after a spawn is
+// already where the camera will settle (no visible slide toward the clamp).
+void clampCameraToMap(EntityManager& em, const GameState& gs);
 
 // Write the active pilgrim's walk to disk now. Reads the roster, updates only that
 // pilgrim, writes it back -- so a save never clobbers anyone else's walk. No-op when

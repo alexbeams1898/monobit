@@ -58,8 +58,11 @@ void spawn(EntityManager& em, const observations::State& obs, const Config& cfg,
         // interact verb, so it carries no glimmer.
         if (o.trigger != observations::Trigger::Observe)
             continue;
+        // Not placed in the current level -> not here (content lives elsewhere in the world).
+        if (o.placement_id.empty())
+            continue;
         // A spot this pilgrim consumed is not here any more, whatever the map says.
-        if (!o.placement_id.empty() && gone.count(o.placement_id) > 0)
+        if (gone.count(o.placement_id) > 0)
             continue;
         const entt::entity e = reg.create();
         reg.emplace<Transform>(e, Transform{o.x, o.y});

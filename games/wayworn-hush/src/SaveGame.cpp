@@ -341,7 +341,8 @@ void capture(const GameState& gs, float player_x, float player_y, Data& d)
     d.clock_seconds = gs.clock.seconds;
     d.place.x = player_x;
     d.place.y = player_y;
-    d.place.walked = true; // they have been somewhere now
+    d.place.region = gs.region; // resume in the level the walk left
+    d.place.walked = true;      // they have been somewhere now
 }
 
 void apply(const Data& data, GameState& gs)

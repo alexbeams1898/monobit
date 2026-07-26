@@ -17,6 +17,7 @@
 #include "ThoughtBox.h"
 #include "TitleScreen.h"
 #include "TunePanel.h"
+#include "UIRenderer.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "gl/PixelRenderTarget.h"
@@ -161,9 +162,189 @@ constexpr Color kCraftMissColor{0.72f, 0.72f, 0.70f, 1.0f};
 // progress. Leaving the page or the game always writes regardless.
 constexpr double kAutosaveThrottleSecs = 30.0;
 
-// Installed by main (see setWorldEnter): the region/spawn plumbing lives there, so the
-// loop calls back rather than owning the map pipeline.
+// Installed by main (see setWorldEnter/setRegionSwitch): the region/spawn plumbing
+// lives there, so the loop calls back rather than owning the map pipeline.
 WorldEnterFn sWorldEnter = nullptr;
+RegionSwitchFn sRegionSwitch = nullptr;
+
+// Authoring overlay: draw every warp box + the player's body box where the game
+// actually computes them (through the same blit mapping the mouse uses). Toggled
+// with F2 in the world; off by default.
+bool sShowWarpDebug = false;
+
+// A warp crossed last tick swaps the world at a SAFE point -- the top of the update,
+// before any system holds references into the registry the switch clears. On failure
+// (bad target level) the current region is still standing: log and walk on.
+void applyPendingWarp(Engine& engine, EntityManager& em, GameState& gs)
+{
+    if (!gs.pending_warp.active)
+        return;
+    const auto pw = gs.pending_warp;
+    gs.pending_warp = {};
+    if (sRegionSwitch != nullptr && !sRegionSwitch(engine, em, gs, pw.level, pw.spawn))
+        std::fprintf(stderr, "[region] warp to '%s' failed -- staying put\n", pw.level.c_str());
+}
+
+// Walk the pending warp through its fade: a crossing starts Out, the region swaps the
+// moment Out completes (full black -- the player never sees the swap), and In runs in
+// the new place until the screen is lit again. A zero duration skips the fade
+// entirely. A failed swap (applyPendingWarp logs it) still fades back in, standing
+// where you were.
+void tickWarpFade(Engine& engine, EntityManager& em, GameState& gs, double dt)
+{
+    auto& fade = gs.warp_fade;
+    const float dur = gs.world_config.warp_fade_seconds;
+    if (fade.phase == GameState::WarpFade::Phase::None)
+    {
+        if (!gs.pending_warp.active)
+            return;
+        // The door sounds as the crossing begins: leaving an interior = exit, else enter.
+        const std::string& sfx =
+            gs.region_interior ? gs.world_config.warp_exit_sfx : gs.world_config.warp_enter_sfx;
+        if (!sfx.empty())
+            AudioSystem::playSfx(sfx, gs.world_config.warp_sfx_volume);
+        if (dur <= 0.0f)
+        {
+            applyPendingWarp(engine, em, gs);
+            return;
+        }
+        fade.phase = GameState::WarpFade::Phase::Out;
+        fade.t = 0.0f;
+        return;
+    }
+    fade.t += static_cast<float>(dt);
+    if (fade.t < dur)
+        return;
+    if (fade.phase == GameState::WarpFade::Phase::Out)
+    {
+        applyPendingWarp(engine, em, gs);
+        fade.phase = GameState::WarpFade::Phase::In;
+        fade.t = 0.0f;
+    }
+    else
+    {
+        fade = {};
+    }
+}
+
+// The world's global toggles: F1 = dev tunables panel (ImGui pass), F2 = warp-box
+// diagnostic overlay, M = soundtrack mute (persists across track changes).
+void handleWorldHotkeys(EntityManager& em)
+{
+    if (pressedThisFrame(em, SDL_SCANCODE_F1))
+        tune_panel::toggle();
+    if (pressedThisFrame(em, SDL_SCANCODE_F2))
+        sShowWarpDebug = !sShowWarpDebug;
+    if (pressedThisFrame(em, SDL_SCANCODE_M))
+        AudioSystem::toggleMusicMute();
+}
+
+// How dark the warp-fade overlay is right now: 0 (no fade running) -> 1 (full black
+// at the swap) -> 0. The render pass draws a black rect at this alpha over everything.
+float warpFadeAlpha(const GameState& gs)
+{
+    const float dur = gs.world_config.warp_fade_seconds;
+    if (gs.warp_fade.phase == GameState::WarpFade::Phase::None || dur <= 0.0f)
+        return 0.0f;
+    const float a = std::clamp(gs.warp_fade.t / dur, 0.0f, 1.0f);
+    return gs.warp_fade.phase == GameState::WarpFade::Phase::Out ? a : 1.0f - a;
+}
+
+// A warp is a directional THRESHOLD: a thin strip you cross against its facing.
+// `facing` is the way you step out when arriving here, so entering is always the
+// opposite push -- the mat at a door's base faces north (out into the room) and fires
+// when you push south across it; the strip at a building's door faces south and fires
+// when you press north into the doorway. One rule for every passage:
+//
+//     fire = the body's INTENDED path this tick touches the strip  AND
+//            intent pushes against the strip's facing
+//
+// The intended path (tick start -> current + intent carried to a full stride, a swept
+// segment ignoring collision) is what makes thin strips both speed-proof and
+// pixel-proof: a fast tick can step clean over a 4px band but a segment cannot skip a
+// box it crossed, and a wall can stop your feet a fraction of a pixel short of a strip
+// but it cannot stop where you were headed. Standing still degenerates to plain
+// overlap, so pressing into a door (stopped by the building, zero motion) still
+// counts. Crossing sideways or brushing past without pushing in fires nothing.
+// `touching` holds the re-arm latch.
+struct WarpProbe
+{
+    float prevx = 0.0f, prevy = 0.0f; // body center at the tick's start
+    float px = 0.0f, py = 0.0f;       // INTENDED body center (current + intent stride)
+    float hw = 0.0f, hh = 0.0f;       // body half extents
+    float ix = 0.0f, iy = 0.0f;       // movement intent
+};
+
+bool warpFires(const ldtk::WarpPlacement& w, const WarpProbe& p, bool& touching)
+{
+    // The strip expanded by the body's half extents: the box the body's CENTER must
+    // enter for the body to touch the strip. Segment-vs-box (slab test) against it.
+    const float ox = w.w * 0.5f + p.hw;
+    const float oy = w.h * 0.5f + p.hh;
+    const float dx = p.px - p.prevx;
+    const float dy = p.py - p.prevy;
+    float t0 = 0.0f;
+    float t1 = 1.0f;
+    const auto slab = [&](float pos, float d, float lo, float hi)
+    {
+        if (d == 0.0f)
+            return pos >= lo && pos <= hi; // no motion on this axis: must already be inside
+        const float a = (lo - pos) / d;
+        const float b = (hi - pos) / d;
+        t0 = std::max(t0, std::min(a, b));
+        t1 = std::min(t1, std::max(a, b));
+        return t0 <= t1;
+    };
+    const bool crossed = slab(p.prevx, dx, w.x - ox, w.x + ox) && //
+                         slab(p.prevy, dy, w.y - oy, w.y + oy);
+    if (!crossed)
+        return false;
+    touching = true;
+    float fx = 0.0f;
+    float fy = 0.0f;
+    ldtk::facingVec(w.facing, fx, fy);
+    return p.ix * fx + p.iy * fy < 0.0f; // pushing AGAINST the facing = crossing in
+}
+
+void detectWarpCrossing(EntityManager& em, GameState& gs, float px, float py, float ix, float iy,
+                        float stride)
+{
+    float hw = 0.0f;
+    float hh = 0.0f;
+    if (const auto* col = em.registry().try_get<Collider>(gs.player))
+    {
+        hw = col->width * 0.5f;
+        hh = col->height * 0.5f;
+    }
+    WarpProbe probe;
+    probe.px = px + ix * stride;
+    probe.py = py + iy * stride;
+    probe.prevx = px;
+    probe.prevy = py;
+    probe.hw = hw;
+    probe.hh = hh;
+    probe.ix = ix;
+    probe.iy = iy;
+    // Where this tick's movement started -- the engine snapshots it at the tick top, so
+    // (prev -> current) is exactly the path travelled this tick.
+    if (const auto* prev = em.registry().try_get<PreviousTransform>(gs.player))
+    {
+        probe.prevx = prev->x;
+        probe.prevy = prev->y;
+    }
+    bool touching = false;
+    for (const auto& w : gs.region_warps)
+    {
+        const bool fires = warpFires(w, probe, touching);
+        if (fires && gs.warp_armed && !gs.pending_warp.active)
+        {
+            gs.pending_warp = {true, w.target_level, w.target};
+            break;
+        }
+    }
+    if (!touching)
+        gs.warp_armed = true;
+}
 
 // Note that something worth keeping just happened. Called ONLY from the deed / craft /
 // grant / reading chokepoints -- deliberately NOT from the clock, which moves every
@@ -879,9 +1060,27 @@ void setWorldEnter(WorldEnterFn fn)
     sWorldEnter = fn;
 }
 
+void setRegionSwitch(RegionSwitchFn fn)
+{
+    sRegionSwitch = fn;
+}
+
 void saveNow(const EntityManager& em, GameState& gs)
 {
     writeSave(em, gs);
+}
+
+void clampCameraToMap(EntityManager& em, const GameState& gs)
+{
+    auto* cam = em.registry().try_get<Camera>(gs.player);
+    if (cam == nullptr)
+        return;
+    const float mapW = static_cast<float>(em.tile_map.width * em.tile_map.tile_size);
+    const float mapH = static_cast<float>(em.tile_map.height * em.tile_map.tile_size);
+    const float halfW = static_cast<float>(kInternalWidth) * 0.5f;
+    const float halfH = static_cast<float>(kInternalHeight) * 0.5f;
+    cam->x = mapW <= halfW * 2.0f ? mapW * 0.5f : std::clamp(cam->x, halfW, mapW - halfW);
+    cam->y = mapH <= halfH * 2.0f ? mapH * 0.5f : std::clamp(cam->y, halfH, mapH - halfH);
 }
 
 void gameUpdate(Engine& engine, EntityManager& em, double dt)
@@ -897,13 +1096,9 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
         return;
     }
 
-    // F1 toggles the dev tunables panel (drawn in the ImGui pass).
-    if (pressedThisFrame(em, SDL_SCANCODE_F1))
-        tune_panel::toggle();
+    tickWarpFade(engine, em, gs, dt);
 
-    // M mutes / unmutes the soundtrack (persists across track changes).
-    if (pressedThisFrame(em, SDL_SCANCODE_M))
-        AudioSystem::toggleMusicMute();
+    handleWorldHotkeys(em);
 
     // A stat change re-runs the engine over the stat keys (growth can land a
     // thought or re-open a prior miss). Then announce any newly-reachable
@@ -943,10 +1138,12 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
 
     const PlayerConfig& pc = gs.player_config;
 
-    // Only the action menu freezes movement (its W/S drive selection). Readings
+    // The action menu freezes movement (its W/S drive selection), and so does a warp
+    // fade in progress -- the step that crossed the threshold is committed. Readings
     // leave you free to walk -- and walking away dismisses them (below).
     static const Uint8 kNoKeys[SDL_NUM_SCANCODES] = {};
-    const Uint8* keys = menuUp ? kNoKeys : SDL_GetKeyboardState(nullptr);
+    const bool fadeUp = gs.warp_fade.phase != GameState::WarpFade::Phase::None;
+    const Uint8* keys = (menuUp || fadeUp) ? kNoKeys : SDL_GetKeyboardState(nullptr);
 
     // Hold Shift to fast-walk: faster movement + brisker leg cadence.
     const bool fast = keys[SDL_SCANCODE_LSHIFT] != 0 || keys[SDL_SCANCODE_RSHIFT] != 0;
@@ -989,6 +1186,8 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
 
     // Player position -- observation glow + interaction are proximity-based (no facing).
     const auto& pt = reg.get<Transform>(gs.player);
+
+    detectWarpCrossing(em, gs, pt.x, pt.y, intent.dx, intent.dy, speed * static_cast<float>(dt));
 
     // Ambient triggers: Enter encounters (areas, moods) fire on their own when the player
     // is within range -- no observe verb. Deliberate object observing stays in
@@ -1050,8 +1249,9 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     head_marker::set(em, thoughtUp);
     head_marker::update(em, gs.head_marker_config, pt.x, pt.y, static_cast<float>(dt));
 
-    // Snap the active camera to its entity (the player).
+    // Snap the active camera to its entity (the player), then keep the view on the map.
     CameraSystem::update(em);
+    clampCameraToMap(em, gs);
 }
 
 void gamePreRender(Engine& engine, EntityManager& em)
@@ -1098,11 +1298,61 @@ void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, 
     engine::gl::pixelTargetEnd(engine.windowWidth(), engine.windowHeight());
 }
 
+// Draw the warp boxes + the player's body box exactly where the game computes them,
+// through the same internal-resolution blit mapping the mouse uses -- so what fires and
+// what draws can never disagree. Body box: green = armed, orange = disarmed (latched).
+void drawWarpDebug(const Engine& engine, EntityManager& em, const GameState& gs)
+{
+    entt::entity camE = entt::null;
+    for (auto [e, c] : em.registry().view<Camera>().each())
+        if (c.active)
+            camE = e;
+    if (camE == entt::null)
+        return;
+    const auto& cam = em.registry().get<Camera>(camE);
+    const engine::gl::BlitRect b = engine::gl::computeBlitRect(
+        kInternalWidth, kInternalHeight, engine.windowWidth(), engine.windowHeight());
+    if (b.width <= 0 || b.height <= 0)
+        return;
+    const float sx = static_cast<float>(b.width) / static_cast<float>(kInternalWidth);
+    const float sy = static_cast<float>(b.height) / static_cast<float>(kInternalHeight);
+    const auto toScreenX = [&](float wx) {
+        return static_cast<float>(b.x) +
+               (wx - cam.x + static_cast<float>(kInternalWidth) * 0.5f) * sx;
+    };
+    const auto toScreenY = [&](float wy)
+    {
+        return static_cast<float>(b.y) +
+               (wy - cam.y + static_cast<float>(kInternalHeight) * 0.5f) * sy;
+    };
+    const auto box = [&](float cx, float cy, float w, float h, const Color& fill)
+    {
+        const float x0 = toScreenX(cx - w * 0.5f);
+        const float y0 = toScreenY(cy - h * 0.5f);
+        UIRenderer::drawRect(x0, y0, w * sx, h * sy, fill);
+    };
+    for (const auto& w : gs.region_warps)
+        box(w.x, w.y, w.w, w.h, Color{0.55f, 0.30f, 0.95f, 0.35f});
+    if (em.registry().valid(gs.player))
+    {
+        const auto& t = em.registry().get<Transform>(gs.player);
+        if (const auto* col = em.registry().try_get<Collider>(gs.player))
+        {
+            const Color c =
+                gs.warp_armed ? Color{0.2f, 0.95f, 0.3f, 0.45f} : Color{0.95f, 0.6f, 0.15f, 0.45f};
+            box(t.x, t.y, col->width, col->height, c);
+        }
+    }
+}
+
 void gameRenderUI(Engine& engine, EntityManager& em)
 {
     auto& gs = em.registry().ctx().get<GameState>();
     const int ww = engine.windowWidth();
     const int wh = engine.windowHeight();
+
+    if (!inMenu(gs) && sShowWarpDebug)
+        drawWarpDebug(engine, em, gs);
 
     // The greeting IS the screen -- none of the world's HUD applies, and the mouse belongs
     // to the title. Its action funnels through the same sink the keys use. Note the shared
@@ -1207,6 +1457,12 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     // CONTENT, not HUD: a toast exists because something just happened, and says so once. The
     // HUD mode doesn't silence it any more than it silences a reading.
     notify::render(static_cast<float>(engine.frameDt()), ww, wh);
+
+    // The warp fade, over everything: whatever is on screen goes to black with the
+    // world and comes back with it.
+    if (const float a = warpFadeAlpha(gs); a > 0.0f)
+        UIRenderer::drawRect(0.0f, 0.0f, static_cast<float>(ww), static_cast<float>(wh),
+                             Color{0.0f, 0.0f, 0.0f, a});
 
     clearOneShotInput(em);
 }

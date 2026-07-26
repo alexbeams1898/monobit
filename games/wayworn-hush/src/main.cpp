@@ -151,8 +151,12 @@ void placePlayer(EntityManager& em, const GameState& gs, float wx, float wy)
     {
         cam->x = wx;
         cam->y = wy;
-        cam->prev_x = wx;
-        cam->prev_y = wy;
+        // Snap THROUGH the placement rule (bounds clamp / small-map centering), then
+        // anchor prev to the clamped spot -- otherwise the first frame interpolates
+        // from the raw player position toward wherever the tick's clamp puts it.
+        clampCameraToMap(em, gs);
+        cam->prev_x = cam->x;
+        cam->prev_y = cam->y;
     }
 }
 
@@ -207,43 +211,175 @@ void resetAuthoredState(GameState& gs)
 // AppState / docs/design/SHELL.md).
 bool enterWorld(Engine& engine, EntityManager& em, GameState& gs, bool continue_saved);
 
-// Load the authored LDtk region into the world (fatal if it fails -- the region IS the
-// map). Applies terrain + surface map, uploads it, spawns the player at the region's
-// PlayerSpawn, binds observation placements, and spawns glimmer signals + tile-carrying
-// prop entities (trees/rocks). See docs/design/MAP-PIPELINE.md.
-bool setupRegion(Engine& engine, EntityManager& em, GameState& gs)
+// Face the player along a spawn's authored cardinal.
+void faceSpawn(EntityManager& em, const GameState& gs, const std::string& facing)
+{
+    auto* f = em.registry().try_get<FacingDirection>(gs.player);
+    if (f == nullptr)
+        return;
+    float dx = 0.0f;
+    float dy = 0.0f;
+    ldtk::facingVec(facing, dx, dy);
+    f->dx = dx;
+    f->dy = dy;
+    f->render_dx = dx;
+    f->render_dy = dy;
+}
+
+// Apply a LOADED region to the world: terrain + surface map uploaded, player spawned at
+// the arrival point named `spawn_id` (the default spawn when empty), observation
+// placements bound, glimmers + floor items + props spawned. The load/apply split exists
+// so a mid-walk switch can load the target level FIRST and only tear the world down once
+// it is known good (see switchRegion).
+// Where the player appears in a freshly applied region. Resolution order: a Warp id
+// (warps are both ends of a passage -- you emerge at the named warp's center, stepping
+// out along its facing), then a SpawnPoint id, then the auto-pair (below), then the
+// level's default id-less spawn. One name, one order.
+struct Arrival
+{
+    float x = 0.0f;
+    float y = 0.0f;
+    std::string facing;
+    std::string label; // for the not-standable diagnostic
+    bool found = false;
+    // Half-extent of the arrival's own box along each axis (a warp's; 0 for spawns).
+    // An arrival at a warp must CLEAR its box along `facing` before it can settle --
+    // a door warp's center is inside the doorway (behind the building's face), so
+    // emerging there leaves the player hidden behind the sprite it belongs to.
+    float clear_w = 0.0f;
+    float clear_h = 0.0f;
+};
+
+// Auto-pair: arriving with no name, but a known origin -- arrive at the warp that
+// points back there (a doorway is two warps aimed at each other, so the return address
+// identifies the arrival with no authored ids). Ambiguous only when several passages
+// connect the SAME two levels; then say so, take the first -- ids + targets exist for
+// exactly that case.
+Arrival pairReturnWarp(const ldtk::Region& region, const std::string& from_level)
+{
+    Arrival a;
+    int matches = 0;
+    for (const auto& w : region.warps)
+        if (w.target_level == from_level)
+        {
+            if (++matches == 1)
+                a = {w.x, w.y, w.facing, "return->" + from_level, true, w.w * 0.5f, w.h * 0.5f};
+        }
+    if (matches > 1)
+        std::fprintf(stderr,
+                     "[region] %d warps in '%s' point back at '%s' -- ambiguous return, "
+                     "using the first; give them ids + targets to disambiguate\n",
+                     matches, region.level_id.c_str(), from_level.c_str());
+    return a;
+}
+
+Arrival resolveArrival(const ldtk::Region& region, const std::string& spawn_id,
+                       const std::string& from_level)
+{
+    // Named arrivals first: a Warp id, then a SpawnPoint id.
+    if (!spawn_id.empty())
+    {
+        for (const auto& w : region.warps)
+            if (w.id == spawn_id)
+                return {w.x, w.y, w.facing, w.id, true, w.w * 0.5f, w.h * 0.5f};
+        for (const auto& s : region.spawns)
+            if (s.id == spawn_id)
+                return {s.wx, s.wy, s.facing, s.id, true};
+        std::fprintf(stderr, "[region] no warp/spawn '%s' in '%s' -- falling through\n",
+                     spawn_id.c_str(), region.level_id.c_str());
+    }
+    // Unnamed with a known origin: the paired return warp. This must beat the default
+    // spawn -- most doors carry no target at all, and the default spawn is where a NEW
+    // walk begins, not where a doorway comes out.
+    if (!from_level.empty())
+    {
+        const Arrival a = pairReturnWarp(region, from_level);
+        if (a.found)
+            return a;
+    }
+    // The level's default (id-less) spawn, then any spawn at all.
+    for (const auto& s : region.spawns)
+        if (s.id.empty())
+            return {s.wx, s.wy, s.facing, s.id, true};
+    if (!region.spawns.empty())
+    {
+        const ldtk::SpawnPoint& s = region.spawns.front();
+        return {s.wx, s.wy, s.facing, s.id, true};
+    }
+    return {};
+}
+
+void applyRegion(Engine& engine, EntityManager& em, GameState& gs, const ldtk::Region& region,
+                 const std::string& spawn_id, const std::string& from_level)
 {
     const world_config::Config& wc = gs.world_config;
-    const ldtk::Region region =
-        ldtk::load(wc.ldtk, wc.tileset_png, gs.surface_config, gs.structure_config);
-    std::fprintf(stderr,
-                 "[region] ldtk load %s: %dx%d, %zu objects, %zu props, %zu encounters, %zu "
-                 "pickups\n",
-                 region.ok ? "OK" : "FAILED", region.map.width, region.map.height,
-                 region.objects.size(), region.props.size(), region.encounters.size(),
-                 region.pickups.size());
-    if (!region.ok)
-    {
-        // The LDtk region IS the map -- no fallback. A failed load (missing/corrupt file)
-        // is fatal: the caller aborts rather than launch into an empty world.
-        std::fprintf(stderr, "[region] FATAL: could not load the region; aborting.\n");
-        return false;
-    }
     em.tile_map = region.map;
     em.tile_config = region.config;
     gs.tile_surface = region.tile_surface; // tile id -> surface, for footsteps
     gs.cell_surface = region.cell_surface; // per-cell override (bridge decks, etc.)
     TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
 
+    // Where the pilgrim now is + how to leave it. The warp latch starts DISARMED: the
+    // arrival may sit inside the destination's own warp box, and it must not fire
+    // until the player has first stepped clear of every box.
+    gs.region = region.level_id;
+    gs.region_warps = region.warps;
+    gs.region_interior = region.interior;
+    gs.warp_armed = false;
+    gs.pending_warp = {};
+
     gs.player = world_init::spawnPlayer(em, gs.player_config);
-    for (const auto& o : region.objects)
-        if (o.type == "PlayerSpawn")
-            placePlayer(em, gs, o.wx, o.wy);
+    Arrival at = resolveArrival(region, spawn_id, from_level);
+    if (at.found)
+    {
+        // Step out along the arrival's facing: FIRST clear the arrival's own box (a door
+        // warp's center is inside the doorway, behind the building's face -- settling
+        // there leaves the player hidden behind the sprite), THEN keep stepping while the
+        // spot is unstandable. A spawn (clear extents 0) that is already standable does
+        // not move.
+        {
+            float dx = 0.0f;
+            float dy = 0.0f;
+            ldtk::facingVec(at.facing, dx, dy);
+            const auto* col = em.registry().try_get<Collider>(gs.player);
+            const float bodyHalf = col ? 0.5f * (dx != 0.0f ? col->width : col->height) : 8.0f;
+            const float clear = std::abs(dx) * at.clear_w + std::abs(dy) * at.clear_h;
+            if (clear > 0.0f)
+            {
+                at.x += dx * (clear + bodyHalf + 2.0f);
+                at.y += dy * (clear + bodyHalf + 2.0f);
+            }
+            constexpr float kStepPx = 4.0f;
+            constexpr int kMaxSteps = 32; // up to 4 further tiles of step-out
+            for (int i = 0; i < kMaxSteps; ++i)
+            {
+                if (player_movement::canStand(em, gs.player, at.x, at.y))
+                    break;
+                at.x += dx * kStepPx;
+                at.y += dy * kStepPx;
+            }
+        }
+        std::fprintf(stderr, "[region] arrive '%s' at (%.0f,%.0f) in '%s'\n", at.label.c_str(),
+                     static_cast<double>(at.x), static_cast<double>(at.y), region.level_id.c_str());
+        placePlayer(em, gs, at.x, at.y);
+        faceSpawn(em, gs, at.facing);
+        // An unstandable arrival pins the player inside collision forever (out-of-bounds
+        // counts as solid). That's an authoring slip -- say so loudly instead of letting
+        // it present as "the game froze".
+        if (!player_movement::canStand(em, gs.player, at.x, at.y))
+            std::fprintf(stderr,
+                         "[region] arrival '%s' at (%.0f,%.0f) in '%s' is NOT standable -- "
+                         "the player will be stuck; move it in the editor\n",
+                         at.label.c_str(), static_cast<double>(at.x), static_cast<double>(at.y),
+                         region.level_id.c_str());
+    }
 
     // Bind observation PLACEMENTS from the map onto the loaded observation content: an
     // entity carrying an `encounter` field supplies its position/size/trigger. Content
     // (observations.json) and placement (LDtk) meet by id here -- before glimmer spawns
-    // (it reads each encounter's world position). Authoring gaps are logged, not fatal.
+    // (it reads each encounter's world position). A placement naming unknown content is
+    // an authoring gap and logged; content with no placement HERE is simply elsewhere in
+    // the world (other levels hold it), so it is not reported.
     {
         std::vector<observations::Placement> placements;
         placements.reserve(region.encounters.size());
@@ -254,15 +390,63 @@ bool setupRegion(Engine& engine, EntityManager& em, GameState& gs)
         for (const auto& id : rep.placements_without_encounter)
             std::fprintf(stderr, "[observe] placement '%s' has no observation content\n",
                          id.c_str());
-        for (const auto& id : rep.encounters_without_placement)
-            std::fprintf(stderr, "[observe] observation '%s' has no placement in the map\n",
-                         id.c_str());
     }
 
     glimmer::spawn(em, gs.observations, gs.glimmer_config, gs.gone);
     world_items::spawn(em, region.pickups, gs.items, gs.loot_tables, gs.world_items_config,
                        gs.gone);
-    ldtk::spawnProps(em, region, wc.tileset_png);
+    ldtk::spawnProps(em, region);
+}
+
+// Load the level `level` (empty = the configured start) into the world (fatal if it
+// fails -- the region IS the map). See docs/design/MAP-PIPELINE.md.
+bool setupRegion(Engine& engine, EntityManager& em, GameState& gs, const std::string& level,
+                 const std::string& spawn_id)
+{
+    const world_config::Config& wc = gs.world_config;
+    const ldtk::Region region =
+        ldtk::load(wc.ldtk, wc.tileset_png, gs.surface_config, gs.structure_config, level);
+    std::fprintf(stderr,
+                 "[region] ldtk load %s: '%s' %dx%d, %zu spawns, %zu warps, %zu props, %zu "
+                 "encounters, %zu pickups\n",
+                 region.ok ? "OK" : "FAILED", region.level_id.c_str(), region.map.width,
+                 region.map.height, region.spawns.size(), region.warps.size(), region.props.size(),
+                 region.encounters.size(), region.pickups.size());
+    if (!region.ok)
+    {
+        // The LDtk region IS the map -- no fallback. A failed load (missing/corrupt file)
+        // is fatal: the caller aborts rather than launch into an empty world.
+        std::fprintf(stderr, "[region] FATAL: could not load the region; aborting.\n");
+        return false;
+    }
+    applyRegion(engine, em, gs, region, spawn_id, /*from_level=*/{});
+    return true;
+}
+
+// Swap the world to another level mid-walk (a warp crossed). Transactional: the target
+// is loaded BEFORE the current world is torn down, so a bad warp target leaves the
+// pilgrim standing where they were instead of in a void. Pilgrim state (growth, satchel,
+// record, clock) lives in GameState and passes through untouched -- only the region's
+// entities are rebuilt, exactly as a fresh enter builds them (rebuild-from-authored;
+// the spawners re-filter against gs.gone).
+bool switchRegion(Engine& engine, EntityManager& em, GameState& gs, const std::string& level,
+                  const std::string& spawn_id)
+{
+    const world_config::Config& wc = gs.world_config;
+    const ldtk::Region region =
+        ldtk::load(wc.ldtk, wc.tileset_png, gs.surface_config, gs.structure_config, level);
+    if (!region.ok)
+        return false;
+
+    const std::string from_level = gs.region; // where we are leaving, for auto-pairing
+    em.registry().clear();
+    gs.player = entt::null;
+    applyRegion(engine, em, gs, region, spawn_id, from_level);
+    head_marker::spawn(em, gs.head_marker_config);
+    // Everything above spawned mid-tick; anchor it before a frame renders it.
+    anchorInterpolation(em);
+    std::fprintf(stderr, "[region] -> '%s' (%zu warps)\n", gs.region.c_str(),
+                 gs.region_warps.size());
     return true;
 }
 
@@ -289,10 +473,27 @@ bool enterWorld(Engine& engine, EntityManager& em, GameState& gs, const std::str
     savegame::apply(*pilgrim, gs);
     gs.app.active_id = pilgrim->id;
 
+    // A quit mid-warp-fade leaves the fade phase behind; a new walk starts lit.
+    gs.warp_fade = {};
+
     // Terrain + player + props, filtered by the walk above. The region IS the map -- a
-    // failed load is fatal.
-    if (!setupRegion(engine, em, gs))
-        return false;
+    // failed load is fatal. A walk resumes in the level it left; a fresh one starts at
+    // the configured start level (empty = the project's first). A saved level that no
+    // longer exists (renamed/removed in authoring) falls back to the start level rather
+    // than stranding the walk at the title -- same policy as a resume point that is no
+    // longer standable (below).
+    const std::string level = pilgrim->place.walked && !pilgrim->place.region.empty()
+                                  ? pilgrim->place.region
+                                  : gs.world_config.start_level;
+    if (!setupRegion(engine, em, gs, level, /*spawn_id=*/{}))
+    {
+        if (level == gs.world_config.start_level)
+            return false;
+        std::fprintf(stderr, "[save] saved level '%s' no longer exists -- starting from '%s'\n",
+                     level.c_str(), gs.world_config.start_level.c_str());
+        if (!setupRegion(engine, em, gs, gs.world_config.start_level, /*spawn_id=*/{}))
+            return false;
+    }
 
     if (!pilgrim->place.walked)
     {
@@ -306,8 +507,13 @@ bool enterWorld(Engine& engine, EntityManager& em, GameState& gs, const std::str
         // authored; remove the moment it exists as a pickup on the map.
         inventory::add(gs.satchel, gs.items, inventory::ItemInstance{"watch"});
     }
-    else if (player_movement::canStand(em, gs.player, pilgrim->place.x, pilgrim->place.y))
+    else if ((pilgrim->place.region.empty() || pilgrim->place.region == gs.region) &&
+             player_movement::canStand(em, gs.player, pilgrim->place.x, pilgrim->place.y))
     {
+        // Restore the resume point only in the level it was saved in (a region-fallback
+        // above means these coordinates belong to a map that no longer exists -- they
+        // could be "standable" in the wrong one by coincidence). An empty saved region
+        // is a pre-multi-level save; its coordinates are this world's.
         placePlayer(em, gs, pilgrim->place.x, pilgrim->place.y);
     }
     else
@@ -317,7 +523,7 @@ bool enterWorld(Engine& engine, EntityManager& em, GameState& gs, const std::str
         // the world entirely. Falling back to the spawn keeps a stale walk playable instead
         // of stranding them in the void.
         std::fprintf(stderr,
-                     "[save] resume point (%.0f,%.0f) is not standable -- "
+                     "[save] resume point (%.0f,%.0f) is not standable here -- "
                      "starting from the map's spawn instead\n",
                      static_cast<double>(pilgrim->place.x), static_cast<double>(pilgrim->place.y));
     }
@@ -500,6 +706,7 @@ int main(int argc, char* argv[])
     // if the entry exists, and asking the disk every frame to draw a menu is absurd.
     gs.app.pilgrim_count = static_cast<int>(savegame::load().pilgrims.size());
     setWorldEnter(&enterWorld);
+    setRegionSwitch(&switchRegion);
     title_screen::reset();
 
     engine.setGameUpdate(&gameUpdate);

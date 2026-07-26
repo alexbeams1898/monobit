@@ -596,9 +596,12 @@ TEST_CASE("walking into an ambient spot reports its thoughts too", "[observation
       ]
     })");
     // The box + trigger are placement, which the map supplies (not the observations config).
+    // placement_id marks each as PLACED in the current level -- an unplaced encounter is
+    // elsewhere in the world and proximity skips it.
     for (auto& o : s.encounters)
     {
         o.trigger = observations::Trigger::Enter;
+        o.placement_id = "p_" + o.id;
         o.x = 0;
         o.y = 0;
     }

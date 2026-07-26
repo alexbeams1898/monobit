@@ -8,6 +8,8 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
+#include <filesystem>
 #include <fstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -196,48 +198,74 @@ const json* findLayer(const json& level, const char* identifier)
     return nullptr;
 }
 
-// Map atlas cell id -> surface name from the tileset's enumTags. LDtk tags tiles in
-// the tileset editor: each enumTags entry is {enumValueId, tileIds:[cell ids]}, where
-// enumValueId is the surface (e.g. "water") and tileIds are the cells wearing it (the
-// SAME cell index space as cellId()). Untagged cells simply aren't in the map -> they
-// resolve to the default surface. Reads the Overworld tileset def.
-std::unordered_map<int, std::string> surfaceByCell(const json& j)
+// The tileset def a LEVEL's ground layer was painted with, by the layer's
+// __tilesetDefUid. Tile ids are per-tileset, so everything keyed by them (surfaces,
+// atlas columns, the render atlas itself) must come from THIS def, not a global one.
+// uid < 0 (a layer without the field) falls back to the legacy Overworld match.
+const json* tilesetDef(const json& j, int uid)
 {
-    std::unordered_map<int, std::string> out;
     const auto defs = j.find("defs");
     if (defs == j.end())
-        return out;
+        return nullptr;
     const auto sets = defs->find("tilesets");
     if (sets == defs->end() || !sets->is_array())
-        return out;
+        return nullptr;
     for (const auto& ts : *sets)
     {
-        if (ts.value("relPath", std::string{}).find("Overworld") == std::string::npos)
-            continue;
-        if (const auto tags = ts.find("enumTags"); tags != ts.end() && tags->is_array())
-            for (const auto& tag : *tags)
-            {
-                const std::string surface = tag.value("enumValueId", std::string{});
-                if (const auto ids = tag.find("tileIds"); ids != tag.end() && ids->is_array())
-                    for (const auto& id : *ids)
-                        out[id.get<int>()] = surface;
-            }
+        if (uid >= 0 ? ts.value("uid", -1) == uid
+                     : ts.value("relPath", std::string{}).find("Overworld") != std::string::npos)
+            return &ts;
     }
+    return nullptr;
+}
+
+// The 32px render atlas for a tileset, by convention: authoring source `Inner.png` ->
+// `assets/tilesets/inner.png` (the x2 nearest-neighbor twin -- see MAP-PIPELINE.md).
+// Falls back to `fallback` (the configured default atlas) when the def carries no
+// relPath or the conventional file doesn't exist -- loudly, because a level painted
+// with a tileset whose atlas is missing would otherwise render from the wrong sheet.
+std::string atlasPathFor(const json* def, const std::string& fallback)
+{
+    if (def == nullptr)
+        return fallback;
+    const std::string rel = def->value("relPath", std::string{});
+    if (rel.empty())
+        return fallback;
+    std::string stem = std::filesystem::path(rel).stem().string();
+    for (char& c : stem)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    const std::string path = "assets/tilesets/" + stem + ".png";
+    if (!std::filesystem::exists(path))
+    {
+        std::fprintf(stderr, "[ldtk] no render atlas '%s' for tileset '%s' -- falling back to %s\n",
+                     path.c_str(), rel.c_str(), fallback.c_str());
+        return fallback;
+    }
+    return path;
+}
+
+// Map atlas cell id -> surface name from a tileset's enumTags. LDtk tags tiles in
+// the tileset editor: each enumTags entry is {enumValueId, tileIds:[cell ids]}, where
+// enumValueId is the surface (e.g. "Water") and tileIds are the cells wearing it (the
+// SAME cell index space as cellId()). Untagged cells simply aren't in the map -> they
+// resolve to the default surface.
+std::unordered_map<int, std::string> surfaceByCell(const json& j, int tileset_uid)
+{
+    std::unordered_map<int, std::string> out;
+    const json* ts = tilesetDef(j, tileset_uid);
+    if (ts == nullptr)
+        return out;
+    if (const auto tags = ts->find("enumTags"); tags != ts->end() && tags->is_array())
+        for (const auto& tag : *tags)
+        {
+            const std::string surface = tag.value("enumValueId", std::string{});
+            if (const auto ids = tag.find("tileIds"); ids != tag.end() && ids->is_array())
+                for (const auto& id : *ids)
+                    out[id.get<int>()] = surface;
+        }
     return out;
 }
 } // namespace
-
-// Atlas columns for the Overworld tileset (so a src pixel resolves to a cell index).
-// Falls back to the passed default if the def is absent.
-int atlasCols(const json& j, int fallback)
-{
-    if (const auto ts = j.find("defs"); ts != j.end())
-        if (const auto arr = ts->find("tilesets"); arr != ts->end() && arr->is_array())
-            for (const auto& t : *arr)
-                if (t.value("relPath", std::string{}).find("Overworld") != std::string::npos)
-                    return t.value("__cWid", fallback);
-    return fallback;
-}
 
 // The stable identity of a placed entity, as the map file records it. `iid` is the
 // authoring format's own persistent per-entity UUID: it survives moving, resizing, and
@@ -268,10 +296,36 @@ std::string entityField(const json& e, const char* identifier)
     return {};
 }
 
+// The CENTER of a box entity in world px. LDtk's `px` is the entity's PIVOT point --
+// NOT necessarily the top-left: a bottom-center pivot (0.5,1) puts `px` at the box's
+// bottom edge. Treating px as top-left silently shifts the box by up to a full size
+// in each axis, so where the author SEES the box and where the game puts it disagree.
+// center = pivot point + size * (0.5 - pivot), the same math the prop path uses.
+// False (a malformed entity with no position) means skip the entity, not fail the load.
+bool boxCenter(const json& e, float& cx, float& cy, float& w, float& h)
+{
+    const auto px = e.find("px");
+    if (px == e.end() || !px->is_array() || px->size() != 2)
+        return false;
+    const float wx = static_cast<float>((*px)[0].get<int>() * 2);
+    const float wy = static_cast<float>((*px)[1].get<int>() * 2);
+    w = static_cast<float>(e.value("width", 16) * 2);
+    h = static_cast<float>(e.value("height", 16) * 2);
+    float pvx = 0.0f, pvy = 0.0f; // LDtk's default pivot is top-left
+    if (const auto pv = e.find("__pivot"); pv != e.end() && pv->is_array() && pv->size() == 2)
+    {
+        pvx = (*pv)[0].get<float>();
+        pvy = (*pv)[1].get<float>();
+    }
+    cx = wx + w * (0.5f - pvx);
+    cy = wy + h * (0.5f - pvy);
+    return true;
+}
+
 // If entity `e` carries a non-empty `encounter` field, append its placement: the box
 // AABB (center + size, x2 to world px) marks WHERE the encounter is -- you interact when
 // within interact_reach of it. Also reads the optional `trigger` mode. Only the Encounter
-// box carries this field; physical entities stay field-free. px is top-left (authoring px).
+// box carries this field; physical entities stay field-free.
 void collectEncounter(const json& e, Region& r)
 {
     const std::string id = entityField(e, "encounter");
@@ -280,18 +334,11 @@ void collectEncounter(const json& e, Region& r)
     const std::string placementId = placementIdOf(e);
     if (placementId.empty())
         return; // no identity -> the game could never record what happened to it
-    const auto px = e.find("px");
-    if (px == e.end() || !px->is_array())
-        return;
-    const float wx = static_cast<float>((*px)[0].get<int>() * 2);
-    const float wy = static_cast<float>((*px)[1].get<int>() * 2);
     EncounterPlacement p;
     p.placement_id = placementId;
     p.id = id;
-    p.w = static_cast<float>(e.value("width", 16) * 2);
-    p.h = static_cast<float>(e.value("height", 16) * 2);
-    p.x = wx + p.w * 0.5f; // px is top-left for a resizable box -> center it
-    p.y = wy + p.h * 0.5f;
+    if (!boxCenter(e, p.x, p.y, p.w, p.h))
+        return;
     p.trigger = entityField(e, "trigger");
     r.encounters.push_back(std::move(p));
 }
@@ -380,6 +427,32 @@ void parseEntities(const Atlas& atlas, const json& level, const structures::Conf
         {
             r.props.push_back(buildProp(atlas, e, *tile, wx, wy));
         }
+        else if (id == "PlayerSpawn")
+        {
+            SpawnPoint s;
+            s.id = entityField(e, "id");
+            s.facing = entityField(e, "facing");
+            s.wx = wx;
+            s.wy = wy;
+            r.spawns.push_back(std::move(s));
+        }
+        else if (id == "Warp")
+        {
+            WarpPlacement w;
+            w.id = entityField(e, "id");
+            w.target_level = entityField(e, "target_level");
+            w.target = entityField(e, "target");
+            if (w.target.empty())
+                w.target = entityField(e, "target_spawn"); // legacy field name
+            w.facing = entityField(e, "facing");
+            if (boxCenter(e, w.x, w.y, w.w, w.h) && !w.target_level.empty())
+                r.warps.push_back(std::move(w));
+            else
+                std::fprintf(stderr,
+                             "[ldtk] a Warp in '%s' has no position or no target_level -- "
+                             "dropped\n",
+                             r.level_id.c_str());
+        }
         else
         {
             Object o;
@@ -391,14 +464,39 @@ void parseEntities(const Atlas& atlas, const json& level, const structures::Conf
     }
 }
 
+// Per-level properties (LDtk level fields): the level's ambient track + whether it is
+// an interior. Parsed here, consumed as the audio/light systems land.
+void parseLevelFields(const json& level, Region& r)
+{
+    if (const auto fis = level.find("fieldInstances"); fis != level.end() && fis->is_array())
+        for (const auto& fi : *fis)
+        {
+            const std::string ident = fi.value("__identifier", std::string{});
+            const auto v = fi.find("__value");
+            if (v == fi.end())
+                continue;
+            if (ident == "music" && v->is_string())
+                r.music = v->get<std::string>();
+            else if (ident == "interior" && v->is_boolean())
+                r.interior = v->get<bool>();
+        }
+}
+
 // Dimensions + lookups shared by ground parsing (all resolved once in load()).
 struct GridInfo
 {
     int grid_size = 16; // authoring cell px (16)
     int atlas_cols = 40;
-    int cw = 0, ch = 0; // grid columns/rows
-    int fill_id = 0;    // border-fill cell id
+    int cw = 0, ch = 0;    // grid columns/rows
+    int fill_id = 0;       // border-fill cell id (meaningful only when has_fill)
+    bool has_fill = false; // did the level author a fill_tile at all?
 };
+
+// The tile id meaning "nothing here": no visual is ever registered for it, so the
+// renderer draws empty space (the clear color shows through), and it is unwalkable.
+// Unpainted cells in a level WITHOUT an authored fill_tile get this -- blank means
+// blank; a level that wants grass-to-the-horizon authors its fill_tile.
+constexpr int kEmptyTileId = -1;
 
 // Stamp resizable structure entities (bridges, docks) into the map: for each entity
 // whose identifier is a known structure type, tile the 9-slice art across its rect, mark
@@ -462,7 +560,7 @@ void parseStructures(const json& level, const structures::Config& structureCfg, 
 // Resolve the region's grid header: find the Ground layer, read its dimensions into
 // r.map, parse the level's fill_tile into r.fill_uv_*, and fill the GridInfo. Returns
 // the ground layer, or nullptr if there's no usable ground (caller bails to ok=false).
-const json* parseHeader(const json& level, int atlas_cols, GridInfo& g, Region& r)
+const json* parseHeader(const json& level, int atlas_cols, int tileset_uid, GridInfo& g, Region& r)
 {
     const json* ground = findLayer(level, "Ground");
     if (!ground)
@@ -480,17 +578,50 @@ const json* parseHeader(const json& level, int atlas_cols, GridInfo& g, Region& 
     r.map.width = g.cw;
     r.map.height = g.ch;
 
-    // fill_tile (level field) -> the default/fill cell index (grass beyond the bounds).
+    // fill_tile (level field) -> the default/fill cell for unpainted cells (grass to
+    // the horizon outdoors). ABSENT = unpainted cells are genuinely empty (see
+    // kEmptyTileId) -- an interior's void is the clear color, not a surprise tile.
+    // A fill referencing a DIFFERENT tileset than the level is painted with is
+    // rejected the same way: tile ids only mean anything within their own sheet, so
+    // honouring it would fill the level with whatever sits at those coords in the
+    // level's actual atlas (an interior checkered with the sheet's palette swatch).
     if (const auto fis = level.find("fieldInstances"); fis != level.end() && fis->is_array())
         for (const auto& fi : *fis)
             if (fi.value("__identifier", std::string{}) == "fill_tile")
                 if (const auto v = fi.find("__value"); v != fi.end() && v->is_object())
                 {
+                    const int fillTs = v->value("tilesetUid", -1);
+                    if (fillTs >= 0 && tileset_uid >= 0 && fillTs != tileset_uid)
+                    {
+                        std::fprintf(stderr,
+                                     "[ldtk] level '%s': fill_tile references tileset %d but "
+                                     "the ground is painted with %d -- ignoring the fill\n",
+                                     r.level_id.c_str(), fillTs, tileset_uid);
+                        continue;
+                    }
                     r.fill_uv_col = v->value("x", 0) / g.grid_size;
                     r.fill_uv_row = v->value("y", 0) / g.grid_size;
+                    g.has_fill = true;
                 }
-    g.fill_id = cellId(r.fill_uv_col, r.fill_uv_row, atlas_cols);
+    g.fill_id = g.has_fill ? cellId(r.fill_uv_col, r.fill_uv_row, atlas_cols) : kEmptyTileId;
     return ground;
+}
+
+// Decode one gridTiles entry into its grid cell + atlas uv (authoring px -> cells).
+// False if the entry is malformed or lands outside the grid.
+bool decodeGridTile(const json& t, const GridInfo& g, int& col, int& row, int& uv_col, int& uv_row)
+{
+    const auto px = t.find("px");
+    const auto src = t.find("src");
+    if (px == t.end() || src == t.end() || !px->is_array() || !src->is_array())
+        return false;
+    col = (*px)[0].get<int>() / g.grid_size;
+    row = (*px)[1].get<int>() / g.grid_size;
+    if (col < 0 || row < 0 || col >= g.cw || row >= g.ch)
+        return false;
+    uv_col = (*src)[0].get<int>() / g.grid_size;
+    uv_row = (*src)[1].get<int>() / g.grid_size;
+    return true;
 }
 
 // Parse the Ground layer into r.map: the base tile per cell (walkability = its surface)
@@ -512,8 +643,10 @@ parseGround(const json& ground, const Atlas& atlas, const surfaces::Config& surf
     };
 
     std::unordered_map<int, std::pair<int, int>> uvById;
-    uvById[g.fill_id] = {r.fill_uv_col, r.fill_uv_row};
-    r.map.tiles.assign(total, TileMap::Tile{g.fill_id, walkableFor(g.fill_id)});
+    if (g.has_fill)
+        uvById[g.fill_id] = {r.fill_uv_col, r.fill_uv_row};
+    r.map.tiles.assign(total,
+                       TileMap::Tile{g.fill_id, g.has_fill ? walkableFor(g.fill_id) : false});
     r.map.decoration.assign(total, TileMap::Tile{0, true});
 
     std::unordered_map<std::size_t, bool> seen; // cell -> already placed a base?
@@ -522,16 +655,9 @@ parseGround(const json& ground, const Atlas& atlas, const surfaces::Config& surf
         return uvById;
     for (const auto& t : *gt)
     {
-        const auto px = t.find("px");
-        const auto src = t.find("src");
-        if (px == t.end() || src == t.end() || !px->is_array() || !src->is_array())
+        int col = 0, row = 0, uv_col = 0, uv_row = 0;
+        if (!decodeGridTile(t, g, col, row, uv_col, uv_row))
             continue;
-        const int col = (*px)[0].get<int>() / g.grid_size;
-        const int row = (*px)[1].get<int>() / g.grid_size;
-        if (col < 0 || row < 0 || col >= g.cw || row >= g.ch)
-            continue;
-        const int uv_col = (*src)[0].get<int>() / g.grid_size;
-        const int uv_row = (*src)[1].get<int>() / g.grid_size;
         const int id = cellId(uv_col, uv_row, g.atlas_cols);
         if (transparent.count(id))
             continue; // blank atlas cell (e.g. a stray fill) -> no visual, skip
@@ -568,8 +694,27 @@ void fillTileConfig(const std::unordered_map<int, std::pair<int, int>>& uvById,
     }
 }
 
+// Select the level to import: by identifier when named, the project's first otherwise.
+// A named level that's absent is fatal (nullptr) -- loading the wrong place silently
+// would be worse.
+const json* chooseLevel(const json& j, const std::string& level_id, const std::string& ldtk_path)
+{
+    const auto levels = j.find("levels");
+    if (levels == j.end() || !levels->is_array() || levels->empty())
+        return nullptr;
+    if (level_id.empty())
+        return &(*levels)[0];
+    for (const auto& lv : *levels)
+        if (lv.value("identifier", std::string{}) == level_id)
+            return &lv;
+    std::fprintf(stderr, "[ldtk] FATAL: no level '%s' in %s\n", level_id.c_str(),
+                 ldtk_path.c_str());
+    return nullptr;
+}
+
 Region loadImpl(const std::string& ldtk_path, const std::string& tileset_path,
-                const surfaces::Config& surfaceCfg, const structures::Config& structureCfg)
+                const surfaces::Config& surfaceCfg, const structures::Config& structureCfg,
+                const std::string& level_id)
 {
     Region r;
     std::ifstream f(ldtk_path);
@@ -579,25 +724,35 @@ Region loadImpl(const std::string& ldtk_path, const std::string& tileset_path,
     if (j.is_discarded())
         return r;
 
-    // Single-level import for now (the first level); multi-level worlds come with
-    // region connections (MAP-ARCHITECTURE §3).
-    const auto levels = j.find("levels");
-    if (levels == j.end() || !levels->is_array() || levels->empty())
+    const json* chosen = chooseLevel(j, level_id, ldtk_path);
+    if (!chosen)
         return r;
-    const json& level = (*levels)[0];
+    const json& level = *chosen;
+    r.level_id = level.value("identifier", std::string{});
 
+    // The level's OWN tileset drives everything keyed by tile id: atlas columns,
+    // surface tags, and the render atlas itself. An interior painted with Inner.png
+    // renders from inner's atlas; the overworld from overworld's. The ground layer
+    // names its tileset; a level without the field falls back to the configured
+    // default (`tileset_path`).
+    const json* groundLayer = findLayer(level, "Ground");
+    if (!groundLayer)
+        groundLayer = findLayer(level, "Tiles");
+    const int tilesetUid = groundLayer ? groundLayer->value("__tilesetDefUid", -1) : -1;
+    const json* tsDef = tilesetDef(j, tilesetUid);
+    const std::string atlas_path = atlasPathFor(tsDef, tileset_path);
     // Authoring grid size (16) -> world grid is x2 (32). Atlas columns come from
     // the tileset def so a src pixel resolves to a cell index (40 = Overworld default).
-    const int atlas_cols = atlasCols(j, 40);
+    const int atlas_cols = tsDef ? tsDef->value("__cWid", 40) : 40;
 
     GridInfo g;
-    const json* ground = parseHeader(level, atlas_cols, g, r);
+    const json* ground = parseHeader(level, atlas_cols, tilesetUid, g, r);
     if (!ground)
         return r; // no usable ground layer
 
     // Decode the render atlas ONCE: drives both the transparent-cell skip and each
     // prop's derived collider (opaque bounds).
-    const Atlas atlas(tileset_path);
+    const Atlas atlas(atlas_path);
 
     // The atlas column count is derived TWO ways -- from the PNG width (atlas.w /
     // tile_size, used by transparentCells) and from the LDtk tileset def (__cWid, used by
@@ -610,7 +765,7 @@ Region loadImpl(const std::string& ldtk_path, const std::string& tileset_path,
         {
             std::fprintf(stderr,
                          "[ldtk] FATAL: atlas %s is %dx%d, not a multiple of tile size %d.\n",
-                         tileset_path.c_str(), atlas.w, atlas.h, r.map.tile_size);
+                         atlas_path.c_str(), atlas.w, atlas.h, r.map.tile_size);
             return r; // ok stays false
         }
         if (atlas.w / r.map.tile_size != atlas_cols)
@@ -618,22 +773,23 @@ Region loadImpl(const std::string& ldtk_path, const std::string& tileset_path,
             std::fprintf(stderr,
                          "[ldtk] FATAL: atlas %s has %d columns but the .ldtk tileset def says "
                          "%d -- the PNG and .ldtk disagree.\n",
-                         tileset_path.c_str(), atlas.w / r.map.tile_size, atlas_cols);
+                         atlas_path.c_str(), atlas.w / r.map.tile_size, atlas_cols);
             return r; // ok stays false
         }
     }
 
-    // Per-cell surface tags (from the tileset's enumTags). Terrain walkability comes
-    // from a tile's surface (water blocks, grass walks) -- no hand-painted collision.
-    // The runtime also maps a tile id -> surface for per-surface footsteps.
-    const std::unordered_map<int, std::string> cellSurface = surfaceByCell(j);
+    // Per-cell surface tags (from THIS level's tileset enumTags -- tile ids are
+    // per-tileset). Terrain walkability comes from a tile's surface (water blocks,
+    // grass walks) -- no hand-painted collision. The runtime also maps a tile id ->
+    // surface for per-surface footsteps.
+    const std::unordered_map<int, std::string> cellSurface = surfaceByCell(j, tilesetUid);
     r.tile_surface = cellSurface;
 
     auto uvById = parseGround(*ground, atlas, surfaceCfg, g, cellSurface, r);
     // Structures stamp over the ground (a deck spans whatever terrain), adding their
     // tiles to the config + surface map, so do them before fillTileConfig.
     parseStructures(level, structureCfg, g, uvById, r);
-    fillTileConfig(uvById, tileset_path, r);
+    fillTileConfig(uvById, atlas_path, r);
     parseEntities(atlas, level, structureCfg, r);
     // Observation PLACEMENTS come ONLY from the dedicated Encounters layer. Observability
     // is its own concern -- a resizable Encounter box placed anywhere (over a bridge
@@ -646,13 +802,15 @@ Region loadImpl(const std::string& ldtk_path, const std::string& tileset_path,
     // inventory/loot at load, spawned as floor sprites (world_items::spawn). See
     // docs/design/GAME-SYSTEMS.md.
     collectPickupsInLayer(level, "Pickups", r);
+    parseLevelFields(level, r);
 
     r.ok = true;
     return r;
 }
 
 Region load(const std::string& ldtk_path, const std::string& tileset_path,
-            const surfaces::Config& surfaceCfg, const structures::Config& structureCfg)
+            const surfaces::Config& surfaceCfg, const structures::Config& structureCfg,
+            const std::string& level)
 {
     // The many .get<int/float/string>() calls in loadImpl throw json::type_error if a
     // hand-authored .ldtk has a field of the wrong type (allow_exceptions=false covers
@@ -661,7 +819,7 @@ Region load(const std::string& ldtk_path, const std::string& tileset_path,
     // which the caller treats as a fatal load failure.
     try
     {
-        return loadImpl(ldtk_path, tileset_path, surfaceCfg, structureCfg);
+        return loadImpl(ldtk_path, tileset_path, surfaceCfg, structureCfg, level);
     }
     catch (const std::exception& e)
     {
@@ -671,7 +829,7 @@ Region load(const std::string& ldtk_path, const std::string& tileset_path,
     }
 }
 
-void spawnProps(EntityManager& em, const Region& region, const std::string& tileset_path)
+void spawnProps(EntityManager& em, const Region& region)
 {
     auto& reg = em.registry();
     for (const auto& p : region.props)
@@ -680,7 +838,9 @@ void spawnProps(EntityManager& em, const Region& region, const std::string& tile
         // Transform is the sprite's top-left; RenderSystem draws the src rect there.
         reg.emplace<Transform>(e, Transform{p.wx, p.wy});
         Sprite spr{};
-        spr.texture_path = tileset_path;
+        // The region's RESOLVED atlas (per-level tileset), not a global one -- an
+        // interior's furniture draws from the interior sheet.
+        spr.texture_path = region.config.tileset_path;
         spr.src_x = p.sx;
         spr.src_y = p.sy;
         spr.src_w = p.sw;
