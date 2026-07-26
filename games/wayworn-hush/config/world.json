@@ -1,9 +1,14 @@
 {
-    "_comment": "The region's identity: where its map, art, and ambient bed live. One place for the asset paths that were otherwise repeated across main.cpp + the importer. `tileset_name` is the substring the importer matches against the .ldtk tileset defs to find the render atlas's column count.",
+    "_comment": "The world's asset identity: the LDtk project (all levels live in it), the FALLBACK render atlas (each level normally resolves its own from the tileset it was painted with -- see docs/design/MAP-PIPELINE.md naming conventions), and the ambient bed. start_level = the level a NEW walk begins in; a resumed walk uses its saved region.",
     "ldtk": "assets/tilesets/source/overworld.ldtk",
+    "start_level": "PlayerHouse",
     "tileset_png": "assets/tilesets/overworld.png",
     "tileset_name": "Overworld",
     "ambient_track": "assets/audio/ambient_meadow.ogg",
     "ambient_volume": 0.55,
-    "ambient_fade_in_ms": 3000
+    "ambient_fade_in_ms": 3000,
+    "warp_fade_seconds": 0.12,
+    "warp_enter_sfx": "assets/audio/door_enter.ogg",
+    "warp_exit_sfx": "assets/audio/door_exit.ogg",
+    "warp_sfx_volume": 0.9
 }
