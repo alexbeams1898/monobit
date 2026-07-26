@@ -92,29 +92,37 @@ static float sTileSize = 0.0f;
 static void emitTileQuad(std::vector<float>& verts, const TileConfig& config, int tileId, int col,
                          int row, float ts, bool hasTileset, int atlasW, int atlasH)
 {
+    // A tile id with NO registered visual is EMPTY SPACE: emit a degenerate (zero-area)
+    // quad so the dense mesh keeps its cell indexing (render() culls by index math) while
+    // rasterizing nothing -- the clear color shows through. This is how a map says
+    // "nothing here" without a dedicated blank tile in every atlas.
+    const auto vit = config.tile_visuals.find(tileId);
+    if (vit == config.tile_visuals.end())
+    {
+        for (int i = 0; i < 6; ++i)
+            verts.insert(verts.end(), {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
+        return;
+    }
+    const auto& vis = vit->second;
     float tr = 1.0f, tg = 1.0f, tb = 1.0f;
     float u0 = 0.0f, v0 = 0.0f, u1 = 1.0f, v1 = 1.0f;
-    if (const auto vit = config.tile_visuals.find(tileId); vit != config.tile_visuals.end())
+    if (hasTileset)
     {
-        const auto& vis = vit->second;
-        if (hasTileset)
-        {
-            const float tw = static_cast<float>(atlasW);
-            const float th = static_cast<float>(atlasH);
-            const float tileF = static_cast<float>(config.atlas_tile_size);
-            const float c = static_cast<float>(vis.uv_col);
-            const float r = static_cast<float>(vis.uv_row);
-            u0 = c * tileF / tw;
-            v0 = r * tileF / th;
-            u1 = (c + 1.0f) * tileF / tw;
-            v1 = (r + 1.0f) * tileF / th;
-        }
-        else
-        {
-            tr = vis.r;
-            tg = vis.g;
-            tb = vis.b;
-        }
+        const float tw = static_cast<float>(atlasW);
+        const float th = static_cast<float>(atlasH);
+        const float tileF = static_cast<float>(config.atlas_tile_size);
+        const float c = static_cast<float>(vis.uv_col);
+        const float r = static_cast<float>(vis.uv_row);
+        u0 = c * tileF / tw;
+        v0 = r * tileF / th;
+        u1 = (c + 1.0f) * tileF / tw;
+        v1 = (r + 1.0f) * tileF / th;
+    }
+    else
+    {
+        tr = vis.r;
+        tg = vis.g;
+        tb = vis.b;
     }
     const float x0 = static_cast<float>(col) * ts;
     const float y0 = static_cast<float>(row) * ts;
