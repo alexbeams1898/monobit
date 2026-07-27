@@ -72,10 +72,18 @@ struct TileMap
     };
     std::vector<Tile> tiles; // row-major: tiles[row * width + col] -- the GROUND layer
 
-    // Optional DECORATION layer: sparse props drawn ABOVE the ground but BELOW
-    // characters -- flowers, grass tufts, pebbles the character walks ON TOP of.
-    // Same layout/size as `tiles`; EMPTY by default. tile_id 0 = "none" here.
-    std::vector<Tile> decoration;
+    // Optional DECORATION stamps: sparse visuals drawn ABOVE the ground but BELOW
+    // characters -- flowers, a rug, a pot on the rug. An ORDERED LIST, not a grid:
+    // one cell may carry several stacked stamps, drawn in list (painter's) order,
+    // exactly as the authoring tool composites them. Purely visual (collision lives
+    // on `tiles`), and no "none" sentinel -- every entry is real, so any tile id
+    // (including 0) can decorate.
+    struct Decor
+    {
+        std::size_t cell = 0; // cellIndex(col, row)
+        Tile tile;
+    };
+    std::vector<Decor> decoration;
 
     // Optional OVERHANG layer: sparse props drawn ABOVE characters so a character
     // can walk BEHIND them (tree canopies, tall tops). Same layout/size as `tiles`;

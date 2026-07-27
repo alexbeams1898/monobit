@@ -234,30 +234,42 @@ void TileMapRenderer::upload(const TileMap& map, const TileConfig& config, Textu
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(verts.size() * sizeof(float)),
                  verts.data(), GL_STATIC_DRAW);
 
-    // Bake a SPARSE layer (decoration / overhang): only cells with a prop
-    // (tile_id != 0) get a quad; drawn whole (prop count is small, no cull). Returns
-    // the vertex count and uploads into `vbo`.
-    const auto bakeSparse = [&](const std::vector<TileMap::Tile>& layer, GLuint vbo) -> int
+    const auto uploadSparse = [](std::vector<float>& sv, GLuint vbo) -> int
     {
-        std::vector<float> sv;
-        if (layer.size() == map.tiles.size())
-            for (int row = 0; row < map.height; ++row)
-                for (int col = 0; col < map.width; ++col)
-                {
-                    const int id =
-                        layer[static_cast<std::size_t>(row) * static_cast<std::size_t>(map.width) +
-                              static_cast<std::size_t>(col)]
-                            .tile_id;
-                    if (id != 0)
-                        emitTileQuad(sv, config, id, col, row, ts, sHasTileset, atlasW, atlasH);
-                }
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(sv.size() * sizeof(float)), sv.data(),
                      GL_STATIC_DRAW);
         return static_cast<int>(sv.size() / 8);
     };
-    sDecVertexCount = bakeSparse(map.decoration, sDecVbo);
-    sOverVertexCount = bakeSparse(map.overhang, sOverVbo);
+
+    // DECORATION: an ordered list of sparse stamps, baked in list order so stacked
+    // stamps in one cell draw over each other exactly as authored (painter's order
+    // within one buffer). Drawn whole -- stamp count is small, no cull.
+    {
+        std::vector<float> sv;
+        for (const auto& d : map.decoration)
+        {
+            const int col = static_cast<int>(d.cell % static_cast<std::size_t>(map.width));
+            const int row = static_cast<int>(d.cell / static_cast<std::size_t>(map.width));
+            emitTileQuad(sv, config, d.tile.tile_id, col, row, ts, sHasTileset, atlasW, atlasH);
+        }
+        sDecVertexCount = uploadSparse(sv, sDecVbo);
+    }
+
+    // OVERHANG: a dense grid, sparse in content -- only cells with a prop
+    // (tile_id != 0) get a quad; drawn whole.
+    {
+        std::vector<float> sv;
+        if (map.overhang.size() == map.tiles.size())
+            for (int row = 0; row < map.height; ++row)
+                for (int col = 0; col < map.width; ++col)
+                {
+                    const int id = map.overhang[map.cellIndex(col, row)].tile_id;
+                    if (id != 0)
+                        emitTileQuad(sv, config, id, col, row, ts, sHasTileset, atlasW, atlasH);
+                }
+        sOverVertexCount = uploadSparse(sv, sOverVbo);
+    }
     glBindVertexArray(0);
 }
 
