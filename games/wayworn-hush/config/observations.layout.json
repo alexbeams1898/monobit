@@ -1,0 +1,22 @@
+{
+    "e:mom": {
+        "x": 60,
+        "y": 60
+    },
+    "t:mom_carries_morning": {
+        "x": 340,
+        "y": 60
+    },
+    "t:mom_wont_be_asked": {
+        "x": 620,
+        "y": 60
+    },
+    "f:mom_asked_slept": {
+        "x": 340,
+        "y": 150
+    },
+    "f:mom_greeted": {
+        "x": 340,
+        "y": 214
+    }
+}

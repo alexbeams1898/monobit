@@ -1,0 +1,19 @@
+{
+    "_comment": "WHO Mom is: art + name + footprint. WHERE she stands is an Npc entity in the map naming this id; WHAT she says is speaker-flagged observation content.",
+    "id": "mom",
+    "name": "Mom",
+    "texture": "assets/sprites/mom_walk.png",
+    "frame_width": 64,
+    "frame_height": 64,
+    "direction_count": 4,
+    "max_frames_per_state": 9,
+    "idle": {
+        "row": 1,
+        "frames": 1,
+        "duration": 0.0
+    },
+    "collider": {
+        "w": 22.0,
+        "h": 12.0
+    }
+}

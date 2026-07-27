@@ -13,6 +13,76 @@
     },
     "_interact_reach_comment": "World px from an encounter's box edge: get within this and it glows and can be observed. One knob for the whole game.",
     "interact_reach": 40,
-    "encounters": [],
-    "thoughts": []
+    "encounters": [
+        {
+            "_comment": "PLACEHOLDER TEXT -- shape is final, words are a first draft to rewrite. One encounter = the whole person; tiers are what HE notices (his voice), deeds are his moves, result_text is HER voice (speaker). The chain demonstrated: observe her -> a thought lands -> the thought's id unlocks a deed -> her reply sets a flag -> a second thought builds on both.",
+            "id": "mom",
+            "speaker": "mom",
+            "value": 2,
+            "tiers": [
+                {
+                    "text": "She is at the counter, already dressed. The kettle has been on a while."
+                },
+                {
+                    "unlock_when": [
+                        {
+                            "observed": "mom_carries_morning"
+                        }
+                    ],
+                    "text": "She moves like the kitchen is a place she is holding still. Everything wiped twice."
+                }
+            ],
+            "actions": {
+                "add": [
+                    {
+                        "id": "greet",
+                        "label": "Say good morning",
+                        "result_text": "Morning. There's toast, if you'll actually eat this time.",
+                        "set_flag": "mom_greeted"
+                    },
+                    {
+                        "_comment": "Unlocked by NOTICING, not by menu-grinding: the thought below must land first.",
+                        "id": "ask_slept",
+                        "label": "Ask if she slept",
+                        "unlock_when": [
+                            {
+                                "observed": "mom_carries_morning"
+                            }
+                        ],
+                        "result_text": "I sleep fine. You're the one leaving with half a plan -- sit, eat something.",
+                        "set_flag": "mom_asked_slept",
+                        "one_shot": true
+                    }
+                ]
+            }
+        }
+    ],
+    "thoughts": [
+        {
+            "_comment": "PLACEHOLDER TEXT. Perception: noticing her, from observing her. Its id becomes a memory that unlocks the ask.",
+            "id": "mom_carries_morning",
+            "unlock_when": [
+                {
+                    "observed": "mom"
+                }
+            ],
+            "faculty": "perception",
+            "text": "She was up before the kettle. The tired sits on her like it lives here.",
+            "miss_text": "Something about the way she stands. It slips away."
+        },
+        {
+            "_comment": "PLACEHOLDER TEXT. Reason: fusing the noticing with her deflection. emotional_weight carries it -- it opens nothing, it just matters.",
+            "id": "mom_wont_be_asked",
+            "unlock_when": [
+                {
+                    "observed": "mom_carries_morning",
+                    "flag": "mom_asked_slept"
+                }
+            ],
+            "faculty": "reason",
+            "emotional_weight": 3,
+            "text": "She answers questions about herself by feeding people. That is the whole answer.",
+            "miss_text": "Her answer wasn't an answer, but you can't say what it was instead."
+        }
+    ]
 }

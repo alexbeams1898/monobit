@@ -1,7 +1,6 @@
 {
-    "_comment": "The world's asset identity: the LDtk project (all levels live in it), the FALLBACK render atlas (each level normally resolves its own from the tileset it was painted with -- see docs/design/MAP-PIPELINE.md naming conventions), and the ambient bed. start_level = the level a NEW walk begins in; a resumed walk uses its saved region.",
+    "_comment": "The world's asset identity: the LDtk project (all levels live in it), the FALLBACK render atlas (each level normally resolves its own from the tileset it was painted with -- see docs/design/MAP-PIPELINE.md naming conventions), and the ambient bed. A NEW walk starts wherever the map's id-less PlayerSpawn is -- the spawn IS the start, authored only in the map.",
     "ldtk": "assets/tilesets/source/overworld.ldtk",
-    "start_level": "PlayerHouse",
     "tileset_png": "assets/tilesets/overworld.png",
     "tileset_name": "Overworld",
     "ambient_track": "assets/audio/ambient_meadow.ogg",
