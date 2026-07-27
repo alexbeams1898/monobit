@@ -109,6 +109,26 @@ cannot.
 **Both places are drawn from real ones the author knows.** That is the point —
 the observations get to be specific and true rather than generic wilderness.
 
+## 4b. The opening carries the weights **[direction set, content open]**
+
+There is no character creator and no origin picker. The naming screen names —
+nothing else (declining yields the default name, per the fixed-protagonist
+model). Who he starts as is expressed **inside the opening's ordinary play**:
+
+- The first beats' choices — what he says, what he takes — are ordinary deeds
+  that may carry **small stat weights**, like any deed after them. The player's
+  first minutes are simultaneously characterization and the initial spread;
+  there is no gate, no menu, and nothing waits on anything.
+- Weights in the opening are **expression, not optimization**: small numbers, no
+  wrong answers, every road playable. The first conversation must never read as
+  a build screen.
+- Future UI note: a small faculty glyph in its hue beside weighted choices
+  (learning what the faculties ARE by seeing what feeds them). Quiet — a tint
+  and a glyph, never a reward toast.
+- The possible pre-walk questionnaire (see GAME-SYSTEMS §1, pre-lit core) sits
+  beside the naming screen if it happens at all; it asks about the player, not
+  about him.
+
 ## 5. Open questions
 
 - **What draws him back into the woods?** Recognition needs a reason to return —

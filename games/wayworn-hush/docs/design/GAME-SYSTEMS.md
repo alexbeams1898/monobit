@@ -92,8 +92,8 @@ reading, which is always a step in finding your way. Craft = key, observe =
 door, understanding = the way through. Fishing and gear are sought because a
 curiosity points at them, never as survival busywork.
 
-**Observing is the "combat"** — DE's dialogue-check, but you read the *world*,
-not NPCs. The check is gated by your faculties: the same rock gives a flat,
+**Observing is the "combat"** — DE's dialogue-check, but you read the *world*
+(people included — see §8), not adversarial dialogue. The check is gated by your faculties: the same rock gives a flat,
 objective line at low faculty and a rare, revealing reading once you've grown —
 and the rare reading is what unlocks the next thread.
 
@@ -135,6 +135,15 @@ precisely, keep working consumables/fishing (§4).*
 The machine, top to bottom. Deliberately minimal (a quiet game, not an RPG with
 a skill web). Four parts, each with one job.
 
+**What the numbers mean [FRAMING — load-bearing]:** stats and Spirit measure the
+**spiritual and emotional journey**, never competence. The faculties are the
+capacities of a soul's attention — a grown man can be fully capable and
+spiritually asleep, which is exactly where the game opens: **he starts the game
+in low spirits** (the pun is the thesis). Starting values need no other alibi;
+the walk is him coming back to his senses. The test for any future system:
+anything that grants Spirit must be defensible as soul-tending, and anything
+that raises a faculty must be defensible as waking up.
+
 ### The three self-faculties — the "reading" voices
 
 Three faculties (Will loved philosophy — the RPG's soul is philosophical). Each
@@ -163,8 +172,9 @@ only for who you've become, where, when.
 
 ### Spirit EXP → buffs → Spirit (the whole growth loop)
 
-One currency, one flat set of buffs, one derived readout. No tree, no ladders,
-no prerequisites — the simplest thing that works.
+One currency, one curated set of buffs arranged as the soul-tree below, one
+derived readout. (An earlier draft said "no tree, no prerequisites" — superseded
+by *The tree IS the soul*: structure is the identity mechanism, kept shallow.)
 
 - **Spirit EXP** (working name; rename TBD) — the currency. **Earned by major
   events, achievements, rare observations/unlocks** — not by grinding. You spend
@@ -215,6 +225,22 @@ safe. **world = gather, lean-to = spend/become.**
 the dreamer; a Reason-heavy self *is* the scholar. **No class selection, no class
 screen**, never named in UI, and never called a skill tree in game — it is not a
 menu of abilities.
+
+**Forks are the identity mechanism.** Beyond branch leanings, a small number of
+**mutually exclusive sibling nodes** — lighting one shades the other for the
+walk — are what make the tree a portrait rather than a checklist (the lesson of
+KCD2's either/or perks: identity lives in the handful of exclusive choices, not
+the volume of nodes). How many forks and where is content authoring, later; the
+DATA MODEL carries prerequisites and exclusion groups from day one so none of it
+is retrofitted.
+
+**The pre-lit core [WIP — not locked].** The tree at walk-start is untended, not
+dead: a few nodes already alive — what survived the deadening. The authored
+default is part of who Will is (the writer's call). Possibly personalized by a
+skippable, EarthBound-style questionnaire that asks the PLAYER about themselves
+— never about Will's biography, which stays authored — with skipping yielding
+the default, exactly like declining the rename yields "Will." The questions'
+voice and the ember set are story material.
 
 **The faculties are NOT decoupled.** A soul has no crafting compartment: growth
 anywhere changes him everywhere. Cross-links and shared prerequisites are
@@ -351,6 +377,47 @@ mechanical seam.
   payoff; optional unreachable depth.
 
 ---
+
+## 8. People — nodes in the same loop **[LOCKED shape]**
+
+NPCs are not a dialogue mode. A person is an encounter with a body, and the
+observation/action/flag puzzle IS the conversation system:
+
+- **A person = three authored pieces**, same split as everything: WHO (a
+  character config: art, name, footprint), WHERE (a map placement: stand-spot,
+  facing, talk box), WHAT (observation content marked with a speaker).
+- **Observe a person = perceive them.** The player's own reading, in his voice —
+  tiers gated by the same knowledge and faculties as any observable. People are
+  part of the world being read.
+- **Act on a person = engage them.** The deed menu is the conversation surface;
+  a reply is a deed's result line, in the person's voice; the menu re-opening
+  after a reply is the back-and-forth. Verbal and physical moves are both just
+  deeds.
+- **Noticing unlocks engaging**, through the one knowledge system: an observed
+  tier or a flag makes a new move appear in that person's menu, and taking it
+  can open trees that never open otherwise. No dialogue scripts — depth is
+  attention. Skipping straight to acting is allowed and honest: moves gated on
+  words never heard are simply not offered.
+- **Proximity content is the person speaking up** (an Enter trigger in their
+  voice) — unprompted but not controlling.
+- **Scripted scenes** (a person approaching you, forced multi-beat exchanges)
+  are a separate, future system — deliberately not this one. The doctrine it
+  must obey when built:
+  - There is a **consent gradient**, and it only changes who initiates:
+    observe = fully chosen, Enter-trigger = half-chosen (you walked there),
+    scripted = the world walks to you. A forced moment is a *non-consensual
+    observation* — same content, same engine, different initiator.
+  - A scene is **choreography that plays the graph**: it moves bodies, holds
+    input, fires existing encounter content in order, releases. Never a second
+    dialogue format; the writer authors one kind of content forever.
+  - **The world can force what he hears, never what he concludes.** Thoughts
+    still roll through his faculties inside a scene; the mind stays sovereign in
+    cutscenes by construction.
+  - Scenes must appear as **nodes in the authoring tree tool** (start conditions
+    in, content-played edges out) — anything that participates in causality gets
+    a node, or the visualization lies by omission.
+- Scale honestly: a handful of characters, standing where authored. No
+  schedules or pathfinding until the game asks for them.
 
 ## What's already built vs. to build
 

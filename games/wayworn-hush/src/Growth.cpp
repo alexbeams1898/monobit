@@ -4,6 +4,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include <unordered_set>
+
 namespace growth
 {
 
@@ -70,6 +72,21 @@ int statLevel(const GrowthState& state, const std::string& name)
         level += static_cast<int>(std::floor(std::log2(ratio)));
     }
     return level;
+}
+
+int levelSum(const GrowthState& state)
+{
+    // EFFECTIVE levels (base + use-earned), over every stat that exists in either
+    // map -- a level earned purely through use must move the fingerprint too.
+    std::unordered_set<std::string> names;
+    for (const auto& [name, lvl] : state.stat_levels)
+        names.insert(name);
+    for (const auto& [name, use] : state.stat_use)
+        names.insert(name);
+    int sum = 0;
+    for (const auto& name : names)
+        sum += statLevel(state, name);
+    return sum;
 }
 
 void recordUse(GrowthState& state, const std::string& name, int exp)

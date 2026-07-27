@@ -148,7 +148,7 @@ things are named so they stay legible at fifty levels.
 |---|---|---|
 | Tileset files | source sheet -> lowercase atlas twin: `X.png` -> `assets/tilesets/x.png` (×2 nearest). **Enforced**: the importer resolves each level's atlas this way from the tileset its Ground layer was painted with. | `Inner.png` -> `inner.png` |
 | Levels | PascalCase, named for the PLACE; an interior is named for whose inside it is. Never `Level_0`-style defaults. | `Yard`, `Town`, `PlayerHouse`, `RichardsTrail` |
-| Spawn ids | `from_<where you came from>`, lower_snake. The one spawn with NO id is the new-game start (exactly one, in the start level). Spawns are for arrivals that are NOT a doorway (a cutscene drop, a first entrance); doorways need none — see warp hygiene below. | `from_yard`, `from_upstairs` |
+| Spawn ids | `from_<where you came from>`, lower_snake. The one spawn with NO id is the new-game start — exactly one in the project, and the game starts in whatever level holds it (the spawn IS the start; no config twin). Spawns are for arrivals that are NOT a doorway (a cutscene drop, a first entrance); doorways need none — see warp hygiene below. | `from_yard`, `from_upstairs` |
 | Entity defs | PascalCase singular. | `House`, `Warp`, `Pickup` |
 | Entity/level fields | lower_snake. | `target_level`, `music`, `collider_height` |
 | Flags / content ids | lower_snake (as everywhere in config). | `rock_moss_cleared` |

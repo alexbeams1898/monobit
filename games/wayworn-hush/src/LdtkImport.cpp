@@ -403,6 +403,43 @@ void collectPickupsInLayer(const json& level, const char* layerName, Region& r)
 // is authoring-grid px, x2 to the 32px world. `atlas` decodes prop footprint colliders.
 // Structure-type entities (bridges, docks) are handled by parseStructures (stamped into
 // the map), so they're skipped here rather than becoming stray objects.
+// An Npc entity -> a character placement (who, where, facing), plus its talk
+// encounter when an `encounter` field is present -- the same placement anchors both
+// the body and the box (talking is observing).
+void collectNpc(const json& e, float wx, float wy, Region& r)
+{
+    NpcPlacement n;
+    n.npc = entityField(e, "npc");
+    n.facing = entityField(e, "facing");
+    n.wx = wx;
+    n.wy = wy;
+    if (!n.npc.empty())
+        r.npcs.push_back(std::move(n));
+    else
+        std::fprintf(stderr, "[ldtk] an Npc in '%s' names no npc id -- dropped\n",
+                     r.level_id.c_str());
+    collectEncounter(e, r);
+}
+
+// A Warp entity -> a threshold placement. Dropped loudly when it has no position or
+// no destination -- a half-authored door should say so, not silently not exist.
+void collectWarp(const json& e, Region& r)
+{
+    WarpPlacement w;
+    w.id = entityField(e, "id");
+    w.target_level = entityField(e, "target_level");
+    w.target = entityField(e, "target");
+    if (w.target.empty())
+        w.target = entityField(e, "target_spawn"); // legacy field name
+    w.facing = entityField(e, "facing");
+    if (boxCenter(e, w.x, w.y, w.w, w.h) && !w.target_level.empty())
+        r.warps.push_back(std::move(w));
+    else
+        std::fprintf(stderr,
+                     "[ldtk] a Warp in '%s' has no position or no target_level -- dropped\n",
+                     r.level_id.c_str());
+}
+
 void parseEntities(const Atlas& atlas, const json& level, const structures::Config& structureCfg,
                    Region& r)
 {
@@ -423,7 +460,13 @@ void parseEntities(const Atlas& atlas, const json& level, const structures::Conf
         const float wx = static_cast<float>((*px)[0].get<int>() * 2);
         const float wy = static_cast<float>((*px)[1].get<int>() * 2);
         const auto tile = e.find("__tile");
-        if (tile != e.end() && tile->is_object())
+        // Npc BEFORE the tile branch: an Npc def may carry an editor icon tile, and
+        // that must not reroute a character into the props path.
+        if (id == "Npc")
+        {
+            collectNpc(e, wx, wy, r);
+        }
+        else if (tile != e.end() && tile->is_object())
         {
             r.props.push_back(buildProp(atlas, e, *tile, wx, wy));
         }
@@ -438,20 +481,7 @@ void parseEntities(const Atlas& atlas, const json& level, const structures::Conf
         }
         else if (id == "Warp")
         {
-            WarpPlacement w;
-            w.id = entityField(e, "id");
-            w.target_level = entityField(e, "target_level");
-            w.target = entityField(e, "target");
-            if (w.target.empty())
-                w.target = entityField(e, "target_spawn"); // legacy field name
-            w.facing = entityField(e, "facing");
-            if (boxCenter(e, w.x, w.y, w.w, w.h) && !w.target_level.empty())
-                r.warps.push_back(std::move(w));
-            else
-                std::fprintf(stderr,
-                             "[ldtk] a Warp in '%s' has no position or no target_level -- "
-                             "dropped\n",
-                             r.level_id.c_str());
+            collectWarp(e, r);
         }
         else
         {
@@ -543,7 +573,7 @@ void parseStructures(const json& level, const structures::Config& structureCfg, 
                 // the side rails taper to terrain; only the middle deck is fully opaque).
                 // Never replace the base tile, or that transparency shows the clear color
                 // instead of the ground.
-                r.map.decoration[idx] = TileMap::Tile{id, true};
+                r.map.decoration.push_back({idx, TileMap::Tile{id, true}});
                 // Walkable slices are footing: mark the cell walkable and give it a
                 // per-CELL surface override (the base tile stays terrain for rendering,
                 // but you sound like wood walking the deck). Overhang slices (rails)
@@ -647,7 +677,7 @@ parseGround(const json& ground, const Atlas& atlas, const surfaces::Config& surf
         uvById[g.fill_id] = {r.fill_uv_col, r.fill_uv_row};
     r.map.tiles.assign(total,
                        TileMap::Tile{g.fill_id, g.has_fill ? walkableFor(g.fill_id) : false});
-    r.map.decoration.assign(total, TileMap::Tile{0, true});
+    r.map.decoration.clear();
 
     std::unordered_map<std::size_t, bool> seen; // cell -> already placed a base?
     const auto gt = ground.find("gridTiles");
@@ -670,7 +700,10 @@ parseGround(const json& ground, const Atlas& atlas, const surfaces::Config& surf
         }
         else
         {
-            r.map.decoration[idx] = TileMap::Tile{id, true}; // topmost stacked wins
+            // Stacked tiles keep PAINT order (gridTiles order), so the renderer
+            // composites the stack exactly as the editor shows it -- every layer,
+            // not just the topmost.
+            r.map.decoration.push_back({idx, TileMap::Tile{id, true}});
         }
     }
     return uvById;
@@ -827,6 +860,33 @@ Region load(const std::string& ldtk_path, const std::string& tileset_path,
                      e.what());
         return Region{};
     }
+}
+
+std::string findStartLevel(const std::string& ldtk_path)
+{
+    std::ifstream f(ldtk_path);
+    if (!f)
+        return {};
+    const json j = json::parse(f, nullptr, /*allow_exceptions=*/false);
+    if (j.is_discarded())
+        return {};
+    const auto levels = j.find("levels");
+    if (levels == j.end() || !levels->is_array())
+        return {};
+    for (const auto& lvl : *levels)
+    {
+        const json* ents = findLayer(lvl, "Entities");
+        if (!ents)
+            continue;
+        const auto ei = ents->find("entityInstances");
+        if (ei == ents->end() || !ei->is_array())
+            continue;
+        for (const auto& e : *ei)
+            if (e.value("__identifier", std::string{}) == "PlayerSpawn" &&
+                entityField(e, "id").empty())
+                return lvl.value("identifier", std::string{});
+    }
+    return {};
 }
 
 void spawnProps(EntityManager& em, const Region& region)

@@ -167,8 +167,15 @@ struct Encounter
     float w = 32.0f;
     float h = 32.0f;
     Trigger trigger = Trigger::Observe;
-    bool fired = false;                 // ENTER: fired once already (edge-trigger)
-    int value = 1;                      // authored worth (the shared currency)
+    bool fired = false; // ENTER: fired once already (edge-trigger)
+    int value = 1;      // authored worth (the shared currency)
+    // Speech is observation content: a spot whose `speaker` names a character
+    // (config/npcs id) reads as that character talking -- its tier readings surface
+    // in quotes under their name, while any thoughts they trigger stay the player's
+    // own. `speaker_name` is the display name, resolved from the npc registry after
+    // load (authored once there, never duplicated here).
+    std::string speaker;
+    std::string speaker_name;
     std::string kind;                   // action-kind name (defaults source; empty = none)
     unlock::Condition visible_when;     // hidden until satisfied (empty = always visible)
     std::vector<ObservationTier> tiers; // objective (base first, then deeper)
@@ -244,6 +251,9 @@ struct PendingLine
     // actually DISPLAYS the line (not when the engine queued it), so "+N Spirit"
     // lands with the content on screen.
     int spirit_exp = 0;
+    // Who says this line (display name). Empty = the player's own reading/thought;
+    // set = the box renders it as speech (quoted, under the name).
+    std::string speaker;
 };
 
 // Runtime state = the pilgrim's accumulated record ("Memory is the game") plus

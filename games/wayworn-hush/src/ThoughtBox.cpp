@@ -176,6 +176,10 @@ void loadLine(observations::PendingLine line, int windowW, int windowH)
 {
     sItem = ItemKind::Line;
     sLine = std::move(line);
+    // Speech wears quotes -- someone else's words in the perception window. The
+    // speaker's NAME renders as the line's header (see renderLine).
+    if (!sLine.speaker.empty())
+        sLine.text = "\"" + sLine.text + "\"";
     sPhase = Phase::DropIn;
     sPhaseT = 0.0f;
     sRevealed = 0;
@@ -538,7 +542,10 @@ void renderLine(const growth::GrowthState& growth, int windowW, int windowH, flo
     // faculty/rarity identity); an OBSERVATION is just perceived -- a bare line in a
     // dark window, no header (the register itself signals the kind).
     const bool isThought = sLine.kind == observations::LineKind::Thought;
-    const bool showHeader = isThought && sPageStart == 0;
+    // Speech: someone else's line in the perception window -- headed by the
+    // speaker's name instead of a faculty/rarity identity.
+    const bool isSpeech = !isThought && !sLine.speaker.empty();
+    const bool showHeader = (isThought || isSpeech) && sPageStart == 0;
     const hud::Rect region = hud::resolve(sRegions.observation, windowW, windowH);
 
     const ContentArea c = drawPanel(region, windowW, windowH, alpha, dropOffset, isThought, hue);
@@ -554,24 +561,33 @@ void renderLine(const growth::GrowthState& growth, int windowW, int windowH, flo
     float cursorY = c.y;
     if (showHeader)
     {
-        // Faculty (the stat) pinned LEFT, in its hue -- the thought's identity.
-        UIRenderer::drawText(sHeadingFont, reading_color::facultyLabel(sLine.faculty), c.x, cursorY,
-                             {hue.r, hue.g, hue.b, alpha});
+        if (isSpeech)
+        {
+            // The speaker's name, plain and light -- who is talking, nothing more.
+            UIRenderer::drawText(sHeadingFont, sLine.speaker, c.x, cursorY,
+                                 {0.85f, 0.85f, 0.82f, alpha});
+        }
+        else
+        {
+            // Faculty (the stat) pinned LEFT, in its hue -- the thought's identity.
+            UIRenderer::drawText(sHeadingFont, reading_color::facultyLabel(sLine.faculty), c.x,
+                                 cursorY, {hue.r, hue.g, hue.b, alpha});
 
-        // Rarity emphasized TOP-RIGHT as a badge: a DARK solid pill outlined in the
-        // rarity color, with LIGHT text -- reads crisp, not faded.
-        const std::string rarity = reading_color::rarityWord(sLine.difficulty);
-        const Color rc = reading_color::rarityColor(sLine.difficulty, 1.0f);
-        const float rw = UIRenderer::measureText(sHeadingFont, rarity).width;
-        const float padH = 10.0f;
-        const float padV = 4.0f;
-        const float pillX = c.x + c.w - rw - padH * 2.0f;
-        UIRenderer::drawRect(pillX, cursorY - padV, rw + padH * 2.0f, headingH + padV,
-                             {0.10f, 0.09f, 0.08f, 0.92f * alpha});
-        screen_style::border(pillX, cursorY - padV, rw + padH * 2.0f, headingH + padV,
-                             {rc.r, rc.g, rc.b, alpha});
-        UIRenderer::drawText(sHeadingFont, rarity, pillX + padH, cursorY,
-                             {0.97f, 0.96f, 0.93f, alpha});
+            // Rarity emphasized TOP-RIGHT as a badge: a DARK solid pill outlined in the
+            // rarity color, with LIGHT text -- reads crisp, not faded.
+            const std::string rarity = reading_color::rarityWord(sLine.difficulty);
+            const Color rc = reading_color::rarityColor(sLine.difficulty, 1.0f);
+            const float rw = UIRenderer::measureText(sHeadingFont, rarity).width;
+            const float padH = 10.0f;
+            const float padV = 4.0f;
+            const float pillX = c.x + c.w - rw - padH * 2.0f;
+            UIRenderer::drawRect(pillX, cursorY - padV, rw + padH * 2.0f, headingH + padV,
+                                 {0.10f, 0.09f, 0.08f, 0.92f * alpha});
+            screen_style::border(pillX, cursorY - padV, rw + padH * 2.0f, headingH + padV,
+                                 {rc.r, rc.g, rc.b, alpha});
+            UIRenderer::drawText(sHeadingFont, rarity, pillX + padH, cursorY,
+                                 {0.97f, 0.96f, 0.93f, alpha});
+        }
 
         const float dividerY = cursorY + headingH + kHeadingGap * 0.5f;
         UIRenderer::drawRect(c.x, dividerY, c.w, 1.0f, {faint.r, faint.g, faint.b, 0.45f * alpha});

@@ -6,6 +6,7 @@ project(WaywornHush VERSION 0.1.0 LANGUAGES C CXX)
 add_library(wayworn-systems STATIC
     src/GameLoop.cpp
     src/WorldInit.cpp
+    src/Npc.cpp
     src/PlayerMovement.cpp
     src/PlayerConfig.cpp
     src/Arcs.cpp
@@ -114,6 +115,7 @@ add_executable(wayworn-tests
     tests/crafting_test.cpp
     tests/notebook_test.cpp
     tests/ldtk_import_test.cpp
+    tests/npc_test.cpp
 )
 target_link_libraries(wayworn-tests PRIVATE wayworn-systems Catch2::Catch2WithMain)
 set_target_properties(wayworn-tests PROPERTIES

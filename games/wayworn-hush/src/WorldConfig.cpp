@@ -14,7 +14,6 @@ void load(Config& cfg, const std::string& path)
     cfg.ldtk = j.value("ldtk", cfg.ldtk);
     cfg.tileset_png = j.value("tileset_png", cfg.tileset_png);
     cfg.tileset_name = j.value("tileset_name", cfg.tileset_name);
-    cfg.start_level = j.value("start_level", cfg.start_level);
     cfg.ambient_track = j.value("ambient_track", cfg.ambient_track);
     cfg.ambient_volume = j.value("ambient_volume", cfg.ambient_volume);
     cfg.ambient_fade_in_ms = j.value("ambient_fade_in_ms", cfg.ambient_fade_in_ms);

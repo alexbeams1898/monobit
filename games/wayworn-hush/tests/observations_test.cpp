@@ -1186,3 +1186,44 @@ TEST_CASE("a landed thought reports faculty EXP for passive stat growth", "[obse
     for (const auto& [faculty, exp] : r.stat_gains)
         REQUIRE(faculty != "reason");
 }
+
+TEST_CASE("voice: observing a person is the player's; their replies and greetings are theirs",
+          "[observations][speaker]")
+{
+    State s = loadFromJson(R"({
+      "encounters": [
+        { "id": "mom_kitchen", "speaker": "mom", "x": 0, "y": 0,
+          "tiers": [{ "text": "she is up early" }],
+          "actions": { "add": [{ "id": "greet", "label": "Say good morning",
+                                 "result_text": "Sleep well?" }] } }
+      ],
+      "thoughts": []
+    })");
+    // The display name is bound by the game after load (npc registry owns it).
+    s.encounters[0].speaker_name = "Mom";
+    const GrowthState g = self({{"wonder", 5}, {"perception", 5}});
+
+    // Observe = the player's own perception of the person: no speaker on the line.
+    observations::observeById(s, g, "mom_kitchen", kMaxNudge);
+    REQUIRE_FALSE(s.pending.empty());
+    REQUIRE(s.pending.front().speaker.empty());
+    s.pending.clear();
+
+    // Act = engaging them: the deed's result line is THEIR reply, in their voice.
+    observations::takeAction(s, g, "mom_kitchen", "greet", kMaxNudge);
+    bool spokenReply = false;
+    for (const auto& p : s.pending)
+        if (p.speaker == "Mom")
+            spokenReply = true;
+    REQUIRE(spokenReply);
+    s.pending.clear();
+
+    // An Enter trigger on a speaker is them speaking up unprompted as you come
+    // near -- the greeting IS their voice.
+    s.encounters[0].trigger = observations::Trigger::Enter;
+    s.encounters[0].placement_id = "p_mom";
+    s.encounters[0].fired = false;
+    observations::triggerProximity(s, g, 0, 0, kMaxNudge);
+    REQUIRE_FALSE(s.pending.empty());
+    REQUIRE(s.pending.front().speaker == "Mom");
+}

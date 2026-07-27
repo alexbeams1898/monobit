@@ -437,6 +437,7 @@ Encounter parseEncounter(const nlohmann::json& e)
     o.trigger = triggerFromString(e.value("trigger", std::string{}));
     o.value = e.value("value", 1);
     o.kind = e.value("kind", std::string{});
+    o.speaker = e.value("speaker", std::string{});
     if (const auto it = e.find("visible_when"); it != e.end())
         o.visible_when = unlock::parseCondition(*it);
     for (const auto& t : e.value("tiers", nlohmann::json::array()))
@@ -764,12 +765,18 @@ ObserveResult observeEncounter(State& state, const growth::GrowthState& growth, 
     // Surface the objective reading; EXP is earned (and carried on the line, so its toast
     // lands on display) only when a newly-reached tier.
     const bool newTier = best > prevTier;
+    // Tier readings are the PLAYER'S perception -- observing a person notices things
+    // about them, in Will's own voice -- EXCEPT an Enter trigger on a speaker: that
+    // is the person speaking up unprompted (a greeting as you come near), quoted.
+    // The thoughts the engine lands below stay the player's own voice either way.
+    const bool spoken = o.trigger == Trigger::Enter && !o.speaker_name.empty();
     state.pending.push_back(PendingLine{LineKind::Observation,
                                         bestTier->text,
                                         {},
                                         0,
                                         /*is_new=*/newTier,
-                                        newTier ? bestTier->spirit_exp : 0});
+                                        newTier ? bestTier->spirit_exp : 0,
+                                        spoken ? o.speaker_name : std::string{}});
     std::vector<std::string> changedKeys;
     if (newTier)
     {
@@ -985,10 +992,18 @@ ObserveResult takeAction(State& state, const growth::GrowthState& growth, const 
     if (!act)
         return {Outcome::None, 0}; // not offered -> no-op
 
-    // The deed's own voice (plain line), then its world-state change.
+    // The deed's result line -- and on a person, the reply IS the person answering:
+    // a speaker encounter's results speak in their voice (quoted, under their name).
+    // Talking is acting; conversation depth is deeds unlocking off what's been
+    // noticed and said, through the same knowledge system as everything else.
     if (!act->result_text.empty())
-        state.pending.push_back(
-            PendingLine{LineKind::Observation, act->result_text, {}, 0, /*is_new=*/false, false});
+        state.pending.push_back(PendingLine{LineKind::Observation,
+                                            act->result_text,
+                                            {},
+                                            0,
+                                            /*is_new=*/false,
+                                            0,
+                                            o->speaker_name});
     if (act->one_shot)
         state.taken.insert(takenKey(spot, act->id));
 

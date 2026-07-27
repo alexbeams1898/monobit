@@ -77,6 +77,11 @@ void load(GrowthState& state, const std::string& path);
 // USE has earned, via the diminishing log curve (see exp_per_level). Unknown name -> 0.
 int statLevel(const GrowthState& state, const std::string& name);
 
+// Sum of all base stat levels -- the one cheap "have the stats moved?" fingerprint
+// (levels only rise, so any change moves the sum). Shared by the stat-change pump
+// and by world-enter seeding, so they can't disagree on what "changed" means.
+int levelSum(const GrowthState& state);
+
 // Record exercising a stat: add `exp` to its use, so its level rises (see docs §5). Called
 // when a thought/reading of that faculty lands. No-op for empty name or exp <= 0.
 void recordUse(GrowthState& state, const std::string& name, int exp);

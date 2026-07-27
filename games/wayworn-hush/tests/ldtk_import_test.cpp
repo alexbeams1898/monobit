@@ -107,11 +107,16 @@ std::string writeFixture()
        "fieldInstances": [{"__identifier": "id", "__value": "shore_door"},
                           {"__identifier": "target_level", "__value": "Room"},
                           {"__identifier": "target_spawn", "__value": "from_door"},
-                          {"__identifier": "facing", "__value": "south"}]}
+                          {"__identifier": "facing", "__value": "south"}]},
+      {"__identifier": "Npc", "iid": "n1", "px": [24, 40], "width": 16, "height": 16,
+       "fieldInstances": [{"__identifier": "npc", "__value": "mom"},
+                          {"__identifier": "facing", "__value": "west"},
+                          {"__identifier": "encounter", "__value": "mom_talk"}]}
     ]},
     {"__identifier": "Ground", "__type": "Tiles", "__gridSize": 16, "__cWid": 4, "__cHei": 4,
      "gridTiles": [{"px": [0, 0], "src": [16, 0]},
                    {"px": [0, 0], "src": [32, 0]},
+                   {"px": [0, 0], "src": [48, 0]},
                    {"px": [16, 0], "src": [16, 0]}]}
    ]},
   {"identifier": "Room",
@@ -147,6 +152,13 @@ TEST_CASE("An empty level name loads the project's first level", "[ldtk]")
     const ldtk::Region r = loadFixture({});
     REQUIRE(r.ok);
     REQUIRE(r.level_id == "Shore");
+}
+
+TEST_CASE("The start level is wherever the id-less PlayerSpawn lives", "[ldtk]")
+{
+    // Shore holds the fixture's default spawn (Room's spawn is named) -- the spawn IS
+    // the start; there is no config twin to drift.
+    REQUIRE(ldtk::findStartLevel(writeFixture()) == "Shore");
 }
 
 TEST_CASE("A level is selected by identifier; a missing one fails", "[ldtk]")
@@ -192,6 +204,31 @@ TEST_CASE("A Warp parses as a centered box with its targets", "[ldtk]")
     REQUIRE(w.y == Approx(16.0f)); // bottom edge at pivot y -> center half a box up
 }
 
+TEST_CASE("An Npc parses as a placement AND registers its talk encounter", "[ldtk]")
+{
+    const ldtk::Region shore = loadFixture({});
+    REQUIRE(shore.npcs.size() == 1);
+    REQUIRE(shore.npcs[0].npc == "mom");
+    REQUIRE(shore.npcs[0].facing == "west");
+    REQUIRE(shore.npcs[0].wx == Approx(48.0f)); // pivot point x2 -> where she stands
+    REQUIRE(shore.npcs[0].wy == Approx(80.0f));
+
+    // The `encounter` field makes the SAME placement an encounter box: talking is
+    // observing, anchored to the character.
+    bool found = false;
+    for (const auto& enc : shore.encounters)
+        if (enc.id == "mom_talk")
+        {
+            found = true;
+            REQUIRE(enc.placement_id == "n1");
+        }
+    REQUIRE(found);
+
+    // Npc entities never leak into the untyped-object pile.
+    for (const auto& o : shore.objects)
+        REQUIRE(o.type != "Npc");
+}
+
 TEST_CASE("A Warp with no target_level is dropped, not kept broken", "[ldtk]")
 {
     const ldtk::Region room = loadFixture("Room");
@@ -233,17 +270,18 @@ TEST_CASE("A painted tile keeps its atlas uv through import", "[ldtk]")
     REQUIRE(sawCol1); // src (16,0) in the 16px source -> atlas cell (1,0)
 }
 
-TEST_CASE("A stacked cell splits into base + decoration", "[ldtk]")
+TEST_CASE("A stacked cell splits into base + ordered decoration stamps", "[ldtk]")
 {
-    // Two gridTiles at the same px: the FIRST is the base, the second lands on the
-    // decoration layer (flowers over grass, drawn under the player).
+    // Three gridTiles at the same px: the FIRST is the base, EVERY later one becomes
+    // a decoration stamp in paint order -- the renderer composites the whole stack
+    // exactly as the editor shows it, not just the topmost tile.
     const ldtk::Region r = loadFixture({});
-    REQUIRE(r.map.decoration.size() == r.map.tiles.size());
-    int deco = 0;
-    for (const auto& t : r.map.decoration)
-        if (t.tile_id != 0)
-            ++deco;
-    REQUIRE(deco == 1);
+    REQUIRE(r.map.decoration.size() == 2);
+    const std::size_t cell = r.map.cellIndex(0, 0);
+    REQUIRE(r.map.decoration[0].cell == cell);
+    REQUIRE(r.map.decoration[1].cell == cell);
+    REQUIRE(r.map.decoration[0].tile.tile_id == 2); // src (32,0) painted first...
+    REQUIRE(r.map.decoration[1].tile.tile_id == 3); // ...src (48,0) drawn over it
 }
 
 TEST_CASE("Tile-carrying entities import as Y-sorted props", "[ldtk]")
@@ -291,11 +329,12 @@ TEST_CASE("Prop colliders are derived from the sprite footprint (trunk), not the
     }
 }
 
-TEST_CASE("The decoration layer always matches the grid", "[ldtk]")
+TEST_CASE("Every decoration stamp lands on a real cell", "[ldtk]")
 {
-    // The real map's decoration CONTENT churns as the world is painted (the current
-    // repaint has none), so only the structural invariant is asserted here; stacking
-    // behaviour itself is pinned by the fixture test above.
+    // The real map's decoration CONTENT churns as the world is painted, so only the
+    // structural invariant is asserted here; stacking behaviour itself is pinned by
+    // the fixture test above.
     const ldtk::Region r = loadRegion();
-    REQUIRE(r.map.decoration.size() == r.map.tiles.size());
+    for (const auto& d : r.map.decoration)
+        REQUIRE(d.cell < r.map.tiles.size());
 }

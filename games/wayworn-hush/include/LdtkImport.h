@@ -61,6 +61,19 @@ struct WarpPlacement
     std::string facing; // the cardinal you step out with when arriving HERE (empty = south)
 };
 
+// Where a character stands, read from an Npc entity: `npc` names the authored
+// character (config/npcs/<npc>.json -- WHO), (wx,wy) is the spot they stand on
+// (the entity's pivot point, world px), `facing` the way they face. An Npc entity
+// may also carry an `encounter` field -- then the same placement registers as an
+// encounter box (talking is observing), collected exactly like any Encounter.
+struct NpcPlacement
+{
+    std::string npc;
+    float wx = 0.0f;
+    float wy = 0.0f;
+    std::string facing; // "north" | "south" | "east" | "west" (empty = south)
+};
+
 // Where an observation lives in the world, read from an Encounter box on the
 // Encounters layer (observability is its own concern -- physical entities carry no such
 // field). The box AABB (center + size) marks the spot; you interact when within
@@ -141,6 +154,7 @@ struct Region
     std::vector<Object> objects;
     std::vector<SpawnPoint> spawns; // named arrival points (PlayerSpawn entities)
     std::vector<WarpPlacement> warps;
+    std::vector<NpcPlacement> npcs; // characters standing in this level
     // Per-level properties (LDtk level fields). Parsed now, consumed as the systems land:
     // `music` names the level's ambient track; `interior` marks an inside space (light,
     // sound, and the camera's void treatment differ indoors).
@@ -182,6 +196,12 @@ inline void facingVec(const std::string& facing, float& dx, float& dy)
         dy = 0.0f;
     }
 }
+
+// The level a NEW walk begins in: the one holding the project's id-less
+// PlayerSpawn (the default spawn IS the start -- one authored fact, in the map,
+// no config twin to drift). Empty if no level has one (caller falls back to the
+// project's first level). The map linter enforces exactly one project-wide.
+std::string findStartLevel(const std::string& ldtk_path);
 
 // Load ONE level of an .ldtk project as a region. `level` is the LDtk level
 // identifier; empty loads the project's first level (the single-level case and the

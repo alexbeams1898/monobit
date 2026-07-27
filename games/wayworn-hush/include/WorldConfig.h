@@ -13,9 +13,6 @@ struct Config
     std::string ldtk = "assets/tilesets/source/overworld.ldtk";
     std::string tileset_png = "assets/tilesets/overworld.png";
     std::string tileset_name = "Overworld"; // substring matched against .ldtk tileset defs
-    // The level a NEW walk begins in (LDtk level identifier). Empty = the project's
-    // first level. A resumed walk uses its saved region instead.
-    std::string start_level;
     std::string ambient_track = "assets/audio/ambient_meadow.ogg";
     float ambient_volume = 0.55f;
     int ambient_fade_in_ms = 3000;

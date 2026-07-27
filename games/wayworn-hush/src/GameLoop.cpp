@@ -744,19 +744,17 @@ void seedObservedActionsAsKnown(GameState& gs, const std::string& spot)
             gs.announced_unlocks.insert(id);
 }
 
-// Re-run the engine over the stat keys only when the stats actually changed (a
-// cheap sum-of-levels dirty check), so growth can land a thought / re-open a
-// miss without a per-frame scan. Fired thoughts queue their own EXP-carrying
-// lines; the box toasts the reward when it displays them.
+// Re-run the engine over the stat keys only when the stats actually changed (the
+// levelSum fingerprint), so growth can land a thought / re-open a miss without a
+// per-frame scan. The fingerprint lives in GameState and is SEEDED at world-enter
+// from the restored stats: only genuine in-walk growth runs the engine -- never a
+// resume, and never a leftover baseline from another pilgrim's walk.
 void pumpStatChangeThoughts(GameState& gs)
 {
-    int statSum = 0;
-    for (const auto& [name, level] : gs.growth.stat_levels)
-        statSum += level;
-    static int sLastStatSum = -1;
-    if (statSum == sLastStatSum)
+    const int statSum = growth::levelSum(gs.growth);
+    if (statSum == gs.stats_seen_sum)
         return;
-    sLastStatSum = statSum;
+    gs.stats_seen_sum = statSum;
     const observations::ObserveResult r =
         observations::evaluateStats(gs.observations, gs.growth, observeNudge);
     applyGains(gs, r); // a stat rising can land a thought -- banked, grown, written down

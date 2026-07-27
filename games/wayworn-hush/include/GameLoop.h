@@ -12,6 +12,7 @@
 #include "Inventory.h"
 #include "LdtkImport.h"
 #include "Notebook.h"
+#include "Npc.h"
 #include "Observations.h"
 #include "PlayerConfig.h"
 #include "Settings.h"
@@ -118,6 +119,7 @@ struct GameState
     world_config::Config world_config;        // region asset paths (map, atlas, ambient)
     worldclock::WorldClock clock;             // in-world time (notebook datelines, day/night later)
     inventory::Registry items;                // loaded item blueprints (config/items/*.json)
+    npc::Registry npcs;                       // authored characters (config/npcs/*.json)
     loot::Registry loot_tables;               // gather loot tables (config/loot/*.json)
     crafting::Registry recipes;               // loaded recipes (config/recipes/*.json)
     crafting::Config crafting_config;         // crafting outcome/XP tuning (config/crafting.json)
@@ -169,6 +171,12 @@ struct GameState
         Phase phase = Phase::None;
         float t = 0.0f; // seconds into the current phase
     } warp_fade;
+
+    // The stat-change pump's fingerprint: growth::levelSum as of the last engine
+    // run over the stat keys. Lives HERE (per-walk, ephemeral, never saved) and is
+    // seeded from the restored stats at world-enter -- so resuming a save can never
+    // masquerade as growth and re-roll thoughts nobody earned. -1 = unseeded.
+    int stats_seen_sum = -1;
 
     // Autosave bookkeeping (ephemeral -- never saved). `progress_events` counts the
     // things worth keeping (a deed enacted, a craft made, a find granted, a reading

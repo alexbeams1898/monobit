@@ -195,6 +195,25 @@ void anchorInterpolation(EntityManager& em)
 void resetAuthoredState(GameState& gs)
 {
     observations::load(gs.observations, "config/observations.json", "config/actions.json");
+    // Bind speakers: content authors WHO talks as an npc id; the display name is
+    // authored once, in that character's config. Unknown speakers read under their
+    // raw id -- visible in play, loud in the log, never silently mute.
+    for (auto& o : gs.observations.encounters)
+    {
+        if (o.speaker.empty())
+            continue;
+        const auto it = gs.npcs.npcs.find(o.speaker);
+        if (it == gs.npcs.npcs.end())
+        {
+            std::fprintf(stderr, "[npc] observation '%s' speaker '%s' has no config/npcs entry\n",
+                         o.id.c_str(), o.speaker.c_str());
+            o.speaker_name = o.speaker;
+        }
+        else
+        {
+            o.speaker_name = it->second.name;
+        }
+    }
     growth::load(gs.growth, "config/faculties.json");
     // Only the CADENCE is authored -- the loader leaves `seconds` alone, which is the walk's
     // own elapsed time and comes from the save (applied after this).
@@ -396,6 +415,18 @@ void applyRegion(Engine& engine, EntityManager& em, GameState& gs, const ldtk::R
     world_items::spawn(em, region.pickups, gs.items, gs.loot_tables, gs.world_items_config,
                        gs.gone);
     ldtk::spawnProps(em, region);
+
+    // The people standing in this level. A placement naming an unknown character is
+    // an authoring slip -- loud, not silent, or the kitchen is just mysteriously empty.
+    for (const auto& n : region.npcs)
+    {
+        const auto it = gs.npcs.npcs.find(n.npc);
+        if (it == gs.npcs.npcs.end())
+            std::fprintf(stderr, "[npc] no character '%s' (config/npcs) for a placement in '%s'\n",
+                         n.npc.c_str(), region.level_id.c_str());
+        else
+            npc::spawn(em, it->second, n.wx, n.wy, n.facing);
+    }
 }
 
 // Load the level `level` (empty = the configured start) into the world (fatal if it
@@ -476,22 +507,28 @@ bool enterWorld(Engine& engine, EntityManager& em, GameState& gs, const std::str
     // A quit mid-warp-fade leaves the fade phase behind; a new walk starts lit.
     gs.warp_fade = {};
 
+    // Seed the stat-change fingerprint from the RESTORED stats: the pump must see
+    // only growth that happens in this walk, never the restore itself (which would
+    // re-roll eligible thoughts at boot and surface miss lines nobody earned).
+    gs.stats_seen_sum = growth::levelSum(gs.growth);
+
     // Terrain + player + props, filtered by the walk above. The region IS the map -- a
-    // failed load is fatal. A walk resumes in the level it left; a fresh one starts at
-    // the configured start level (empty = the project's first). A saved level that no
-    // longer exists (renamed/removed in authoring) falls back to the start level rather
-    // than stranding the walk at the title -- same policy as a resume point that is no
-    // longer standable (below).
-    const std::string level = pilgrim->place.walked && !pilgrim->place.region.empty()
-                                  ? pilgrim->place.region
-                                  : gs.world_config.start_level;
+    // failed load is fatal. A walk resumes in the level it left; a fresh one starts
+    // where the map's default (id-less) PlayerSpawn is -- the spawn IS the start, so
+    // there is no config twin to drift from the map (empty = the project's first
+    // level). A saved level that no longer exists (renamed/removed in authoring)
+    // falls back to the start rather than stranding the walk at the title -- same
+    // policy as a resume point that is no longer standable (below).
+    const std::string start = ldtk::findStartLevel(gs.world_config.ldtk);
+    const std::string level =
+        pilgrim->place.walked && !pilgrim->place.region.empty() ? pilgrim->place.region : start;
     if (!setupRegion(engine, em, gs, level, /*spawn_id=*/{}))
     {
-        if (level == gs.world_config.start_level)
+        if (level == start)
             return false;
         std::fprintf(stderr, "[save] saved level '%s' no longer exists -- starting from '%s'\n",
-                     level.c_str(), gs.world_config.start_level.c_str());
-        if (!setupRegion(engine, em, gs, gs.world_config.start_level, /*spawn_id=*/{}))
+                     level.c_str(), start.empty() ? "(first level)" : start.c_str());
+        if (!setupRegion(engine, em, gs, start, /*spawn_id=*/{}))
             return false;
     }
 
@@ -645,6 +682,8 @@ int main(int argc, char* argv[])
     world_config::load(gs.world_config, "config/world.json"); // region asset paths
 
     inventory::load(gs.items, "config/items");
+    npc::load(gs.npcs,
+              "config/npcs"); // authored characters (bodies; speech is observation content)
     loot::load(gs.loot_tables, "config/loot");    // gather tables (rolled by ActionKind::Gather)
     crafting::load(gs.recipes, "config/recipes"); // recipes (combine -> made thing)
     crafting::loadConfig(gs.crafting_config, "config/crafting.json"); // outcome/XP tuning
