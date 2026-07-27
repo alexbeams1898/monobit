@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+"""Serves the observation-tree tool (tree.html) rooted at THIS game.
+
+The tool always operates on the game it lives inside -- the server resolves the
+game folder from its own location, so there is no folder picking anywhere.
+Run `python tree.py` (or double-click tree.bat); Ctrl+C stops it.
+
+Binds localhost only. Writes exactly two files (observations.json + its layout
+sidecar); everything else is read-only.
+"""
+import json
+import webbrowser
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+
+TOOLS = Path(__file__).resolve().parent
+WEB = TOOLS / "tree"  # the static app (index.html + js modules + css)
+GAME = TOOLS.parent
+OBS = GAME / "config" / "observations.json"
+LAYOUT = GAME / "config" / "observations.layout.json"
+ACTIONS = GAME / "config" / "actions.json"
+NPCS = GAME / "config" / "npcs"
+PORT = 8737
+CTYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
+          ".css": "text/css; charset=utf-8", ".json": "application/json"}
+
+
+def read_json(path, fallback):
+    if not path.exists():
+        return fallback
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+class Handler(BaseHTTPRequestHandler):
+    def _send(self, code, body, ctype="application/json"):
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        if self.path == "/api/data":
+            npcs = {}
+            if NPCS.is_dir():
+                for f in sorted(NPCS.glob("*.json")):
+                    j = json.loads(f.read_text(encoding="utf-8"))
+                    npcs[j.get("id", f.stem)] = j.get("name", j.get("id", f.stem))
+            self._send(200, json.dumps({
+                "observations": read_json(OBS, {}),
+                "actions": read_json(ACTIONS, {}),
+                "npcs": npcs,
+                "layout": read_json(LAYOUT, {}),
+            }).encode())
+        else:
+            # Static app files, locked inside the tree/ dir.
+            rel = "index.html" if self.path == "/" else self.path.lstrip("/")
+            target = (WEB / rel).resolve()
+            if WEB.resolve() in target.parents and target.is_file():
+                self._send(200, target.read_bytes(),
+                           CTYPES.get(target.suffix, "application/octet-stream"))
+            else:
+                self._send(404, b"not found", "text/plain")
+
+    def do_POST(self):
+        if self.path != "/api/save":
+            return self._send(404, b"{}")
+        n = int(self.headers.get("Content-Length", 0))
+        body = json.loads(self.rfile.read(n))
+        OBS.write_text(json.dumps(body["observations"], indent=4, ensure_ascii=False) + "\n",
+                       encoding="utf-8", newline="\n")
+        LAYOUT.write_text(json.dumps(body["layout"], indent=4) + "\n",
+                          encoding="utf-8", newline="\n")
+        return self._send(200, b"{}")
+
+    def log_message(self, *args):
+        pass  # keep the console quiet
+
+
+if __name__ == "__main__":
+    server = HTTPServer(("127.0.0.1", PORT), Handler)
+    url = f"http://127.0.0.1:{PORT}/"
+    print(f"[tree] editing {OBS}")
+    print(f"[tree] open {url}  (Ctrl+C stops the tool)")
+    webbrowser.open(url)
+    server.serve_forever()

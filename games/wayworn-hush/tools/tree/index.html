@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Wayworn Hush — Observation Tree</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div id="bar">
+  <button id="reloadBtn">Reload</button>
+  <button id="saveBtn" disabled>Save</button>
+  <button id="addEnc" disabled>+ Encounter</button>
+  <button id="addThought" disabled>+ Thought</button>
+  <button id="simBtn" disabled>Simulate</button>
+  <button id="layoutBtn" disabled>Auto-layout</button>
+  <button id="legendBtn">Legend</button>
+  <input id="search" placeholder="search...">
+  <span id="status">connecting...</span>
+</div>
+<div id="legend">
+  <h3>Nodes</h3>
+  <div><span class="sw" style="background:var(--enc)"></span> encounter (a thing)</div>
+  <div><span class="sw" style="background:var(--enc-person)"></span> encounter (a person — has a speaker)</div>
+  <div><span class="sw" style="background:var(--thought)"></span> thought (the player's mind)</div>
+  <div><span class="sw" style="background:var(--flag)"></span> flag (a fact the world remembers)</div>
+  <div><span class="sw" style="background:var(--chip-tier)"></span> 👁 tier — something to NOTICE about it (observe depth)</div>
+  <div><span class="sw" style="background:var(--chip-act)"></span> ✋ deed — something to DO with it (its menu line)</div>
+  <div>⚡ = Enter trigger (fires at the player, unprompted)</div>
+  <h3>Edges (click one for its exact source field)</h3>
+  <div><svg width="40" height="10"><line x1="0" y1="5" x2="40" y2="5" stroke="#7a95b5" stroke-width="2"/></svg> unlocks-from: target requires source as knowledge</div>
+  <div><svg width="40" height="10"><line x1="0" y1="5" x2="40" y2="5" stroke="#6ab08a" stroke-width="2" stroke-dasharray="6 3"/></svg> sets a flag (on landing / taking)</div>
+  <div><svg width="40" height="10"><line x1="0" y1="5" x2="40" y2="5" stroke="#6ab08a" stroke-width="2" stroke-dasharray="2 3"/></svg> flag gates the target</div>
+  <div><svg width="40" height="10"><line x1="0" y1="5" x2="40" y2="5" stroke="#b09a6a" stroke-width="2" stroke-dasharray="2 3"/></svg> visibility: target hidden until this holds</div>
+  <div class="dimtext" style="margin-top:6px">a leftward hook into a chip = a later thing
+    DEEPENS an earlier encounter (returns you to it)</div>
+</div>
+<div id="main">
+  <div id="canvasWrap">
+    <svg id="svg">
+      <defs>
+        <marker id="arrow-obs" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7"
+                markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#7a95b5"/></marker>
+        <marker id="arrow-setflag" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7"
+                markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#6ab08a"/></marker>
+        <marker id="arrow-gateflag" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7"
+                markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#6ab08a"/></marker>
+        <marker id="arrow-visible" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7"
+                markerHeight="7" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#b09a6a"/></marker>
+      </defs>
+      <g id="viewport"><g id="edges"></g><g id="nodes"></g></g>
+    </svg>
+    <div id="simPanel"></div>
+    <div id="hint">drag bg = pan &middot; wheel = zoom &middot; drag node = move &middot;
+      Shift+drag node&rarr;node/chip = connect &middot; click = edit</div>
+  </div>
+  <div id="panel"></div>
+</div>
+<div id="validation"></div>
+<datalist id="flagNames"></datalist>
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>
