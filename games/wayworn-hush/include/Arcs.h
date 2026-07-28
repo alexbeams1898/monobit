@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Observations.h"
+#include "Psyche.h"
 #include "UnlockCondition.h"
 
 #include <nlohmann/json_fwd.hpp>
@@ -71,7 +71,7 @@ struct Problem
 // and thoughts set, and what flags anything actually gates on. The bridge between authored
 // content and the check below -- declared here (rather than in Observations) so the arc
 // linter stays self-contained and the observation engine keeps no knowledge of arcs.
-Producible survey(const observations::State& state);
+Producible survey(const psyche::State& state);
 
 // Check the arc graph against what the world can produce. Reports:
 //  - a route that can never be satisfied (requires an observation or flag nothing produces),

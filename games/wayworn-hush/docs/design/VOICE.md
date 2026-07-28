@@ -6,7 +6,7 @@
 >
 > Surface concept lives in [DESIGN.md](DESIGN.md) / [ORIGINAL_NOTES.md](ORIGINAL_NOTES.md);
 > the submerged theme in [THEME.md](THEME.md); the mechanic in
-> [OBSERVATION-SYSTEM.md](OBSERVATION-SYSTEM.md). This doc is the voice that
+> [PSYCHE.md](PSYCHE.md). This doc is the voice that
 > carries all three.
 
 ## tldr
@@ -60,7 +60,7 @@ reads as pretension.
 **Growth does not make him wiser. It makes him more comfortable.**
 
 The tiered-thought mechanic already deepens text as faculties rise
-([OBSERVATION-SYSTEM.md](OBSERVATION-SYSTEM.md)). Tiers are **not** more
+([PSYCHE.md](PSYCHE.md)). Tiers are **not** more
 information — a higher tier is not a better fact. Tiers are **register**:
 
 | | Low | High |
@@ -167,6 +167,6 @@ Both readings must be true, and the second is never spoken.
 - [ORIGINAL_NOTES.md](ORIGINAL_NOTES.md) — source-of-truth for tone; the concept
   in the co-creator's own words ("learns more about himself and what he's
   actually looking for").
-- [OBSERVATION-SYSTEM.md](OBSERVATION-SYSTEM.md) — the tier mechanic §3 gives
+- [PSYCHE.md](PSYCHE.md) — the tier mechanic §3 gives
   register to.
 - [AESTHETIC.md](AESTHETIC.md) — the melancholic-uplifting surface register.

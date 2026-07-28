@@ -33,7 +33,7 @@ arcs::Arc twoRouteArc()
     arcs::Route doing;
     doing.label = "by doing";
     unlock::Clause dc;
-    dc.flag = "cleared_the_reeds";
+    dc.flags = {"cleared_the_reeds"};
     doing.when.any.push_back(dc);
 
     a.routes = {looking, doing};
@@ -72,7 +72,7 @@ TEST_CASE("a route requiring a flag nothing sets is caught", "[arcs]")
 {
     arcs::Registry reg;
     arcs::Arc a = twoRouteArc();
-    a.routes[1].when.any[0].flag = "never_set_by_anything";
+    a.routes[1].when.any[0].flags = {"never_set_by_anything"};
     reg.arcs.push_back(a);
 
     REQUIRE(mentions(arcs::validate(reg, makeWorld()), "never_set_by_anything"));
@@ -147,21 +147,21 @@ TEST_CASE("survey reports what the authored content can produce", "[arcs]")
 {
     // The bridge the boot-time check runs on: memories from encounters/tiers/thoughts, flags
     // from the deeds and thoughts that set them, and the flags anything gates on.
-    observations::State st;
+    psyche::State st;
 
-    observations::Encounter e;
+    psyche::Encounter e;
     e.id = "tide_line";
     e.tiers.resize(2);
-    observations::Action deed;
+    psyche::Action deed;
     deed.id = "clear_it";
     deed.set_flag = "cleared_the_reeds";
     e.actions.push_back(deed);
     unlock::Clause vis;
-    vis.flag = "shore_understood";
+    vis.flags = {"shore_understood"};
     e.visible_when.any.push_back(vis); // something READS the goal flag
     st.encounters.push_back(e);
 
-    observations::Thought t;
+    psyche::Thought t;
     t.id = "the_shells_were_a_meal";
     t.set_flag = "midden_understood";
     st.thoughts.push_back(t);

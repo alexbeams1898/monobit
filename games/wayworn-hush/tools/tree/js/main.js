@@ -11,7 +11,7 @@ const $ = (id) => document.getElementById(id);
 async function loadAll() {
   try {
     await api.load();
-    ["addEnc", "addThought", "simBtn", "layoutBtn"].forEach(id => $(id).disabled = false);
+    ["addEnc", "addThought", "addRemark", "simBtn", "layoutBtn"].forEach(id => $(id).disabled = false);
     const g = buildGraph();
     if (!Object.keys(S.layout).length) autoLayout(g);
     const wrap = $("canvasWrap");
@@ -46,6 +46,12 @@ $("addThought").onclick = () => {
   S.doc.thoughts.push({ id, faculty: "perception", text: "" });
   S.layout["t:" + id] = { x: (80 - S.view.x) / S.view.k, y: (140 - S.view.y) / S.view.k };
   markDirty(); render(); openPanel("t:" + id);
+};
+$("addRemark").onclick = () => {
+  const id = uniqueId("new_remark");
+  S.doc.remarks.push({ id, text: "" }); // voice defaults to the player
+  S.layout["r:" + id] = { x: (80 - S.view.x) / S.view.k, y: (200 - S.view.y) / S.view.k };
+  markDirty(); render(); openPanel("r:" + id);
 };
 $("simBtn").onclick = () => {
   S.simOn = !S.simOn;

@@ -27,6 +27,12 @@ struct Config
     int idle_row = 1;
     int idle_frames = 1;
     float idle_duration = 0.0f; // seconds/frame; 0 = static
+    // The walk cycle (character-sheet layout defaults), used when a scene walks
+    // them somewhere. `walk_speed` is world px/sec.
+    int walk_row = 0;
+    int walk_frames = 9;
+    float walk_duration = 0.09f;
+    float walk_speed = 90.0f;
     // Foot collider (world px): a small solid box at the sprite's base, so they
     // Y-sort by where they stand and the player cannot walk through them.
     float collider_w = 22.0f;

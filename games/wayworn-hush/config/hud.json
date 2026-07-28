@@ -1,7 +1,7 @@
 {
-    "_comment": "HUD region rects, authored as FRACTIONS of the 16:9 reference canvas (x,y,w,h in 0..1), mapped to the window's 16:9 safe area at render (see HudCanvas / docs/design/HUD.md). Screen-fixed overlay bands: THOUGHT upper (subjective, faculty-hued), OBSERVATION/ACTION lower (objective + action menu), NOTIFICATION right at the lower-band top. Tune these by feel. visibility: 'auto' draws a region only when it holds content (calm default); 'on' shows always-on region frames; 'off' hides the HUD. Later flipped from the Settings menu.",
-    "thought": { "x": 0.20, "y": 0.10, "w": 0.60, "h": 0.22 },
-    "observation": { "x": 0.20, "y": 0.68, "w": 0.60, "h": 0.24 },
+    "_comment": "HUD region rects, authored as FRACTIONS of the 16:9 reference canvas (x,y,w,h in 0..1), mapped to the window's 16:9 safe area at render (see HudCanvas / docs/design/HUD.md). Screen-fixed overlay bands: CONTENT lower (ALL content boxes -- readings, thoughts, remarks, menus), NOTIFICATION right at the content-band top, UPPER (no content of its own; the teaching card parks there so it never covers the content it points at). Tune these by feel. visibility: 'auto' draws a region only when it holds content (calm default); 'on' shows always-on region frames; 'off' hides the HUD. Later flipped from the Settings menu.",
+    "upper": { "x": 0.20, "y": 0.10, "w": 0.60, "h": 0.22 },
+    "content": { "x": 0.20, "y": 0.68, "w": 0.60, "h": 0.24 },
     "notification": { "x": 0.80, "y": 0.68, "w": 0.18, "h": 0.24 },
     "pad_x": 0.018,
     "pad_y": 0.022,

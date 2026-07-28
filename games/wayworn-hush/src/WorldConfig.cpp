@@ -17,6 +17,7 @@ void load(Config& cfg, const std::string& path)
     cfg.ambient_track = j.value("ambient_track", cfg.ambient_track);
     cfg.ambient_volume = j.value("ambient_volume", cfg.ambient_volume);
     cfg.ambient_fade_in_ms = j.value("ambient_fade_in_ms", cfg.ambient_fade_in_ms);
+    cfg.ambient_gate_flag = j.value("ambient_gate_flag", cfg.ambient_gate_flag);
     cfg.warp_fade_seconds = j.value("warp_fade_seconds", cfg.warp_fade_seconds);
     cfg.warp_enter_sfx = j.value("warp_enter_sfx", cfg.warp_enter_sfx);
     cfg.warp_exit_sfx = j.value("warp_exit_sfx", cfg.warp_exit_sfx);

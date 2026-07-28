@@ -58,3 +58,19 @@ those sheets scaled ×2 to 32px and color-snapped by
 ## Music
 
 Ambient score composed by Kira Stream (see `assets/audio/`).
+
+## Ambient sound effects
+
+The bedroom's morning sounds are processed from free Pixabay uploads (Pixabay
+Content License — free use, no attribution required; credited here as good
+practice). The unmodified downloads are kept in
+[`assets/audio/source/`](assets/audio/source/); the shipped `.ogg` files are
+trimmed, peak-normalized to −1 dBFS, and converted to 22050 Hz mono.
+
+- **alarm_loop.ogg** — "Alarm Clock" by freesound_community
+- **birds.ogg** — "Morning Song Birds" by freesound_community
+- **tv_murmur.ogg / tv_glitch.ogg** — "TV Static" + "TV Glitch" by freesound_community
+- **tv_off.ogg** — "TV Shutdown" by Dragon-Studio
+
+The door enter/exit transitions and the observe/notebook UI tones are original
+synthesized sounds, made for this game.

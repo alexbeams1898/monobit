@@ -1,0 +1,43 @@
+{
+    "_comment": "Named world-sound channels (see include/Ambience.h). Scenes start them by name (the `sound` step); the flag bus does the rest: stop_on_flag fades a loop out the moment that flag exists, start_on_flag fires a sound (once per walk) the moment its flag appears. Nothing here auto-stops on waking: the alarm and TV ring/murmur until their own deeds set alarm_off / tv_off -- leaving them on is a choice the room remembers. Standards: 22050 Hz mono ogg, peak-normalized to -1 dBFS. knock.ogg is an AWAITED ASSET.",
+    "channels": {
+        "alarm": {
+            "path": "assets/audio/alarm_loop.ogg",
+            "volume": 0.4,
+            "loop": true,
+            "stop_on_flag": "alarm_off",
+            "fade_in_ms": 4000
+        },
+        "tv": {
+            "path": "assets/audio/tv_murmur.ogg",
+            "volume": 0.2,
+            "loop": true,
+            "stop_on_flag": "tv_off",
+            "fade_in_ms": 4000
+        },
+        "tv_off_clunk": {
+            "path": "assets/audio/tv_off.ogg",
+            "volume": 0.8,
+            "loop": false,
+            "start_on_flag": "tv_off"
+        },
+        "birds": {
+            "path": "assets/audio/birds.ogg",
+            "volume": 0.14,
+            "loop": true,
+            "stop_on_flag": "first_wake_done",
+            "fade_ms": 3500,
+            "fade_in_ms": 4000
+        },
+        "knock": {
+            "path": "assets/audio/knock.ogg",
+            "volume": 0.8,
+            "loop": false
+        },
+        "door": {
+            "path": "assets/audio/door_enter.ogg",
+            "volume": 0.9,
+            "loop": false
+        }
+    }
+}

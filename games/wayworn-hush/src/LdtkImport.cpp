@@ -16,6 +16,10 @@
 
 namespace ldtk
 {
+// Defined below with the entity helpers; the internal prop builder reads authored
+// fields through it.
+std::string entityField(const nlohmann::json& e, const char* identifier);
+
 namespace
 {
 using nlohmann::json;
@@ -93,13 +97,16 @@ struct Rect
 // trunk and leaves the leaves passable. `band` is the footprint height in the same
 // pixel scale as `src` (== world px). Returned bounds are RELATIVE to src's top-left.
 // Returns {} (w==0) if the band is fully transparent or the rect is out of the atlas.
-Rect footprintBounds(const Atlas& atlas, const Rect& src, int band)
+Rect footprintBounds(const Atlas& atlas, const Rect& src, int band, bool at_top = false)
 {
     if (!atlas.ok() || src.w <= 0 || src.h <= 0)
         return {};
-    const int y0 = std::max(0, src.h - std::max(1, band)); // top of the base band
+    // The scanned band: the sprite's BASE for a standing prop's footprint, its TOP
+    // for a cover prop's raised back (the headboard you cannot walk through).
+    const int y0 = at_top ? 0 : std::max(0, src.h - std::max(1, band));
+    const int y1 = at_top ? std::min(src.h, std::max(1, band)) : src.h;
     int minx = src.w, maxx = -1, maxy = -1;
-    for (int y = y0; y < src.h; ++y)
+    for (int y = y0; y < y1; ++y)
     {
         const int ay = src.y + y;
         if (ay < 0 || ay >= atlas.h)
@@ -122,10 +129,12 @@ Rect footprintBounds(const Atlas& atlas, const Rect& src, int band)
     return Rect{minx, y0, maxx - minx + 1, maxy - y0 + 1};
 }
 
+void deriveCollider(const Atlas& atlas, const json& e, Prop& p);
+
 // Build a visual Prop from a tile-carrying LDtk entity `e` whose pivot is at world
 // (wx,wy). Resolves the sprite's atlas rect + center (pivot -> center for the CENTERED
-// draw), the base Y-sort key, and the derived footprint collider. `atlas` is the
-// decoded render atlas for the alpha scan.
+// draw), the base Y-sort key, and the derived collider. `atlas` is the decoded
+// render atlas for the alpha scan.
 Prop buildProp(const Atlas& atlas, const json& e, const json& tile, float wx, float wy)
 {
     // __tile {x,y,w,h} is in the 16px source; x2 for the 32px render atlas. The sprite's
@@ -151,18 +160,39 @@ Prop buildProp(const Atlas& atlas, const json& e, const json& tile, float wx, fl
     p.wy = wy + static_cast<float>(hh) * (0.5f - pvy);
     p.sort_wy = wy; // px IS the pivot point -> its world Y is the base (feet if pivotY=1)
 
-    // Derive the collider from the sprite's FOOTPRINT: opaque pixels in the base band, so
-    // collision hugs the trunk (no bumping the transparent margin, no colliding with the
-    // walk-through canopy). Band height is authored per-entity as `collider_height`
-    // (source px); absent -> a base slice of the sprite. Atlas px == world px.
-    int band = p.sh / 4; // default footprint: bottom quarter of the sprite
+    // Which plane the thing occupies (see Prop::Plane). Absent = Standing -- the
+    // common case authors nothing. Case-insensitive so a String field ("cover")
+    // and an LDtk enum field ("Cover") both read.
+    std::string plane = entityField(e, "plane");
+    for (char& c : plane)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    p.plane = plane == "floor"   ? Prop::Plane::Floor
+              : plane == "cover" ? Prop::Plane::Cover
+                                 : Prop::Plane::Standing;
+    deriveCollider(atlas, e, p);
+    return p;
+}
+
+// Derive a prop's collider from its art. Floor props take none (you walk on
+// them); cover props collide at their TOP band (the raised back); standing props
+// at their base FOOTPRINT -- opaque pixels only, so collision hugs the art. Band
+// height is authored per-entity as `collider_height` (source px; 0 = deliberately
+// no collider); absent -> a quarter of the sprite. Atlas px == world px.
+void deriveCollider(const Atlas& atlas, const json& e, Prop& p)
+{
+    if (p.plane == Prop::Plane::Floor)
+        return;
+    int band = p.sh / 4;
     if (const auto fis = e.find("fieldInstances"); fis != e.end() && fis->is_array())
         for (const auto& fi : *fis)
             if (fi.value("__identifier", std::string{}) == "collider_height")
                 if (const auto v = fi.find("__value"); v != fi.end() && v->is_number())
                     band = v->get<int>() * 2; // source px -> world px
+    if (band <= 0)
+        return;
 
-    const Rect fp = footprintBounds(atlas, Rect{p.sx, p.sy, p.sw, p.sh}, band);
+    const Rect fp = footprintBounds(atlas, Rect{p.sx, p.sy, p.sw, p.sh}, band,
+                                    /*at_top=*/p.plane == Prop::Plane::Cover);
     if (fp.w > 0)
     {
         const float spriteLeft = p.wx - static_cast<float>(p.sw) * 0.5f;
@@ -173,7 +203,6 @@ Prop buildProp(const Atlas& atlas, const json& e, const json& tile, float wx, fl
         p.col_cx = spriteLeft + static_cast<float>(fp.x) + p.col_w * 0.5f;
         p.col_cy = spriteTop + static_cast<float>(fp.y) + p.col_h * 0.5f;
     }
-    return p;
 }
 
 // A tileset source pixel (src:[sx,sy]) at the authoring grid size maps to an atlas
@@ -296,6 +325,20 @@ std::string entityField(const json& e, const char* identifier)
     return {};
 }
 
+// An integer-valued entity field by identifier, or `fallback` if absent/not a number.
+int entityFieldInt(const json& e, const char* identifier, int fallback)
+{
+    if (const auto fis = e.find("fieldInstances"); fis != e.end() && fis->is_array())
+        for (const auto& fi : *fis)
+            if (fi.value("__identifier", std::string{}) == identifier)
+            {
+                const auto v = fi.find("__value");
+                if (v != fi.end() && v->is_number())
+                    return v->get<int>();
+            }
+    return fallback;
+}
+
 // The CENTER of a box entity in world px. LDtk's `px` is the entity's PIVOT point --
 // NOT necessarily the top-left: a bottom-center pivot (0.5,1) puts `px` at the box's
 // bottom edge. Treating px as top-left silently shifts the box by up to a full size
@@ -403,6 +446,41 @@ void collectPickupsInLayer(const json& level, const char* layerName, Region& r)
 // is authoring-grid px, x2 to the 32px world. `atlas` decodes prop footprint colliders.
 // Structure-type entities (bridges, docks) are handled by parseStructures (stamped into
 // the map), so they're skipped here rather than becoming stray objects.
+// Split a COVER prop at `t` world px from its top into its two natures: above the
+// line is the part you lie ON (pillow, headboard -- drawn under a body), below it
+// the part that ENCLOSES (the blanket -- drawn over). One authored entity, one
+// authored number (`cover_height`, the enclosing part's height from the bottom),
+// two sprites at import. The derived collider (the raised back) rides the upper
+// piece.
+void splitCoverProp(const Prop& p, int t, Region& r)
+{
+    const float top = p.wy - static_cast<float>(p.sh) * 0.5f;
+    Prop upper = p;
+    upper.plane = Prop::Plane::Floor;
+    upper.sh = t;
+    upper.wy = top + static_cast<float>(t) * 0.5f;
+    Prop lower = p;
+    lower.sy = p.sy + t;
+    lower.sh = p.sh - t;
+    lower.wy = top + static_cast<float>(t) + static_cast<float>(lower.sh) * 0.5f;
+    lower.col_solid = false; // the collider (if any) belongs to the upper piece
+    r.props.push_back(upper);
+    r.props.push_back(lower);
+}
+
+// A tile-carrying entity -> prop(s): one sprite normally; a cover prop with an
+// authored `cover_height` (the enclosing part's height in source px, from the
+// sprite's bottom) splits in two.
+void collectProp(const Atlas& atlas, const json& e, const json& tile, float wx, float wy, Region& r)
+{
+    const Prop p = buildProp(atlas, e, tile, wx, wy);
+    const int coverH = entityFieldInt(e, "cover_height", 0) * 2; // source px -> world px
+    if (p.plane == Prop::Plane::Cover && coverH > 0 && coverH < p.sh)
+        splitCoverProp(p, p.sh - coverH, r);
+    else
+        r.props.push_back(p);
+}
+
 // An Npc entity -> a character placement (who, where, facing), plus its talk
 // encounter when an `encounter` field is present -- the same placement anchors both
 // the body and the box (talking is observing).
@@ -440,6 +518,33 @@ void collectWarp(const json& e, Region& r)
                      r.level_id.c_str());
 }
 
+// An invisible solid box, placed and sized by hand -- collision authored exactly
+// where the author means it (a bed's footboard, a gap too narrow to squeeze
+// through) instead of derived from art.
+void collectBlocker(const json& e, Region& r)
+{
+    Prop b;
+    if (boxCenter(e, b.col_cx, b.col_cy, b.col_w, b.col_h))
+    {
+        b.col_solid = true;
+        r.props.push_back(b); // no atlas rect -> nothing drawn, only the collider
+    }
+}
+
+// PlayerSpawn and Marker are both NAMED POINTS in the same lookup space:
+// PlayerSpawn is where the player arrives, Marker is a spot choreography
+// (scenes) steers by. Same shape, different word in the map so authoring reads
+// honestly.
+void collectPoint(const json& e, float wx, float wy, Region& r)
+{
+    SpawnPoint s;
+    s.id = entityField(e, "id");
+    s.facing = entityField(e, "facing");
+    s.wx = wx;
+    s.wy = wy;
+    r.spawns.push_back(std::move(s));
+}
+
 void parseEntities(const Atlas& atlas, const json& level, const structures::Config& structureCfg,
                    Region& r)
 {
@@ -466,18 +571,17 @@ void parseEntities(const Atlas& atlas, const json& level, const structures::Conf
         {
             collectNpc(e, wx, wy, r);
         }
+        else if (id == "Blocker")
+        {
+            collectBlocker(e, r);
+        }
         else if (tile != e.end() && tile->is_object())
         {
-            r.props.push_back(buildProp(atlas, e, *tile, wx, wy));
+            collectProp(atlas, e, *tile, wx, wy, r);
         }
-        else if (id == "PlayerSpawn")
+        else if (id == "PlayerSpawn" || id == "Marker")
         {
-            SpawnPoint s;
-            s.id = entityField(e, "id");
-            s.facing = entityField(e, "facing");
-            s.wx = wx;
-            s.wy = wy;
-            r.spawns.push_back(std::move(s));
+            collectPoint(e, wx, wy, r);
         }
         else if (id == "Warp")
         {
@@ -827,8 +931,8 @@ Region loadImpl(const std::string& ldtk_path, const std::string& tileset_path,
     // Observation PLACEMENTS come ONLY from the dedicated Encounters layer. Observability
     // is its own concern -- a resizable Encounter box placed anywhere (over a bridge
     // piece, an area, an object). Physical entities (Rock, Tree, Bridge) stay purely
-    // physical; they carry no observation fields. The content lives in observations.json;
-    // the box is just where + how it fires. See docs/design/OBSERVATION-SYSTEM.md.
+    // physical; they carry no observation fields. The content lives in psyche.json;
+    // the box is just where + how it fires. See docs/design/PSYCHE.md.
     collectEncountersInLayer(level, "Encounters", r);
     // Pickups: items lying in the world, authored on their own Pickups layer (a Pickup entity
     // carrying an `item` id, or a Gather entity carrying a `loot` table id). Bound to
@@ -894,6 +998,17 @@ void spawnProps(EntityManager& em, const Region& region)
     auto& reg = em.registry();
     for (const auto& p : region.props)
     {
+        // A prop with no atlas rect (a Blocker) is pure collision -- skip the sprite.
+        if (p.sw <= 0 || p.sh <= 0)
+        {
+            if (p.col_solid)
+            {
+                const entt::entity ce = reg.create();
+                reg.emplace<Transform>(ce, Transform{p.col_cx, p.col_cy});
+                reg.emplace<Collider>(ce, Collider{p.col_w, p.col_h, true});
+            }
+            continue;
+        }
         const entt::entity e = reg.create();
         // Transform is the sprite's top-left; RenderSystem draws the src rect there.
         reg.emplace<Transform>(e, Transform{p.wx, p.wy});
@@ -906,11 +1021,16 @@ void spawnProps(EntityManager& em, const Region& region)
         spr.src_w = p.sw;
         spr.src_h = p.sh;
         spr.layer = 2; // character layer -- Y-sorted against the player
-        // ONE sprite for the whole prop, sorted by its BASE (feet) world-Y: player in
-        // front when below, behind when above -- exactly like the player. No per-tile
-        // pieces, so no straddle artifact.
+        // ONE sprite for the whole prop. A STANDING prop sorts by its BASE (feet)
+        // world-Y, exactly like the player. A FLOOR prop is always underfoot and a
+        // COVER prop always over whoever is inside it -- expressed as sort keys
+        // beyond any real world-Y, so no character can ever out-sort them.
+        constexpr float kUnderEveryone = -1.0e6f;
+        constexpr float kOverEveryone = 1.0e6f;
         spr.use_sort_anchor = true;
-        spr.sort_anchor = p.sort_wy;
+        spr.sort_anchor = p.plane == Prop::Plane::Floor   ? kUnderEveryone
+                          : p.plane == Prop::Plane::Cover ? kOverEveryone
+                                                          : p.sort_wy;
         reg.emplace<Sprite>(e, spr);
 
         // Derived collider: a separate static entity at the trunk's center carrying a

@@ -405,8 +405,11 @@ observation/action/flag puzzle IS the conversation system:
   must obey when built:
   - There is a **consent gradient**, and it only changes who initiates:
     observe = fully chosen, Enter-trigger = half-chosen (you walked there),
-    scripted = the world walks to you. A forced moment is a *non-consensual
-    observation* — same content, same engine, different initiator.
+    scripted = the world walks to you. A pressed reading is an **impression** —
+    the senses take it unbidden (a crash downstairs, an alarm, a voice) — as
+    distinct from an *observation*, which is chosen looking. Same content, same
+    engine, different initiator; the psyche engine marks which is which, and the
+    game may treat them differently (softer arrival, its own teaching).
   - A scene is **choreography that plays the graph**: it moves bodies, holds
     input, fires existing encounter content in order, releases. Never a second
     dialogue format; the writer authors one kind of content forever.
@@ -418,6 +421,22 @@ observation/action/flag puzzle IS the conversation system:
     a node, or the visualization lies by omission.
 - Scale honestly: a handful of characters, standing where authored. No
   schedules or pathfinding until the game asks for them.
+
+## 9. Teaching — first-time cards, loop-first pacing
+
+The opening teaches the loop immediately (the reward layer speaks from the
+first beat — no meta-silence period), and the teacher is the **first-time
+card**: the moment a mechanic first happens, the world stops, the screen dims
+except the thing being taught, and one short card names it. Space resumes.
+
+- **Once per pilgrim, ever** — the seen-set is part of the walk's record. A
+  second walk re-teaches from zero, which is what a fresh pilgrim means.
+- **Fired off what is on screen**, not off internal events — the card lands
+  while the thing it names is visible and lit, never before or after.
+- **Cards are authored content** (config), against a small vocabulary of
+  first-time events the engine emits. Adding a card is authoring, not code.
+- The first beats of the game double as the mechanics showcase: they should
+  fire every core surface once, naturally, in playing order.
 
 ## What's already built vs. to build
 
@@ -437,6 +456,6 @@ observation/action/flag puzzle IS the conversation system:
    polygon-terrain?
 
 ## Cross-references
-[THEME.md](THEME.md) · [OBSERVATION-SYSTEM.md](OBSERVATION-SYSTEM.md) ·
+[THEME.md](THEME.md) · [PSYCHE.md](PSYCHE.md) ·
 [DESIGN.md](DESIGN.md) · [AUDIT.md](AUDIT.md) (selva lift) ·
 [MAP-ARCHITECTURE.md](MAP-ARCHITECTURE.md)

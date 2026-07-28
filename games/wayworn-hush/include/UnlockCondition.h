@@ -40,12 +40,13 @@ struct Knowledge
 };
 
 // One AND-clause. A field left empty is ignored. All set fields must hold.
-// `observed` is a list -- ALL listed memories must be held (this is how a
-// synthesis thought requires a series of observations).
+// `observed` and `flags` are lists -- ALL listed entries must be held (this is
+// how a synthesis thought requires a series of observations, or a deed waits on
+// several flags at once).
 struct Clause
 {
     std::vector<std::string> observed;         // require ALL these memories observed
-    std::string flag;                          // require this flag set
+    std::vector<std::string> flags;            // require ALL these flags set
     std::unordered_map<std::string, int> stat; // require each stat >= its level
 };
 
@@ -62,10 +63,10 @@ bool clauseHolds(const Clause& c, const Knowledge& k);
 // Is the condition satisfied (any clause holds, or it is unconditional)?
 bool satisfied(const Condition& cond, const Knowledge& k);
 
-// Parse a Condition from a JSON array of clauses (each: optional `flag`, `observed` (string or
-// array of all-required ids), `stat` (name -> min level)). A non-array or missing -> an empty
-// (unconditional) Condition. The ONE parser -- observations, crafting, and any future gated
-// system share it so a clause is read identically everywhere.
+// Parse a Condition from a JSON array of clauses (each field string-or-array: `flag`,
+// `observed` (all listed required), `stat` (name -> min level)). A non-array or missing -> an
+// empty (unconditional) Condition. The ONE parser -- observations, crafting, and any future
+// gated system share it so a clause is read identically everywhere.
 Condition parseCondition(const nlohmann::json& j);
 
 } // namespace unlock

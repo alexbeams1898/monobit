@@ -236,7 +236,7 @@ The rework is contained:
 
 1. **Trigger: replace auto-AABB-enter with face-+-Space interact.** Find the
    encounter the player faces within range; fire on keypress. (Contained change
-   to one function — the earlier `observations::update(state, x, y)` auto-check
+   to one function — the earlier `psyche::update(state, x, y)` auto-check
    becomes an on-press "what am I facing?" query.)
 2. **Tiered thoughts** — extend the encounter data from a flat line list to
    `{tier_0/1/2, unlock gates}` (lift `lang`'s Entry + resolve).

@@ -37,10 +37,10 @@ struct TempSave
 GameState livedInState()
 {
     GameState gs;
-    gs.observations.observed_tier["rock"] = 2;
-    gs.observations.fired.insert("rock_water_worn");
-    gs.observations.flags.insert("rock_moss_cleared");
-    gs.observations.taken.insert("rock:clear_moss");
+    gs.psyche.observed_tier["rock"] = 2;
+    gs.psyche.fired.insert("rock_water_worn");
+    gs.psyche.flags.insert("rock_moss_cleared");
+    gs.psyche.taken.insert("rock:clear_moss");
 
     gs.growth.spirit_exp = 42;
     gs.growth.stat_levels["perception"] = 5;
@@ -268,8 +268,8 @@ TEST_CASE("apply puts a pilgrim's walk back onto a GameState", "[savegame]")
     GameState fresh; // as if authored config were loaded but nothing played yet
     savegame::apply(p, fresh);
 
-    REQUIRE(fresh.observations.observed_tier.at("rock") == 2);
-    REQUIRE(fresh.observations.flags.count("rock_moss_cleared") == 1);
+    REQUIRE(fresh.psyche.observed_tier.at("rock") == 2);
+    REQUIRE(fresh.psyche.flags.count("rock_moss_cleared") == 1);
     REQUIRE(fresh.growth.spirit_exp == 42);
     REQUIRE(fresh.growth.stat_levels.at("perception") == 5);
     REQUIRE(fresh.satchel.items.size() == 2);
@@ -288,10 +288,10 @@ TEST_CASE("capture -> apply is a faithful round trip through a GameState", "[sav
     GameState restored;
     savegame::apply(*savegame::find(f, id), restored);
 
-    REQUIRE(restored.observations.observed_tier == original.observations.observed_tier);
-    REQUIRE(restored.observations.fired == original.observations.fired);
-    REQUIRE(restored.observations.flags == original.observations.flags);
-    REQUIRE(restored.observations.taken == original.observations.taken);
+    REQUIRE(restored.psyche.observed_tier == original.psyche.observed_tier);
+    REQUIRE(restored.psyche.fired == original.psyche.fired);
+    REQUIRE(restored.psyche.flags == original.psyche.flags);
+    REQUIRE(restored.psyche.taken == original.psyche.taken);
     REQUIRE(restored.growth.spirit_exp == original.growth.spirit_exp);
     REQUIRE(restored.growth.stat_levels == original.growth.stat_levels);
     REQUIRE(restored.satchel.items.size() == original.satchel.items.size());

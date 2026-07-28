@@ -47,6 +47,35 @@ float lineH(FontHandle font)
     return static_cast<float>(FontManager::lineHeight(font)) + 8.0f;
 }
 
+std::vector<std::string> wrapText(FontHandle font, const std::string& text, float max_width)
+{
+    std::vector<std::string> lines;
+    std::string line;
+    std::size_t i = 0;
+    while (i < text.size())
+    {
+        const std::size_t sp = text.find(' ', i);
+        const std::string word = text.substr(i, sp == std::string::npos ? sp : sp - i);
+        std::string trial = line;
+        if (!trial.empty())
+            trial += ' ';
+        trial += word;
+        if (!line.empty() && UIRenderer::measureText(font, trial).width > max_width)
+        {
+            lines.push_back(line);
+            line = word;
+        }
+        else
+        {
+            line = std::move(trial);
+        }
+        i = sp == std::string::npos ? text.size() : sp + 1;
+    }
+    if (!line.empty())
+        lines.push_back(line);
+    return lines;
+}
+
 void button(const std::string& label, float x, float y, float w, float h, bool hot, bool enabled)
 {
     // A disabled button never reads as hot, however the caller asked -- one place decides

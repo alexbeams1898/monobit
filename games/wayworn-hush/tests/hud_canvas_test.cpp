@@ -119,13 +119,13 @@ TEST_CASE("the HUD layout does not carry a visibility of its own", "[hud]")
 TEST_CASE("loadRegions reads region rects, keeping defaults for missing fields", "[hud]")
 {
     const hud::Regions r =
-        loadFrom(R"({"thought":{"x":0.1,"y":0.2,"w":0.5,"h":0.3},"pad_x":0.05})");
-    REQUIRE(r.thought.x == Approx(0.1f));
-    REQUIRE(r.thought.y == Approx(0.2f));
-    REQUIRE(r.thought.w == Approx(0.5f));
-    REQUIRE(r.thought.h == Approx(0.3f));
+        loadFrom(R"({"upper":{"x":0.1,"y":0.2,"w":0.5,"h":0.3},"pad_x":0.05})");
+    REQUIRE(r.upper.x == Approx(0.1f));
+    REQUIRE(r.upper.y == Approx(0.2f));
+    REQUIRE(r.upper.w == Approx(0.5f));
+    REQUIRE(r.upper.h == Approx(0.3f));
     REQUIRE(r.pad_x == Approx(0.05f));
-    // observation was absent -> its struct default survives.
-    REQUIRE(r.observation.x == Approx(0.20f));
+    // content was absent -> its struct default survives.
+    REQUIRE(r.content.x == Approx(0.20f));
     REQUIRE(r.pad_y == Approx(0.022f));
 }

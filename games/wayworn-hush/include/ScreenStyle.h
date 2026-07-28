@@ -3,6 +3,7 @@
 #include "UIRenderer.h"
 
 #include <string>
+#include <vector>
 
 using FontHandle = int;
 
@@ -58,6 +59,12 @@ void softTextCentered(const std::string& s, float cx, float y, const Color& c, f
 // A line's full height for the given font (its line height plus the register's
 // breathing room). The unit vertical rhythm every screen lays out on.
 float lineH(FontHandle font);
+
+// Word-wrap `text` to `max_width` px in `font`. The ONE line-breaking rule --
+// two copies would eventually wrap the same sentence differently. A word too
+// long to fit alone overflows rather than splitting mid-word (rare for game
+// copy).
+std::vector<std::string> wrapText(FontHandle font, const std::string& text, float max_width);
 
 // A thing you can press. `hot` = the mouse is over it (or the keyboard cursor is
 // on it): it lifts and brightens. `enabled` false draws it dim and inert -- it

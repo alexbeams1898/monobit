@@ -44,13 +44,13 @@ Table parseTable(const nlohmann::json& j, const std::string& fallbackId)
 }
 
 // A uniform int in [lo, hi] (inclusive) from the shared [0,n] roll source.
-int rollRange(int lo, int hi, const observations::RollRng& rng)
+int rollRange(int lo, int hi, const psyche::RollRng& rng)
 {
     return hi <= lo ? lo : lo + rng(hi - lo);
 }
 
 // Pick one entry by weight: a value in [0, total-1] walks the cumulative weights.
-const Entry* pickWeighted(const Table& table, int total, const observations::RollRng& rng)
+const Entry* pickWeighted(const Table& table, int total, const psyche::RollRng& rng)
 {
     int r = rng(total - 1); // [0, total-1]
     for (const auto& e : table.entries)
@@ -86,7 +86,7 @@ void load(Registry& out, const std::string& dir)
     }
 }
 
-std::vector<inventory::ItemInstance> roll(const Table& table, const observations::RollRng& rng)
+std::vector<inventory::ItemInstance> roll(const Table& table, const psyche::RollRng& rng)
 {
     std::vector<inventory::ItemInstance> out;
     const int total = table.totalWeight();

@@ -1,4 +1,4 @@
-#include "Observations.h"
+#include "Psyche.h"
 
 #include "JsonConfig.h"
 
@@ -8,7 +8,7 @@
 #include <cmath>
 #include <cstdio>
 
-namespace observations
+namespace psyche
 {
 namespace
 {
@@ -76,8 +76,8 @@ void collectKeys(const unlock::Condition& cond, std::vector<std::string>& out)
     {
         for (const auto& id : c.observed)
             out.push_back(keyObserved(id));
-        if (!c.flag.empty())
-            out.push_back(keyFlag(c.flag));
+        for (const auto& f : c.flags)
+            out.push_back(keyFlag(f));
         for (const auto& [name, level] : c.stat)
             out.push_back(keyStat(name));
     }
@@ -198,8 +198,8 @@ bool satisfiedByKeys(const unlock::Condition& cond, const std::unordered_set<std
         bool ok = true;
         for (const auto& id : c.observed)
             ok = ok && keys.count(keyObserved(id));
-        if (!c.flag.empty())
-            ok = ok && keys.count(keyFlag(c.flag));
+        for (const auto& f : c.flags)
+            ok = ok && keys.count(keyFlag(f));
         if (ok)
             return true;
     }
@@ -411,6 +411,7 @@ Action parseAction(const nlohmann::json& a)
     act.id = a.value("id", std::string{});
     act.label = a.value("label", std::string{});
     act.result_text = a.value("result_text", std::string{});
+    act.say = a.value("say", std::string{});
     act.set_flag = a.value("set_flag", std::string{});
     act.grant_item = a.value("grant_item", std::string{});
     act.grant_table = a.value("grant_table", std::string{});
@@ -458,6 +459,7 @@ Thought parseThought(const nlohmann::json& e)
     r.faculty = e.value("faculty", std::string{});
     r.text = e.value("text", std::string{});
     r.miss_text = e.value("miss_text", std::string{});
+    r.voice = e.value("voice", std::string{});
     r.set_flag = e.value("set_flag", std::string{});
     r.emotional_weight = e.value("emotional_weight", 0);
     r.feeders = parseFeeders(e);
@@ -601,6 +603,18 @@ void load(State& state, const std::string& path, const std::string& actions_path
             state.thoughts.push_back(std::move(r));
     }
 
+    // remarks: the spoken siblings of thoughts (thoughts are written, remarks are
+    // said). Same engine entity, same list at runtime -- only the authoring
+    // vocabulary and the voice differ. Voice defaults to the player's.
+    for (const auto& e : j.value("remarks", nlohmann::json::array()))
+    {
+        Thought r = parseThought(e);
+        if (r.voice.empty())
+            r.voice = "player";
+        if (!r.id.empty())
+            state.thoughts.push_back(std::move(r));
+    }
+
     // Build the trigger index: each thought registers under every key that can
     // change its outcome -- its unlock_when inputs, its roll FACULTY, and its
     // feeder stats -- so a state change only re-checks those that care, and any
@@ -667,10 +681,46 @@ bool isSynthesis(const Thought& r)
 // --- the ambient engine ----------------------------------------------------
 namespace
 {
+// A remark is said, not thought: it surfaces as a quoted line in its voice (the
+// player's, or an npc's) instead of a notebook-registered thought. Same engine,
+// same reward.
+void pushLandedLine(State& state, const Thought& r)
+{
+    if (!r.isRemark())
+    {
+        state.pending.push_back(PendingLine{LineKind::Thought, r.text, r.faculty, r.difficulty,
+                                            /*is_new=*/true, r.spirit_exp});
+        return;
+    }
+    const std::string& who =
+        r.voice == "player" ? state.player_name : (r.voice_name.empty() ? r.voice : r.voice_name);
+    state.pending.push_back(
+        PendingLine{LineKind::Remark, r.text, {}, 0, /*is_new=*/false, r.spirit_exp, who});
+}
+
+// Fire a thought/remark NOW: record it, surface its line, collect its rewards,
+// and append the keys its firing changes (for the cascade). The one fire block,
+// shared by the ambient engine and a scene's forced remark.
+int fireThought(State& state, const Thought& r, std::vector<std::string>& landed,
+                std::vector<std::pair<std::string, int>>& stat_gains,
+                std::vector<std::string>& changedKeys)
+{
+    state.fired.insert(r.id);
+    pushLandedLine(state, r);
+    landed.push_back(r.id);
+    if (!r.faculty.empty() && r.stat_exp > 0)
+        stat_gains.emplace_back(r.faculty, r.stat_exp); // grows the thought's faculty
+    // Yields cascade: a fired thought is itself a held memory, and may set a flag.
+    changedKeys.push_back(keyObserved(r.id));
+    if (!r.set_flag.empty() && state.flags.insert(r.set_flag).second)
+        changedKeys.push_back(keyFlag(r.set_flag));
+    return r.spirit_exp;
+}
+
 // Roll every unfired thought triggered by `changedKeys`; queue hits, apply
 // yields (which enqueue more changed keys -> cascade). Returns EXP earned; appends
 // every thought that LANDED to `landed`, in the order they fired (the caller notes
-// when they happened -- observations doesn't know what a notebook is, the same way
+// when they happened -- psyche doesn't know what a notebook is, the same way
 // it doesn't know what a satchel is). Fire-once bounds the cascade.
 int runEngine(State& state, const growth::GrowthState& growth, std::vector<std::string> changedKeys,
               const RollRng& rng, std::vector<std::string>& landed,
@@ -706,29 +756,19 @@ int runEngine(State& state, const growth::GrowthState& growth, std::vector<std::
             if (!rollLands(state, growth, r, rng))
             {
                 // Eligible but the roll missed: surface the faint "something here
-                // you can't place" pull (failure is content). The trigger index
-                // only re-visits this thought when a real input changes, so it
-                // re-attempts (and can land) as the player grows -- no spam.
+                // you can't place" pull (failure is content). An impression -- it
+                // arrives unbidden. The trigger index only re-visits this thought
+                // when a real input changes, so it re-attempts (and can land) as
+                // the player grows -- no spam.
                 if (!r.miss_text.empty())
                     state.pending.push_back(
-                        PendingLine{LineKind::Observation, r.miss_text, {}, 0, false, 0});
+                        PendingLine{LineKind::Impression, r.miss_text, {}, 0, false, 0});
                 continue;
             }
 
-            state.fired.insert(r.id);
-            state.pending.push_back(PendingLine{LineKind::Thought, r.text, r.faculty, r.difficulty,
-                                                /*is_new=*/true, r.spirit_exp});
-            earned += r.spirit_exp;
-            landed.push_back(r.id);
-            if (!r.faculty.empty() && r.stat_exp > 0)
-                stat_gains.emplace_back(r.faculty, r.stat_exp); // grows the thought's faculty
-
-            // Yields cascade: a fired thought is itself a held memory, and may
-            // set a flag -> new changed keys re-checked this same run. State
-            // changed, so refresh the knowledge snapshot.
-            changedKeys.push_back(keyObserved(r.id));
-            if (!r.set_flag.empty() && state.flags.insert(r.set_flag).second)
-                changedKeys.push_back(keyFlag(r.set_flag));
+            // New changed keys are re-checked this same run; state changed, so
+            // refresh the knowledge snapshot.
+            earned += fireThought(state, r, landed, stat_gains, changedKeys);
             k = makeKnowledge(state, growth, observedIds, statLevels);
         }
     }
@@ -741,8 +781,9 @@ namespace
 // Reveal a specific observable's deepest satisfied tier and run the ambient engine over
 // what changed -- the shared core of both the deliberate observe verb and the ambient
 // enter/approach triggers. `o` is the resolved observable (already located + eligible).
+// `impression` = the reading was pressed on him, not chosen (see LineKind).
 ObserveResult observeEncounter(State& state, const growth::GrowthState& growth, const Encounter& o,
-                               const RollRng& rng)
+                               const RollRng& rng, bool impression)
 {
     std::unordered_set<std::string> observedIds;
     std::unordered_map<std::string, int> statLevels;
@@ -770,7 +811,7 @@ ObserveResult observeEncounter(State& state, const growth::GrowthState& growth, 
     // is the person speaking up unprompted (a greeting as you come near), quoted.
     // The thoughts the engine lands below stay the player's own voice either way.
     const bool spoken = o.trigger == Trigger::Enter && !o.speaker_name.empty();
-    state.pending.push_back(PendingLine{LineKind::Observation,
+    state.pending.push_back(PendingLine{impression ? LineKind::Impression : LineKind::Observation,
                                         bestTier->text,
                                         {},
                                         0,
@@ -814,7 +855,7 @@ ObserveResult observe(State& state, const growth::GrowthState& growth, float px,
     const Encounter* o = nearestInReach(state, growth, px, py);
     if (!o)
         return {Outcome::None, 0};
-    return observeEncounter(state, growth, *o, rng);
+    return observeEncounter(state, growth, *o, rng, /*impression=*/false);
 }
 
 bool visible(const State& state, const growth::GrowthState& growth, const std::string& id)
@@ -829,11 +870,11 @@ bool visible(const State& state, const growth::GrowthState& growth, const std::s
 }
 
 ObserveResult observeById(State& state, const growth::GrowthState& growth, const std::string& id,
-                          const RollRng& rng)
+                          const RollRng& rng, bool impression)
 {
     for (const auto& o : state.encounters)
         if (o.id == id)
-            return visible(state, growth, id) ? observeEncounter(state, growth, o, rng)
+            return visible(state, growth, id) ? observeEncounter(state, growth, o, rng, impression)
                                               : ObserveResult{Outcome::None, 0};
     return {Outcome::None, 0};
 }
@@ -862,7 +903,7 @@ ObserveResult triggerProximity(State& state, const growth::GrowthState& growth, 
         if (o.distanceTo(px, py) > state.interact_reach)
             continue; // not within reach yet
         o.fired = true;
-        ObserveResult res = observeEncounter(state, growth, o, rng);
+        ObserveResult res = observeEncounter(state, growth, o, rng, /*impression=*/true);
         earned += res.earned;
         if (res.outcome != Outcome::None)
             outcome = res.outcome;
@@ -875,6 +916,67 @@ ObserveResult triggerProximity(State& state, const growth::GrowthState& growth, 
     ObserveResult out{outcome, earned};
     out.landed = std::move(landed);
     return out;
+}
+
+bool conditionMet(const State& state, const growth::GrowthState& growth,
+                  const unlock::Condition& cond)
+{
+    std::unordered_set<std::string> observedIds;
+    std::unordered_map<std::string, int> statLevels;
+    const unlock::Knowledge k = makeKnowledge(state, growth, observedIds, statLevels);
+    return unlock::satisfied(cond, k);
+}
+
+ObserveResult forceRemark(State& state, const growth::GrowthState& growth, const std::string& id,
+                          const RollRng& rng)
+{
+    for (const auto& r : state.thoughts)
+    {
+        if (r.id != id)
+            continue;
+        if (!r.isRemark() || state.fired.count(r.id) > 0)
+            return {Outcome::None, 0};
+        std::vector<std::string> landed;
+        std::vector<std::pair<std::string, int>> stat_gains;
+        std::vector<std::string> changed;
+        int earned = fireThought(state, r, landed, stat_gains, changed);
+        earned += runEngine(state, growth, std::move(changed), rng, landed, stat_gains);
+        ObserveResult res{Outcome::Thought, earned};
+        res.landed = std::move(landed);
+        res.stat_gains = std::move(stat_gains);
+        return res;
+    }
+    std::fprintf(stderr, "[psyche] forceRemark: no remark '%s'\n", id.c_str());
+    return {Outcome::None, 0};
+}
+
+void bindPlayerName(State& state, const std::string& name)
+{
+    const auto sub = [&](std::string& text)
+    {
+        std::size_t at = 0;
+        while ((at = text.find("{player}", at)) != std::string::npos)
+        {
+            text.replace(at, 8, name);
+            at += name.size();
+        }
+    };
+    for (auto& o : state.encounters)
+    {
+        for (auto& t : o.tiers)
+            sub(t.text);
+        for (auto& a : o.actions)
+        {
+            sub(a.label);
+            sub(a.say);
+            sub(a.result_text);
+        }
+    }
+    for (auto& t : state.thoughts)
+    {
+        sub(t.text);
+        sub(t.miss_text);
+    }
 }
 
 ObserveResult setFlag(State& state, const growth::GrowthState& growth, const std::string& flag,
@@ -992,18 +1094,32 @@ ObserveResult takeAction(State& state, const growth::GrowthState& growth, const 
     if (!act)
         return {Outcome::None, 0}; // not offered -> no-op
 
-    // The deed's result line -- and on a person, the reply IS the person answering:
-    // a speaker encounter's results speak in their voice (quoted, under their name).
-    // Talking is acting; conversation depth is deeds unlocking off what's been
-    // noticed and said, through the same knowledge system as everything else.
-    if (!act->result_text.empty())
-        state.pending.push_back(PendingLine{LineKind::Observation,
-                                            act->result_text,
+    // The player's OWN words first (`say` -- the third voice, quoted under his
+    // name), then the deed's result line -- which on a person is the reply, in
+    // their voice. A say-deed plus a speaker reply is a full two-voice exchange
+    // from one take. Talking is acting; conversation depth is deeds unlocking off
+    // what's been noticed and said, through the same knowledge system as
+    // everything else.
+    if (!act->say.empty())
+        state.pending.push_back(PendingLine{LineKind::Remark,
+                                            act->say,
                                             {},
                                             0,
                                             /*is_new=*/false,
                                             0,
-                                            o->speaker_name});
+                                            state.player_name});
+    // On a person the result is the REPLY (their speech); on a thing it is the
+    // felt sense of the act -- which arrives like an impression, not a chosen
+    // looking.
+    if (!act->result_text.empty())
+        state.pending.push_back(
+            PendingLine{o->speaker_name.empty() ? LineKind::Impression : LineKind::Remark,
+                        act->result_text,
+                        {},
+                        0,
+                        /*is_new=*/false,
+                        0,
+                        o->speaker_name});
     if (act->one_shot)
         state.taken.insert(takenKey(spot, act->id));
 
@@ -1011,7 +1127,7 @@ ObserveResult takeAction(State& state, const growth::GrowthState& growth, const 
     if (!act->set_flag.empty() && state.flags.insert(act->set_flag).second)
         changedKeys.push_back(keyFlag(act->set_flag));
 
-    // The deed's DECLARED effects (ids only; the game enacts grants -- observations is
+    // The deed's DECLARED effects (ids only; the game enacts grants -- psyche is
     // inventory-ignorant), plus the stat it exercises. Gathered before runEngine so the
     // triggered-thought gains append to the same result.
     ObserveResult result = deedEffects(*act, spot);
@@ -1084,9 +1200,8 @@ void explainClause(const unlock::Clause& c, const unlock::Knowledge& k,
     for (const auto& [name, lvl] : c.stat)
         out.push_back("  " + name + " >= " + std::to_string(lvl) + " (have " +
                       std::to_string(k.stat(name)) + ")" + (k.stat(name) >= lvl ? " OK" : " NO"));
-    if (!c.flag.empty())
-        out.push_back(std::string("  flag ") + c.flag +
-                      (k.has(k.flags, c.flag) ? " OK" : " MISSING"));
+    for (const auto& f : c.flags)
+        out.push_back(std::string("  flag ") + f + (k.has(k.flags, f) ? " OK" : " MISSING"));
 }
 } // namespace
 
@@ -1191,4 +1306,4 @@ Signal signalFor(const State& state, const growth::GrowthState& /*growth*/, cons
     return state.observed_tier.count(spot) > 0 ? Signal::Observed : Signal::Unobserved;
 }
 
-} // namespace observations
+} // namespace psyche

@@ -1,7 +1,7 @@
 :root {
   --bg: #23262a; --panel: #2b2f34; --line: #3a4046; --text: #d8dad6;
   --dim: #8b9096; --enc: #35507a; --enc-person: #6a4a7a; --thought: #7a6a3a;
-  --flag: #3a6a4a; --chip-tier: #2e3f56; --chip-act: #4e3a30;
+  --chip-tier: #2e3f56; --chip-act: #4e3a30; --scene: #6a3a3a; --remark: #5a6a3a;
   --err: #c05a5a; --warn: #c0965a; --sel: #e8c96a;
   --sim-on: #6ac07a;
 }
@@ -80,9 +80,10 @@ svg.panning { cursor: grabbing; }
 #legend .sw { display: inline-block; width: 14px; height: 10px; border-radius: 2px;
               margin-right: 6px; vertical-align: baseline; }
 .edge.obs { stroke: #7a95b5; }
-.edge.setflag { stroke: #6ab08a; stroke-dasharray: 6 3; }
-.edge.gateflag { stroke: #6ab08a; stroke-dasharray: 2 3; }
+.edge.flagwire { stroke: #6ab08a; stroke-dasharray: 6 3; }
+.edge.mutex { stroke: #c05a5a; stroke-dasharray: 3 4; }
 .edge.visible { stroke: #b09a6a; stroke-dasharray: 2 3; }
+.edge.plays { stroke: #c07a6a; }
 .edge.linking { stroke: var(--sel); stroke-dasharray: 4 3; }
 .dimmed { opacity: 0.18; }
 .sim-unreachable { opacity: 0.28; }

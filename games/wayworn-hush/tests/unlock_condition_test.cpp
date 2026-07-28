@@ -1,5 +1,7 @@
 #include "UnlockCondition.h"
 
+#include <nlohmann/json.hpp>
+
 #include <catch2/catch_test_macros.hpp>
 
 using unlock::Clause;
@@ -59,9 +61,15 @@ TEST_CASE("observed requires ALL listed memories; flag requires the flag set", "
     REQUIRE_FALSE(unlock::clauseHolds(both, w.view()));
 
     Clause fl;
-    fl.flag = "met_hermit";
+    fl.flags = {"met_hermit"};
     REQUIRE(unlock::clauseHolds(fl, w.view()));
-    fl.flag = "unmet";
+    fl.flags = {"unmet"};
+    REQUIRE_FALSE(unlock::clauseHolds(fl, w.view()));
+
+    w.flags.insert("bell_rang");
+    fl.flags = {"met_hermit", "bell_rang"}; // a flag series: ALL must be set
+    REQUIRE(unlock::clauseHolds(fl, w.view()));
+    fl.flags = {"met_hermit", "unmet"};
     REQUIRE_FALSE(unlock::clauseHolds(fl, w.view()));
 }
 
@@ -91,12 +99,32 @@ TEST_CASE("Fields within a clause are AND-ed (all must hold)", "[unlock]")
 
     Clause c;
     c.observed = {"water"};
-    c.flag = "met_hermit";
+    c.flags = {"met_hermit"};
     c.stat["perception"] = 3;
     REQUIRE(unlock::clauseHolds(c, w.view())); // all three hold
 
     c.stat["perception"] = 4; // now the stat is too low -> whole clause fails
     REQUIRE_FALSE(unlock::clauseHolds(c, w.view()));
+}
+
+TEST_CASE("flag and observed each parse as a string or an array", "[unlock]")
+{
+    const auto j = nlohmann::json::parse(R"([
+        { "flag": "alone" },
+        { "flag": ["alarm_off", "tv_off"], "observed": "waking" }
+    ])");
+    const Condition cond = unlock::parseCondition(j);
+    REQUIRE(cond.any.size() == 2);
+    REQUIRE(cond.any[0].flags == std::vector<std::string>{"alone"});
+    REQUIRE(cond.any[1].flags == std::vector<std::string>{"alarm_off", "tv_off"});
+    REQUIRE(cond.any[1].observed == std::vector<std::string>{"waking"});
+
+    World w;
+    w.observed.insert("waking");
+    w.flags.insert("alarm_off");
+    REQUIRE_FALSE(unlock::clauseHolds(cond.any[1], w.view())); // tv_off missing
+    w.flags.insert("tv_off");
+    REQUIRE(unlock::clauseHolds(cond.any[1], w.view()));
 }
 
 TEST_CASE("Clauses are OR-ed (any satisfies the condition)", "[unlock]")

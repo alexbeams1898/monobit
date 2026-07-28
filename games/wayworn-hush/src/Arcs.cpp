@@ -38,8 +38,8 @@ void clauseDemands(const unlock::Clause& c, std::vector<std::string>& observed,
 {
     for (const auto& o : c.observed)
         observed.push_back(o);
-    if (!c.flag.empty())
-        flags.push_back(c.flag);
+    for (const auto& f : c.flags)
+        flags.push_back(f);
 }
 } // namespace
 
@@ -79,12 +79,12 @@ namespace
 void readsOf(const unlock::Condition& c, std::unordered_set<std::string>& out)
 {
     for (const auto& clause : c.any)
-        if (!clause.flag.empty())
-            out.insert(clause.flag);
+        for (const auto& f : clause.flags)
+            out.insert(f);
 }
 } // namespace
 
-Producible survey(const observations::State& state)
+Producible survey(const psyche::State& state)
 {
     Producible w;
     for (const auto& e : state.encounters)

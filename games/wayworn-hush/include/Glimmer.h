@@ -2,7 +2,7 @@
 
 #include "Formulas.h"
 #include "Growth.h"
-#include "Observations.h"
+#include "Psyche.h"
 
 #include <string>
 #include <unordered_set>
@@ -17,7 +17,7 @@ class EntityManager;
 // renders the world through the character's eyes: low Perception -> a faint (or no) glow;
 // higher Perception -> the hint reads stronger. Nothing lingers: step away and it fades.
 // Items are NOT glimmered -- they render their floor icon + a rim Outline. See
-// docs/design/OBSERVATION-SYSTEM.md.
+// docs/design/PSYCHE.md.
 
 // A glow entity's smoothed display level + tint. `base_alpha` lerps toward the target each
 // frame (glow when active+visible, else 0); Sprite.alpha = base_alpha + breathing, so the
@@ -57,7 +57,7 @@ void load(Config& cfg, const std::string& path);
 // `gone` is the set of placement ids this pilgrim has removed for good
 // (savegame::World::gone): a spot consumed on a previous visit is skipped, so it doesn't
 // come back when the world is rebuilt from the authored map.
-void spawn(EntityManager& em, const observations::State& obs, const Config& cfg,
+void spawn(EntityManager& em, const psyche::State& obs, const Config& cfg,
            const std::unordered_set<std::string>& gone = {});
 
 // Per-frame: each encounter glimmer glows (lerps toward its peak) only while its Interactable
@@ -66,7 +66,7 @@ void spawn(EntityManager& em, const observations::State& obs, const Config& cfg,
 // Set each interactable's `present` from live encounter visibility -- call BEFORE the
 // interaction resolve, so a hidden encounter is no target (neither verb) and a revealed one
 // becomes interactable the same frame. The one gate that keeps observe + act in agreement.
-void refreshPresence(EntityManager& em, const observations::State& obs,
+void refreshPresence(EntityManager& em, const psyche::State& obs,
                      const growth::GrowthState& growth);
 
 void update(EntityManager& em, const growth::GrowthState& growth, const formulas::Config& formulas,

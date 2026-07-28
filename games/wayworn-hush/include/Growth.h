@@ -58,7 +58,7 @@ struct GrowthState
     std::unordered_map<std::string, int> stat_levels;
 
     // How much each stat has been EXERCISED (raw use), keyed by name. A stat rises by
-    // DOING its verb -- exercising a faculty grows it (see docs/design/OBSERVATION-SYSTEM.md
+    // DOING its verb -- exercising a faculty grows it (see docs/design/PSYCHE.md
     // §5). The displayed level is base + a diminishing curve over this (statLevel), so early
     // use raises fast and later use slowly. This is the saved progression; the level is
     // derived, never stored.

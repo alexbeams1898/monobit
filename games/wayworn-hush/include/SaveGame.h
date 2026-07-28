@@ -33,7 +33,7 @@ namespace savegame
 inline constexpr int kSchemaVersion = 2;
 
 // What the pilgrim has come to know: the observation record. Mirrors the
-// "record" half of observations::State (the authored encounters/thoughts are
+// "record" half of psyche::State (the authored encounters/thoughts are
 // reloaded from config, not saved).
 struct Record
 {
@@ -107,6 +107,7 @@ struct Data
     std::unordered_map<std::string, double> notebook_at;
     std::unordered_set<std::string> known_recipes; // realized/taught recipe ids
     std::unordered_set<std::string> announced;     // unlock ids already toasted
+    std::unordered_set<std::string> tutorial_seen; // teaching cards already shown
     double clock_seconds = 0.0;                    // in-world time elapsed
     Place place;
 };

@@ -1,0 +1,11 @@
+{
+    "_comment": "The slipped-out branch: he got up on his own; she hears the door from downstairs and calls up. Shares first_morning_done with mom_enters: whichever fires first silences the other.",
+    "id": "mom_calls",
+    "level": "PlayerHouse_F2",
+    "start_when": [ { "flag": "first_wake_done" } ],
+    "set_flag": "first_morning_done",
+    "steps": [
+        { "wait": 0.5 },
+        { "observe": "mom_calls" }
+    ]
+}

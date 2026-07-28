@@ -98,7 +98,7 @@ gains a meaning underneath:
 
 - [DESIGN.md](DESIGN.md) / [ORIGINAL_NOTES.md](ORIGINAL_NOTES.md) — the surface
   concept this theme lives beneath (and was always implicit within).
-- [OBSERVATION-SYSTEM.md](OBSERVATION-SYSTEM.md) — the mechanic that is, read one
+- [PSYCHE.md](PSYCHE.md) — the mechanic that is, read one
   way, a soul learning to see itself.
 - [AESTHETIC.md](AESTHETIC.md) — the register that carries the feeling the words
   never state.

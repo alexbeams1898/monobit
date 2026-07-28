@@ -3,7 +3,7 @@
 #include "Growth.h"
 #include "Inventory.h"
 #include "Loot.h"
-#include "Observations.h"
+#include "Psyche.h"
 
 #include <string>
 #include <vector>
@@ -108,9 +108,9 @@ Resolution resolve(const std::vector<Candidate>& items, const Intent& intent, fl
 // (proximity range). References -- valid for the call only.
 struct Context
 {
-    observations::State& obs;
+    psyche::State& obs;
     const growth::GrowthState& growth;
-    const observations::RollRng& rng;
+    const psyche::RollRng& rng;
     inventory::Satchel& satchel;      // Pickup/Gather deposit here
     const inventory::Registry& items; // item blueprints (stackability, rarity, name)
     const loot::Registry& loot;       // loot tables (Gather rolls one)

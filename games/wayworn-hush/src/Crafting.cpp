@@ -147,7 +147,7 @@ Match match(const std::vector<std::string>& selectedTypes, const Registry& regis
     return best;
 }
 
-float outcomeQuality(const Recipe& recipe, int craftStat, const observations::RollRng& rng,
+float outcomeQuality(const Recipe& recipe, int craftStat, const psyche::RollRng& rng,
                      const Config& cfg)
 {
     if (recipe.kind == OutputKind::Permanent)
@@ -219,7 +219,7 @@ std::vector<std::pair<std::string, int>> splitXp(const Recipe& recipe, int total
 }
 
 Outcome craft(const Recipe& recipe, inventory::Satchel& satchel, const inventory::Registry& items,
-              int craftStat, const observations::RollRng& rng, const Config& cfg,
+              int craftStat, const psyche::RollRng& rng, const Config& cfg,
               const State& state)
 {
     Outcome out;

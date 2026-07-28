@@ -35,13 +35,14 @@ learns "what kind of thing is this" from *where on screen* it appears:
 └──────────────────────────────────────────────┘
 ```
 
-**Mind above, world + hands below** — a *screen* hierarchy, not a world one.
-Thoughts (emergent, subjective) surface in the upper screen band; objective
-readings and the action menu (the *doing* layer) in the lower band; notifications
-right, level with the lower band. Wherever the pilgrim is standing in the world,
-a thought appears in the upper band and a reading in the lower band. Content
-longer than a region **paginates** (Space turns the page, then dismisses) — the
-region never resizes.
+**All content in one band, distinguished by register.** Every content box —
+readings, thoughts, remarks, the action menu — renders in the lower CONTENT
+band; the *look* (paper vs window, quotes, hue) signals the kind, never the
+position. Notifications sit right, level with the band. The UPPER band holds no
+content of its own: it is where the teaching card parks, clear of what it points
+at. Content longer than a region **paginates** (Space turns the page, then
+dismisses) — the region never resizes.
+(An earlier design routed thoughts to the upper band; that split is retired.)
 
 ## Content is not HUD (the boundary)
 
@@ -84,43 +85,41 @@ Authored in `config/hud.json` so the layout is tunable, not magic numbers.
 
 | Region | Anchor / band | Holds | Chrome |
 |---|---|---|---|
-| **THOUGHT** | top-center, upper band | subjective thoughts (realizations, conclusions) | faculty-**hued** border + tint |
-| **OBSERVATION / ACTION** | bottom-center, lower band | objective readings + the action menu | neutral chrome |
-| **NOTIFICATION** | center-right, at lower-band top | ambient toasts (EXP, "1 new observation") | minimal, fades in place |
+| **CONTENT** | bottom-center, lower band | every content box: readings, thoughts, remarks, the action menu | per-kind register (see routing) |
+| **NOTIFICATION** | center-right, at content-band top | ambient toasts (EXP, "1 new observation") | minimal, fades in place |
+| **UPPER** | top-center | no content — the teaching card parks here | the card's own frame |
 
-- **THOUGHT (upper).** A thought is *what you made of it* — it surfaces above,
-  faculty-hued (perception/reason/wonder color), reading as interiority. Fixed
-  rect; the reading paginates within it.
-- **OBSERVATION / ACTION (lower).** The objective reading ("A stone, half-sunk")
-  and the action menu ("Clear the moss / Leave") both live here — they're the
-  *engaging-the-object* layer, grounded near the player. Reading and menu share
-  the region (the menu replaces/overlays the reading when it opens; they don't
-  co-display). Neutral chrome (not faculty-hued — objective).
-- **NOTIFICATION (right).** Ambient toasts, right-aligned, top edge level with the
-  OBSERVATION/ACTION region, stacking upward. Fade in/out in place, no movement.
+- **CONTENT (lower).** Everything the game says lives here, one box at a time —
+  the *look* carries the kind (a thought is notebook paper, a reading a dark
+  window, speech wears quotes). The menu replaces/overlays the reading when it
+  opens; they don't co-display.
+- **NOTIFICATION (right).** Ambient toasts, right-aligned, top edge level with
+  the CONTENT region, stacking upward. Fade in/out in place, no movement.
+- **UPPER.** Reserved sky: a teaching card stops the moment and points at a lit
+  region below — parking it up here means it can never cover the thing it names.
 
-Regions are **non-overlapping by construction** — a thought (upper) and a reading
-(lower) can be on screen at once without collision.
+Regions are **non-overlapping by construction** — a card (upper), a reading
+(lower), and a toast (right) can be on screen at once without collision.
 
 ## Content → region routing
 
-The engine tags each surfaced line by `PendingLine::kind` (Observation vs
-Thought). Both kinds render in the one LOWER band, distinguished by **register,
-not position** — the *look* signals the kind, so no literal "Observation/Thought"
-label is needed (keeps the HUD minimal, per AESTHETIC.md).
+The engine tags each surfaced line by `PendingLine::kind` (see the psyche
+engine's four kinds). All kinds render in the one CONTENT band, distinguished by
+**register, not position** — the *look* signals the kind, so no literal label is
+needed (keeps the HUD minimal, per AESTHETIC.md).
 
-- `LineKind::Observation` → **perception window**: a dark EarthBound/Mother-3
-  dialogue box, light text, no header. He is *perceiving* the world in the moment
-  — objective, not written down.
+- `LineKind::Observation` / `Impression` → **perception window**: a dark
+  EarthBound/Mother-3 dialogue box, light text, no header. He is *perceiving*
+  the world in the moment — objective, not written down. An impression (pressed
+  on him, not chosen) arrives with a softer, lower appear tone.
+- `LineKind::Remark` → the same window, the words **quoted** under the voice's
+  name — speech, his or another's.
 - `LineKind::Thought` → **notebook entry**: an aged-paper page, ink text, a
   faculty-hued left margin rule, and a header (dateline · faculty · rarity · New).
   He is *reflecting / writing it down* — subjective.
 - An action **menu** → perception window (a deed on the object you perceive, not
   an entry).
 - A `notify::push` → NOTIFICATION region (centered in the gap right of the box).
-
-The upper THOUGHT region stays defined in config for a possible future re-split,
-but both kinds currently share the lower band.
 
 ### The dateline — WorldClock seam
 

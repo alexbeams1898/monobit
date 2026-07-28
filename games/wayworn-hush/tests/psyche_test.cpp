@@ -1,5 +1,5 @@
 #include "Growth.h"
-#include "Observations.h"
+#include "Psyche.h"
 
 #include <nlohmann/json.hpp>
 
@@ -11,18 +11,18 @@
 #include <catch2/catch_test_macros.hpp>
 
 using growth::GrowthState;
-using observations::Encounter;
-using observations::LineKind;
-using observations::ObservationTier;
-using observations::ObserveResult;
-using observations::Outcome;
-using observations::State;
-using observations::Thought;
+using psyche::Encounter;
+using psyche::LineKind;
+using psyche::ObservationTier;
+using psyche::ObserveResult;
+using psyche::Outcome;
+using psyche::State;
+using psyche::Thought;
 
 namespace
 {
-const observations::RollRng kNoNudge = [](int) { return 0; };    // roll = facultyLevel + feeders
-const observations::RollRng kMaxNudge = [](int n) { return n; }; // + full dice
+const psyche::RollRng kNoNudge = [](int) { return 0; };    // roll = facultyLevel + feeders
+const psyche::RollRng kMaxNudge = [](int n) { return n; }; // + full dice
 
 // Helper to build a stat clause.
 unlock::Clause statClause(const std::string& f, int n)
@@ -101,8 +101,8 @@ State makeWorld()
         {
             for (const auto& id : c.observed)
                 out.push_back("obs:" + id);
-            if (!c.flag.empty())
-                out.push_back("flag:" + c.flag);
+            for (const auto& f : c.flags)
+                out.push_back("flag:" + f);
             for (const auto& [n, l] : c.stat)
                 out.push_back("stat:" + n);
         }
@@ -125,11 +125,11 @@ State makeWorld()
 
 // Observe the named observable by standing at its box center (within interact_reach).
 ObserveResult obsAt(State& s, const GrowthState& g, const std::string& id,
-                    const observations::RollRng& rng)
+                    const psyche::RollRng& rng)
 {
     for (const auto& o : s.encounters)
         if (o.id == id)
-            return observations::observe(s, g, o.x, o.y, rng);
+            return psyche::observe(s, g, o.x, o.y, rng);
     return {Outcome::None, 0};
 }
 } // namespace
@@ -178,7 +178,7 @@ TEST_CASE("A thought rolls: misses at low faculty, lands once grown", "[observat
     // ambient engine re-checks stat-keyed thoughts -> moss_thought re-rolls
     // (perception now weights the roll) -> 4 >= 4 -> lands. Generic re-open: ANY
     // relevant stat rise re-opens, via the index, not a per-thought flag.
-    const ObserveResult r = observations::evaluateStats(s, self({{"perception", 4}}), kNoNudge);
+    const ObserveResult r = psyche::evaluateStats(s, self({{"perception", 4}}), kNoNudge);
     REQUIRE(s.fired.count("moss_thought") == 1);
     REQUIRE(r.outcome == Outcome::Thought);
     REQUIRE(r.earned == 10);
@@ -201,7 +201,7 @@ TEST_CASE("A synthesis needs a SERIES of observations and reads as synthesis", "
         if (t.id == "settlement")
             settlement = &t;
     REQUIRE(settlement != nullptr);
-    REQUIRE(observations::isSynthesis(*settlement));
+    REQUIRE(psyche::isSynthesis(*settlement));
 }
 
 TEST_CASE("Feeders add to the roll AND a feeder rise re-opens a missed synthesis", "[observations]")
@@ -221,7 +221,7 @@ TEST_CASE("Feeders add to the roll AND a feeder rise re-opens a missed synthesis
     // pump re-checks it: 18 + 1 = 19 >= 19 -> lands. (This is the exact case the
     // old faculty-only re-open missed.)
     const ObserveResult r =
-        observations::evaluateStats(s, self({{"reason", 18}, {"survival", 2}}), kNoNudge);
+        psyche::evaluateStats(s, self({{"reason", 18}, {"survival", 2}}), kNoNudge);
     REQUIRE(s.fired.count("settlement") == 1);
     REQUIRE(r.outcome == Outcome::Thought);
 }
@@ -232,7 +232,7 @@ TEST_CASE("setFlag fires a flag-gated thought ambiently", "[observations]")
     Thought r;
     r.id = "hears_the_bell";
     r.unlock_when = unlock::Condition{{unlock::Clause{}}};
-    r.unlock_when.any[0].flag = "bell_rang";
+    r.unlock_when.any[0].flags = {"bell_rang"};
     r.faculty = "wonder";
     r.difficulty = 1; // threshold 0 -> always lands
     r.text = "a bell, somewhere";
@@ -240,11 +240,11 @@ TEST_CASE("setFlag fires a flag-gated thought ambiently", "[observations]")
     s.thoughts = {r};
     s.trigger_index["flag:bell_rang"] = {0};
 
-    ObserveResult res = observations::setFlag(s, self({}), "bell_rang", kNoNudge);
+    ObserveResult res = psyche::setFlag(s, self({}), "bell_rang", kNoNudge);
     REQUIRE(res.outcome == Outcome::Thought);
     REQUIRE(s.fired.count("hears_the_bell") == 1);
     // Setting the same flag again does nothing (already set).
-    REQUIRE(observations::setFlag(s, self({}), "bell_rang", kNoNudge).outcome == Outcome::None);
+    REQUIRE(psyche::setFlag(s, self({}), "bell_rang", kNoNudge).outcome == Outcome::None);
 }
 
 TEST_CASE("Standing beyond interact_reach of every observable observes nothing", "[observations]")
@@ -252,7 +252,7 @@ TEST_CASE("Standing beyond interact_reach of every observable observes nothing",
     // Proximity: you must be within interact_reach of an observable's box. (500,500) is far
     // from both (stone at (100,0), water at (0,100)), so nothing resolves.
     State s = makeWorld();
-    const ObserveResult r = observations::observe(s, self({}), 500, 500, kNoNudge);
+    const ObserveResult r = psyche::observe(s, self({}), 500, 500, kNoNudge);
     REQUIRE(r.outcome == Outcome::None);
     REQUIRE(s.pending.empty());
 }
@@ -282,7 +282,7 @@ State loadFromJson(const std::string& json)
                 e["actions"]["add"].push_back({{"id", "touch"}, {"label", "Touch it"}});
         }
     std::ofstream(path) << doc.dump();
-    observations::load(s, path);
+    psyche::load(s, path);
     std::remove(path.c_str());
     return s;
 }
@@ -459,10 +459,10 @@ TEST_CASE("A hidden observable can't be observed until its visible_when holds",
 
     const GrowthState g = self({});
     // Hidden -> observeById is a no-op (nothing surfaces).
-    REQUIRE(observations::observeById(s, g, "ruin", kNoNudge).outcome == Outcome::None);
+    REQUIRE(psyche::observeById(s, g, "ruin", kNoNudge).outcome == Outcome::None);
     // Reveal it via the flag, then observing it surfaces the reading.
     s.flags.insert("knows_settlement");
-    REQUIRE(observations::observeById(s, g, "ruin", kNoNudge).outcome != Outcome::None);
+    REQUIRE(psyche::observeById(s, g, "ruin", kNoNudge).outcome != Outcome::None);
 }
 
 // --- is_new: what the notebook writes on -----------------------------------------
@@ -482,18 +482,18 @@ TEST_CASE("a re-observed tier is not new the second time", "[observations][is_ne
     const GrowthState g = self({{"perception", 5}});
 
     // First look: the reading is new -- the notebook takes it.
-    observations::observeById(s, g, "rock", kNoNudge);
+    psyche::observeById(s, g, "rock", kNoNudge);
     REQUIRE(s.pending.size() == 1);
     REQUIRE(s.pending.front().is_new);
     s.pending.clear(); // the box drains it
 
     // Every look after: the SAME reading surfaces, but it is not new. If this is true,
     // the notebook writes a duplicate every time the player walks past.
-    observations::observeById(s, g, "rock", kNoNudge);
+    psyche::observeById(s, g, "rock", kNoNudge);
     REQUIRE(s.pending.size() == 1);
     REQUIRE_FALSE(s.pending.front().is_new);
 
-    observations::observeById(s, g, "rock", kNoNudge);
+    psyche::observeById(s, g, "rock", kNoNudge);
     REQUIRE_FALSE(s.pending.front().is_new);
 }
 
@@ -511,20 +511,20 @@ TEST_CASE("only the newly-reached tier is new, not the ones below it", "[observa
     })");
 
     // Shallow look reaches tier 1 only.
-    observations::observeById(s, self({{"perception", 1}}), "rock", kNoNudge);
+    psyche::observeById(s, self({{"perception", 1}}), "rock", kNoNudge);
     REQUIRE(s.pending.front().is_new);
     REQUIRE(s.pending.front().text == "a rock");
     s.pending.clear();
 
     // Deeper perception reaches tier 2: new again, because it's a tier never reached --
     // a second notebook entry, and correctly so (it's a different reading).
-    observations::observeById(s, self({{"perception", 5}}), "rock", kNoNudge);
+    psyche::observeById(s, self({{"perception", 5}}), "rock", kNoNudge);
     REQUIRE(s.pending.front().is_new);
     REQUIRE(s.pending.front().text == "moss on its north face");
     s.pending.clear();
 
     // But looking again at that same depth is not new.
-    observations::observeById(s, self({{"perception", 5}}), "rock", kNoNudge);
+    psyche::observeById(s, self({{"perception", 5}}), "rock", kNoNudge);
     REQUIRE_FALSE(s.pending.front().is_new);
 }
 
@@ -547,12 +547,12 @@ TEST_CASE("observing REPORTS the thoughts that landed, by id", "[observations][l
     })");
     const GrowthState g = self({{"wonder", 20}, {"perception", 5}});
 
-    const ObserveResult r = observations::observeById(s, g, "rock", kMaxNudge);
+    const ObserveResult r = psyche::observeById(s, g, "rock", kMaxNudge);
     REQUIRE(r.landed == std::vector<std::string>{"rock_thought"});
     REQUIRE(s.fired.count("rock_thought") == 1); // and the record agrees with the report
 
     // Re-observing lands nothing new -- so nothing is reported, and no second note is written.
-    REQUIRE(observations::observeById(s, g, "rock", kMaxNudge).landed.empty());
+    REQUIRE(psyche::observeById(s, g, "rock", kMaxNudge).landed.empty());
 }
 
 TEST_CASE("a landed thought is never reported as a granted item", "[observations][landed]")
@@ -571,7 +571,7 @@ TEST_CASE("a landed thought is never reported as a granted item", "[observations
       ]
     })");
     const ObserveResult r =
-        observations::observeById(s, self({{"wonder", 20}, {"perception", 5}}), "rock", kMaxNudge);
+        psyche::observeById(s, self({{"wonder", 20}, {"perception", 5}}), "rock", kMaxNudge);
     REQUIRE_FALSE(r.landed.empty());
     REQUIRE(r.granted.empty()); // a thought is not a thing you can put in a satchel
     REQUIRE(r.gathered.empty());
@@ -600,13 +600,13 @@ TEST_CASE("walking into an ambient spot reports its thoughts too", "[observation
     // elsewhere in the world and proximity skips it.
     for (auto& o : s.encounters)
     {
-        o.trigger = observations::Trigger::Enter;
+        o.trigger = psyche::Trigger::Enter;
         o.placement_id = "p_" + o.id;
         o.x = 0;
         o.y = 0;
     }
-    const ObserveResult r = observations::triggerProximity(
-        s, self({{"wonder", 20}, {"perception", 5}}), 0, 0, kMaxNudge);
+    const ObserveResult r =
+        psyche::triggerProximity(s, self({{"wonder", 20}, {"perception", 5}}), 0, 0, kMaxNudge);
     REQUIRE(r.landed.size() == 2);
     REQUIRE(s.fired.count("grove_thought") == 1);
     REQUIRE(s.fired.count("brook_thought") == 1);
@@ -628,7 +628,7 @@ TEST_CASE("a thought fires -- and is new -- exactly once", "[observations][is_ne
     const GrowthState g = self({{"wonder", 20}, {"perception", 5}});
 
     // Observing fires the thought once.
-    observations::observeById(s, g, "rock", kMaxNudge);
+    psyche::observeById(s, g, "rock", kMaxNudge);
     int newThoughts = 0;
     for (const auto& p : s.pending)
         if (p.kind == LineKind::Thought && p.is_new)
@@ -638,7 +638,7 @@ TEST_CASE("a thought fires -- and is new -- exactly once", "[observations][is_ne
 
     // Re-observing must not fire it again: `fired` already holds it, so the notebook
     // gets no second copy.
-    observations::observeById(s, g, "rock", kMaxNudge);
+    psyche::observeById(s, g, "rock", kMaxNudge);
     for (const auto& p : s.pending)
         REQUIRE(p.kind != LineKind::Thought);
 }
@@ -659,13 +659,13 @@ State loadWithActions(const std::string& obs, const std::string& actions)
         std::ofstream(actPath) << actions;
     }
     State s;
-    observations::load(s, obsPath, actPath);
+    psyche::load(s, obsPath, actPath);
     std::remove(obsPath.c_str());
     std::remove(actPath.c_str());
     return s;
 }
 
-const observations::Encounter* findObs(const State& s, const std::string& id)
+const psyche::Encounter* findObs(const State& s, const std::string& id)
 {
     for (const auto& o : s.encounters)
         if (o.id == id)
@@ -698,8 +698,8 @@ TEST_CASE("Actions resolve at load: kind defaults + add/remove/replace overrides
     })",
                                     kKinds);
 
-    const observations::Encounter* plain = findObs(s, "plain");
-    const observations::Encounter* fancy = findObs(s, "fancy");
+    const psyche::Encounter* plain = findObs(s, "plain");
+    const psyche::Encounter* fancy = findObs(s, "fancy");
     REQUIRE(plain != nullptr);
     REQUIRE(fancy != nullptr);
     // plain inherits both kind defaults.
@@ -737,15 +737,15 @@ TEST_CASE("availableActions filters by unlock_when and one_shot-taken", "[action
                               kKinds);
 
     // At perception 1: search + rest_hand offered, gated NOT (needs perception 3).
-    REQUIRE(observations::availableActions(s, self({{"perception", 1}}), "stone").size() == 2);
+    REQUIRE(psyche::availableActions(s, self({{"perception", 1}}), "stone").size() == 2);
     // At perception 3: gated is now offered too -> 3.
     const GrowthState g3 = self({{"perception", 3}});
-    REQUIRE(observations::availableActions(s, g3, "stone").size() == 3);
+    REQUIRE(psyche::availableActions(s, g3, "stone").size() == 3);
     // Take the one_shot search -> it drops off the menu. `taken` is keyed by SPOT:id, so the
     // deed is tracked per-spot (a deed id shared across spots isn't marked taken everywhere).
-    observations::takeAction(s, g3, "stone", "search", kNoNudge);
+    psyche::takeAction(s, g3, "stone", "search", kNoNudge);
     REQUIRE(s.taken.count("stone:search") == 1);
-    const auto after = observations::availableActions(s, g3, "stone");
+    const auto after = psyche::availableActions(s, g3, "stone");
     REQUIRE(after.size() == 2); // search gone; rest_hand (repeatable) + gated remain
     for (const auto* a : after)
         REQUIRE(a->id != "search");
@@ -766,8 +766,8 @@ TEST_CASE("A one-shot deed taken at one spot stays available at another spot", "
 
     const GrowthState g = self({{"perception", 1}});
     // search is a one_shot inanimate default; both spots offer it up front.
-    const auto beforeA = observations::availableActions(s, g, "cairn_a");
-    const auto beforeB = observations::availableActions(s, g, "cairn_b");
+    const auto beforeA = psyche::availableActions(s, g, "cairn_a");
+    const auto beforeB = psyche::availableActions(s, g, "cairn_b");
     const bool aHasSearch = std::any_of(beforeA.begin(), beforeA.end(),
                                         [](const auto* x) { return x->id == "search"; });
     const bool bHasSearch = std::any_of(beforeB.begin(), beforeB.end(),
@@ -776,13 +776,13 @@ TEST_CASE("A one-shot deed taken at one spot stays available at another spot", "
     REQUIRE(bHasSearch);
 
     // Take search at A only.
-    observations::takeAction(s, g, "cairn_a", "search", kNoNudge);
+    psyche::takeAction(s, g, "cairn_a", "search", kNoNudge);
     REQUIRE(s.taken.count("cairn_a:search") == 1);
     REQUIRE(s.taken.count("cairn_b:search") == 0);
 
     // A no longer offers search; B still does (untouched).
-    const auto afterA = observations::availableActions(s, g, "cairn_a");
-    const auto afterB = observations::availableActions(s, g, "cairn_b");
+    const auto afterA = psyche::availableActions(s, g, "cairn_a");
+    const auto afterB = psyche::availableActions(s, g, "cairn_b");
     REQUIRE(std::none_of(afterA.begin(), afterA.end(),
                          [](const auto* x) { return x->id == "search"; }));
     REQUIRE(
@@ -814,11 +814,11 @@ TEST_CASE("takeAction recovers a thought that observing alone couldn't reach", "
 
     const GrowthState g = self({{"perception", 20}});
     // Observe the stone (east, at x=100): chisel_marks needs the flag too -> no fire.
-    observations::observe(s, g, 0, 0, kMaxNudge);
+    psyche::observe(s, g, 0, 0, kMaxNudge);
     REQUIRE(s.fired.count("chisel_marks") == 0);
     // clear_moss is offered (stone observed); taking it sets moss_cleared and the
     // ambient engine now lands chisel_marks.
-    const ObserveResult r = observations::takeAction(s, g, "stone", "clear_moss", kMaxNudge);
+    const ObserveResult r = psyche::takeAction(s, g, "stone", "clear_moss", kMaxNudge);
     REQUIRE(s.flags.count("moss_cleared") == 1);
     REQUIRE(s.fired.count("chisel_marks") == 1);
     REQUIRE(r.outcome == Outcome::Thought);
@@ -850,18 +850,18 @@ TEST_CASE("A deed with grant_item / grant_table / grant_recipe returns those ids
                               kKinds);
 
     const GrowthState g = self({{"perception", 5}});
-    const ObserveResult take = observations::takeAction(s, g, "stone", "take", kNoNudge);
+    const ObserveResult take = psyche::takeAction(s, g, "stone", "take", kNoNudge);
     REQUIRE(take.granted == std::vector<std::string>{"river_stone"});
     REQUIRE(take.gathered.empty());
     REQUIRE(take.taught.empty());
     REQUIRE(take.consumed_spot.empty()); // "forage nearby" doesn't consume; default false
 
-    const ObserveResult forage = observations::takeAction(s, g, "stone", "forage", kNoNudge);
+    const ObserveResult forage = psyche::takeAction(s, g, "stone", "forage", kNoNudge);
     REQUIRE(forage.gathered == std::vector<std::string>{"herbs"});
     REQUIRE(forage.granted.empty());
 
     // A grant_recipe deed surfaces the recipe id in `taught` for the game to learn.
-    const ObserveResult read = observations::takeAction(s, g, "stone", "read", kNoNudge);
+    const ObserveResult read = psyche::takeAction(s, g, "stone", "read", kNoNudge);
     REQUIRE(read.taught == std::vector<std::string>{"herbal_draught"});
     REQUIRE(read.granted.empty());
     REQUIRE(read.gathered.empty());
@@ -885,10 +885,10 @@ TEST_CASE("A consumes_spot take reports the spot id for the game to despawn", "[
                               kKinds);
 
     const GrowthState g = self({{"perception", 5}});
-    const ObserveResult brush = observations::takeAction(s, g, "pebble", "brush", kNoNudge);
+    const ObserveResult brush = psyche::takeAction(s, g, "pebble", "brush", kNoNudge);
     REQUIRE(brush.consumed_spot.empty()); // a non-consuming deed leaves the spot
 
-    const ObserveResult pocket = observations::takeAction(s, g, "pebble", "pocket", kNoNudge);
+    const ObserveResult pocket = psyche::takeAction(s, g, "pebble", "pocket", kNoNudge);
     REQUIRE(pocket.granted == std::vector<std::string>{"river_stone"});
     REQUIRE(pocket.consumed_spot == "pebble"); // the game despawns this observable's entity
 }
@@ -911,13 +911,13 @@ TEST_CASE("availableUnlocks: a deeper tier becomes reachable after growth (the p
     })");
 
     // Observe at perception 1: only the base tier reached; no deeper tier yet.
-    observations::observe(s, self({{"perception", 1}}), 0, 0, kNoNudge);
-    REQUIRE(observations::availableUnlocks(s, self({{"perception", 1}})).count("stone@2") == 0);
+    psyche::observe(s, self({{"perception", 1}}), 0, 0, kNoNudge);
+    REQUIRE(psyche::availableUnlocks(s, self({{"perception", 1}})).count("stone@2") == 0);
     // Grow perception to 3: the moss tier's gate is now met but unobserved -> pull.
-    REQUIRE(observations::availableUnlocks(s, self({{"perception", 3}})).count("stone@2") == 1);
+    REQUIRE(psyche::availableUnlocks(s, self({{"perception", 3}})).count("stone@2") == 1);
     // Observing it (going back) consumes it -> no longer in the set.
-    observations::observe(s, self({{"perception", 3}}), 0, 0, kNoNudge);
-    REQUIRE(observations::availableUnlocks(s, self({{"perception", 3}})).count("stone@2") == 0);
+    psyche::observe(s, self({{"perception", 3}}), 0, 0, kNoNudge);
+    REQUIRE(psyche::availableUnlocks(s, self({{"perception", 3}})).count("stone@2") == 0);
 }
 
 TEST_CASE("availableUnlocks: actions announce only for OBSERVED spots; hidden spots never",
@@ -937,10 +937,10 @@ TEST_CASE("availableUnlocks: actions announce only for OBSERVED spots; hidden sp
     const GrowthState g = self({});
     // Unobserved stone: its actions are NOT announced (glimmer discovers it, not
     // a notification).
-    REQUIRE(observations::availableUnlocks(s, g).count("stone:search") == 0);
+    REQUIRE(psyche::availableUnlocks(s, g).count("stone:search") == 0);
     // Observe the stone -> now its offered actions announce as pull-backs.
-    observations::observe(s, g, 0, 0, kNoNudge);
-    const auto unlocks = observations::availableUnlocks(s, g);
+    psyche::observe(s, g, 0, 0, kNoNudge);
+    const auto unlocks = psyche::availableUnlocks(s, g);
     REQUIRE(unlocks.count("stone:search") == 1);
     REQUIRE(unlocks.count("stone:rest_hand") == 1);
     // ruin is hidden (visible_when unmet) -> never announced.
@@ -968,11 +968,11 @@ TEST_CASE("applyPlacements binds map location + trigger onto loaded observation 
           "[observations][placement]")
 {
     State s = loadForPlacement();
-    const std::vector<observations::Placement> places = {
-        {"stone", "p_stone", 976.0f, 656.0f, 64.0f, 64.0f, observations::Trigger::Observe},
-        {"river", "p_river", 464.0f, 400.0f, 128.0f, 128.0f, observations::Trigger::Enter},
+    const std::vector<psyche::Placement> places = {
+        {"stone", "p_stone", 976.0f, 656.0f, 64.0f, 64.0f, psyche::Trigger::Observe},
+        {"river", "p_river", 464.0f, 400.0f, 128.0f, 128.0f, psyche::Trigger::Enter},
     };
-    const auto rep = observations::applyPlacements(s, places);
+    const auto rep = psyche::applyPlacements(s, places);
     REQUIRE(rep.placements_without_encounter.empty());
     REQUIRE(rep.encounters_without_placement.empty());
 
@@ -995,8 +995,8 @@ TEST_CASE("applyPlacements binds map location + trigger onto loaded observation 
     REQUIRE(stone->x == 976.0f);
     REQUIRE(stone->y == 656.0f);
     REQUIRE(stone->w == 64.0f);
-    REQUIRE(stone->trigger == observations::Trigger::Observe);
-    REQUIRE(river->trigger == observations::Trigger::Enter); // area, ambient
+    REQUIRE(stone->trigger == psyche::Trigger::Observe);
+    REQUIRE(river->trigger == psyche::Trigger::Enter); // area, ambient
     REQUIRE(river->w == 128.0f);
 }
 
@@ -1004,12 +1004,12 @@ TEST_CASE("applyPlacements reports authoring gaps both ways", "[observations][pl
 {
     State s = loadForPlacement(); // has stone + river
     // A placement for content that doesn't exist, and river left unplaced.
-    const std::vector<observations::Placement> places = {
-        {"stone", "p_stone", 10.0f, 20.0f, 48.0f, 48.0f, observations::Trigger::Observe},
+    const std::vector<psyche::Placement> places = {
+        {"stone", "p_stone", 10.0f, 20.0f, 48.0f, 48.0f, psyche::Trigger::Observe},
         {"ghost", "p_ghost", 0.0f, 0.0f, 48.0f, 48.0f,
-         observations::Trigger::Observe}, // no such observable
+         psyche::Trigger::Observe}, // no such observable
     };
-    const auto rep = observations::applyPlacements(s, places);
+    const auto rep = psyche::applyPlacements(s, places);
     REQUIRE(rep.placements_without_encounter.size() == 1);
     REQUIRE(rep.placements_without_encounter[0] == "ghost");
     REQUIRE(rep.encounters_without_placement.size() == 1);
@@ -1023,20 +1023,20 @@ TEST_CASE("An ENTER observable fires once when the player reaches its box, not b
 {
     State s = loadForPlacement();
     // A big river box (100x100 at (400,0)) -> its left edge is x=350.
-    observations::applyPlacements(
-        s, {{"river", "p_river", 400.0f, 0.0f, 100.0f, 100.0f, observations::Trigger::Enter}});
+    psyche::applyPlacements(
+        s, {{"river", "p_river", 400.0f, 0.0f, 100.0f, 100.0f, psyche::Trigger::Enter}});
     const GrowthState g = self({});
 
     // Far away -> nothing fires.
-    auto r = observations::triggerProximity(s, g, 0.0f, 0.0f, kNoNudge);
+    auto r = psyche::triggerProximity(s, g, 0.0f, 0.0f, kNoNudge);
     REQUIRE(r.outcome == Outcome::None);
 
     // Within reach of the box -> it fires (a reading surfaces).
-    r = observations::triggerProximity(s, g, 350.0f, 0.0f, kNoNudge);
+    r = psyche::triggerProximity(s, g, 350.0f, 0.0f, kNoNudge);
     REQUIRE(r.outcome != Outcome::None);
 
     // Still near next frame -> does NOT fire again (edge-triggered on `fired`).
-    r = observations::triggerProximity(s, g, 360.0f, 0.0f, kNoNudge);
+    r = psyche::triggerProximity(s, g, 360.0f, 0.0f, kNoNudge);
     REQUIRE(r.outcome == Outcome::None);
 }
 
@@ -1045,10 +1045,10 @@ TEST_CASE("Proximity triggering ignores OBSERVE-mode encounters (they need the v
 {
     State s = loadForPlacement();
     // stone is Observe-mode: standing on it must NOT auto-fire.
-    observations::applyPlacements(
-        s, {{"stone", "p_stone", 0.0f, 0.0f, 100.0f, 100.0f, observations::Trigger::Observe}});
+    psyche::applyPlacements(
+        s, {{"stone", "p_stone", 0.0f, 0.0f, 100.0f, 100.0f, psyche::Trigger::Observe}});
     const GrowthState g = self({});
-    const auto r = observations::triggerProximity(s, g, 0.0f, 0.0f, kNoNudge);
+    const auto r = psyche::triggerProximity(s, g, 0.0f, 0.0f, kNoNudge);
     REQUIRE(r.outcome == Outcome::None); // observe-mode is silent to proximity
 }
 
@@ -1066,7 +1066,7 @@ TEST_CASE("an Encounter must offer BOTH halves -- observe AND act", "[observatio
         const std::string path = "encounter_invariant_test.tmp.json";
         std::ofstream(path) << json;
         State s;
-        observations::load(s, path);
+        psyche::load(s, path);
         std::remove(path.c_str());
         return s;
     };
@@ -1124,12 +1124,12 @@ TEST_CASE("visible() gates a hidden Encounter -- the one answer observe + act sh
     })");
     const GrowthState g = self({});
 
-    REQUIRE(observations::visible(s, g, "shown"));          // no gate -> always present
-    REQUIRE_FALSE(observations::visible(s, g, "hidden"));   // flag unmet -> not present
-    REQUIRE_FALSE(observations::visible(s, g, "nonesuch")); // unknown id -> not present
+    REQUIRE(psyche::visible(s, g, "shown"));          // no gate -> always present
+    REQUIRE_FALSE(psyche::visible(s, g, "hidden"));   // flag unmet -> not present
+    REQUIRE_FALSE(psyche::visible(s, g, "nonesuch")); // unknown id -> not present
 
     // observeById agrees with visible(): a hidden spot surfaces nothing.
-    const ObserveResult r = observations::observeById(const_cast<State&>(s), g, "hidden", kNoNudge);
+    const ObserveResult r = psyche::observeById(const_cast<State&>(s), g, "hidden", kNoNudge);
     REQUIRE(r.outcome == Outcome::None);
 }
 
@@ -1146,9 +1146,9 @@ TEST_CASE("a revealed Encounter becomes visible the moment its flag is set",
     })");
     const GrowthState g = self({});
 
-    REQUIRE_FALSE(observations::visible(s, g, "log")); // hidden at first
+    REQUIRE_FALSE(psyche::visible(s, g, "log")); // hidden at first
     s.flags.insert("knows_settlement");
-    REQUIRE(observations::visible(s, g, "log")); // the same query now says present
+    REQUIRE(psyche::visible(s, g, "log")); // the same query now says present
 }
 
 TEST_CASE("a landed thought reports faculty EXP for passive stat growth", "[observations][growth]")
@@ -1170,7 +1170,7 @@ TEST_CASE("a landed thought reports faculty EXP for passive stat growth", "[obse
     })");
     const GrowthState g = self({{"wonder", 20}, {"perception", 5}});
 
-    const ObserveResult r = observations::observeById(const_cast<State&>(s), g, "rock", kMaxNudge);
+    const ObserveResult r = psyche::observeById(const_cast<State&>(s), g, "rock", kMaxNudge);
     REQUIRE(s.fired.count("rock_thought") == 1);
 
     // The thought grew its OWN faculty (wonder), by value * stat_exp_per_value.
@@ -1204,13 +1204,13 @@ TEST_CASE("voice: observing a person is the player's; their replies and greeting
     const GrowthState g = self({{"wonder", 5}, {"perception", 5}});
 
     // Observe = the player's own perception of the person: no speaker on the line.
-    observations::observeById(s, g, "mom_kitchen", kMaxNudge);
+    psyche::observeById(s, g, "mom_kitchen", kMaxNudge);
     REQUIRE_FALSE(s.pending.empty());
     REQUIRE(s.pending.front().speaker.empty());
     s.pending.clear();
 
     // Act = engaging them: the deed's result line is THEIR reply, in their voice.
-    observations::takeAction(s, g, "mom_kitchen", "greet", kMaxNudge);
+    psyche::takeAction(s, g, "mom_kitchen", "greet", kMaxNudge);
     bool spokenReply = false;
     for (const auto& p : s.pending)
         if (p.speaker == "Mom")
@@ -1218,12 +1218,157 @@ TEST_CASE("voice: observing a person is the player's; their replies and greeting
     REQUIRE(spokenReply);
     s.pending.clear();
 
+    // The THIRD voice: a deed with `say` pushes the player's own quoted words
+    // (under his chosen name) BEFORE the reply.
+    s.player_name = "Will";
+    for (auto& enc : s.encounters)
+        for (auto& a : enc.actions)
+            if (a.id == "greet")
+            {
+                a.say = "Morning, mom.";
+                a.one_shot = false;
+            }
+    psyche::takeAction(s, g, "mom_kitchen", "greet", kMaxNudge);
+    REQUIRE(s.pending.size() >= 2);
+    REQUIRE(s.pending[0].speaker == "Will");
+    REQUIRE(s.pending[0].text == "Morning, mom.");
+    REQUIRE(s.pending[1].speaker == "Mom");
+    s.pending.clear();
+
     // An Enter trigger on a speaker is them speaking up unprompted as you come
     // near -- the greeting IS their voice.
-    s.encounters[0].trigger = observations::Trigger::Enter;
+    s.encounters[0].trigger = psyche::Trigger::Enter;
     s.encounters[0].placement_id = "p_mom";
     s.encounters[0].fired = false;
-    observations::triggerProximity(s, g, 0, 0, kMaxNudge);
+    psyche::triggerProximity(s, g, 0, 0, kMaxNudge);
     REQUIRE_FALSE(s.pending.empty());
     REQUIRE(s.pending.front().speaker == "Mom");
+}
+
+TEST_CASE("a remark is said in its voice, not written", "[observations][speaker]")
+{
+    State s = loadFromJson(R"({
+      "encounters": [
+        { "id": "bed", "x": 0, "y": 0, "tiers": [{ "text": "the morning arrives" }] }
+      ],
+      "remarks": [
+        { "id": "grumble", "text": "Nnh.",
+          "unlock_when": [{ "observed": "bed" }] }
+      ]
+    })");
+    s.player_name = "Will";
+    const GrowthState g = self({{"wonder", 5}});
+    psyche::observeById(s, g, "bed", kMaxNudge);
+    bool saidAloud = false;
+    for (const auto& p : s.pending)
+        if (p.text == "Nnh.")
+        {
+            saidAloud = true;
+            // A remark surfaces as a quoted line in its voice (defaulting to the
+            // player's) -- speech, never a notebook-styled Thought.
+            REQUIRE(p.speaker == "Will");
+            REQUIRE(p.kind == LineKind::Remark);
+        }
+    REQUIRE(saidAloud);
+}
+
+TEST_CASE("bindPlayerName resolves {player} across every authored text field", "[observations]")
+{
+    State s = loadFromJson(R"({
+      "encounters": [
+        { "id": "mom", "x": 0, "y": 0, "speaker": "mom",
+          "tiers": [{ "text": "{player}…? That you?" }],
+          "actions": { "add": [
+            { "id": "reply", "label": "Answer {player}ish", "say": "It's {player}.",
+              "result_text": "Good, {player}." } ] } }
+      ],
+      "remarks": [ { "id": "call", "voice": "mom", "text": "{player}!" } ],
+      "thoughts": [ { "id": "t", "text": "{player} the layabout.",
+                      "miss_text": "someone said {player}?" } ]
+    })");
+    psyche::bindPlayerName(s, "June");
+    REQUIRE(s.encounters[0].tiers[0].text == "June…? That you?");
+    REQUIRE(s.encounters[0].actions[0].label == "Answer Juneish");
+    REQUIRE(s.encounters[0].actions[0].say == "It's June.");
+    REQUIRE(s.encounters[0].actions[0].result_text == "Good, June.");
+    bool foundCall = false;
+    bool foundThought = false;
+    for (const auto& t : s.thoughts)
+    {
+        if (t.id == "call")
+        {
+            REQUIRE(t.text == "June!");
+            foundCall = true;
+        }
+        if (t.id == "t")
+        {
+            REQUIRE(t.text == "June the layabout.");
+            REQUIRE(t.miss_text == "someone said June?");
+            foundThought = true;
+        }
+    }
+    REQUIRE(foundCall);
+    REQUIRE(foundThought);
+}
+
+TEST_CASE("forceRemark says an authored remark once, in its voice", "[observations]")
+{
+    State s = loadFromJson(R"({
+      "encounters": [
+        { "id": "bed", "x": 0, "y": 0, "tiers": [{ "text": "morning" }] }
+      ],
+      "remarks": [ { "id": "call", "voice": "mom", "text": "Up!", "set_flag": "was_called" } ]
+    })");
+    s.thoughts[0].voice_name = "Mom"; // what the npc bind pass resolves
+    const GrowthState g = self({});
+
+    const ObserveResult r = psyche::forceRemark(s, g, "call", kNoNudge);
+    REQUIRE(r.outcome == Outcome::Thought);
+    REQUIRE(s.fired.count("call") == 1);
+    REQUIRE(s.flags.count("was_called") == 1); // its yield cascades like any fire
+    REQUIRE(s.pending.size() == 1);
+    REQUIRE(s.pending.front().kind == LineKind::Remark);
+    REQUIRE(s.pending.front().speaker == "Mom");
+
+    // Said once: forcing it again is a no-op (a fired remark is a held memory).
+    s.pending.clear();
+    REQUIRE(psyche::forceRemark(s, g, "call", kNoNudge).outcome == Outcome::None);
+    REQUIRE(s.pending.empty());
+
+    // Unknown ids and non-remarks refuse loudly (log) rather than inventing speech.
+    REQUIRE(psyche::forceRemark(s, g, "nope", kNoNudge).outcome == Outcome::None);
+}
+
+TEST_CASE("chosen readings are observations; pressed ones are impressions", "[observations]")
+{
+    // The consent gradient, marked on the line itself: the observe verb makes an
+    // Observation; an Enter trigger (or a scene firing content) makes an
+    // Impression -- the senses took it, nobody chose to look.
+    State s = loadFromJson(R"({
+      "encounters": [
+        { "id": "bed", "x": 0, "y": 0, "tiers": [{ "text": "the morning arrives" }] },
+        { "id": "alarm", "x": 0, "y": 0, "trigger": "Enter",
+          "tiers": [{ "text": "the alarm, going" }] }
+      ]
+    })");
+    s.encounters[1].placement_id = "p_alarm";
+    const GrowthState g = self({{"wonder", 5}});
+
+    psyche::observeById(s, g, "bed", kMaxNudge);
+    REQUIRE(s.pending.front().kind == LineKind::Observation);
+    s.pending.clear();
+
+    psyche::triggerProximity(s, g, 0, 0, kMaxNudge);
+    REQUIRE_FALSE(s.pending.empty());
+    REQUIRE(s.pending.front().kind == LineKind::Impression);
+    s.pending.clear();
+
+    // The scene path: the same observe, marked pressed by the caller.
+    State s2 = loadFromJson(R"({
+      "encounters": [
+        { "id": "bed", "x": 0, "y": 0, "tiers": [{ "text": "the morning arrives" }] }
+      ]
+    })");
+    psyche::observeById(s2, g, "bed", kMaxNudge, /*impression=*/true);
+    REQUIRE(s2.pending.front().kind == LineKind::Impression);
 }

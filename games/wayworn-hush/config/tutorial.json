@@ -1,0 +1,54 @@
+{
+    "_comment": "First-time teaching cards (see include/Tutorial.h): the world stops and hones in on a mechanic the FIRST time it happens. Events are emitted by the game's tutorial pump at the moment the thing is on screen, one per line kind plus the surfaces: `observation` (a chosen reading), `impression` (a pressed one -- the senses took it unbidden), `remark` (speech), `thought` (a thought lands), `deed_menu` (the deed menu first opens), `spirit` (a line that earned Spirit is up). Cards sharing an event show in this order. `focus` names the hud region left lit: content / notification; omit for a full dim. The card itself always parks in the upper band, clear of the content. One card, once per pilgrim, Space dismisses. Words are a first draft.",
+    "cards": [
+        {
+            "id": "card_impression",
+            "on": "impression",
+            "title": "Impressions",
+            "focus": "content",
+            "body": "Not everything waits to be looked at. A sound, a light, a voice -- the senses take the world in whether you choose it or not."
+        },
+        {
+            "id": "card_observe",
+            "on": "observation",
+            "title": "Observing",
+            "focus": "content",
+            "body": "Walk up to what glows and press Space to look. What you notice reads out here -- Space turns the page and lets it go."
+        },
+        {
+            "id": "card_menu",
+            "on": "deed_menu",
+            "title": "Deeds",
+            "focus": "content",
+            "body": "This is what can be done here. W and S to choose, Space to do it. Some deeds only open once you know more."
+        },
+        {
+            "id": "card_thought",
+            "on": "thought",
+            "title": "Thoughts",
+            "focus": "content",
+            "body": "Something you took in just became a thought. Thoughts arrive on their own, out of what you have seen and who you are becoming."
+        },
+        {
+            "id": "card_notebook",
+            "on": "thought",
+            "title": "The Notebook",
+            "focus": "content",
+            "body": "Every thought is written down with its moment, and can be read back any time. They are yours to build on."
+        },
+        {
+            "id": "card_remark",
+            "on": "remark",
+            "title": "Remarks",
+            "focus": "content",
+            "body": "Words said aloud -- yours or another's -- wear quotes. What is said passes; only thoughts are written down."
+        },
+        {
+            "id": "card_spirit",
+            "on": "spirit",
+            "title": "Spirit",
+            "focus": "notification",
+            "body": "Noticing and doing lift your spirit. It gathers as you walk -- what it becomes is yours to discover."
+        }
+    ]
+}

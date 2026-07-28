@@ -42,6 +42,6 @@ interaction system.
 
 ## Related
 
-- [OBSERVATION-SYSTEM.md](OBSERVATION-SYSTEM.md) — the observe verb + its cue.
+- [PSYCHE.md](PSYCHE.md) — the observe verb + its cue.
 - [ACTIONS.md](ACTIONS.md) — deeds (what "act" surfaces), including item-granting
   deeds (drops).

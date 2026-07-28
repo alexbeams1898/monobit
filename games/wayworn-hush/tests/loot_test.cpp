@@ -20,10 +20,10 @@ Table herbTable()
 
 // rng(n) -> 0 for every call: picks the low end of every range (first roll count, first
 // entry, min qty). Deterministic worst-case-low.
-const observations::RollRng kZero = [](int) { return 0; };
+const psyche::RollRng kZero = [](int) { return 0; };
 
 // rng(n) -> n: the high end of every range (max roll count, last entry, max qty).
-const observations::RollRng kMax = [](int n) { return n; };
+const psyche::RollRng kMax = [](int n) { return n; };
 } // namespace
 
 TEST_CASE("An empty / zero-weight table rolls nothing", "[loot]")
@@ -64,7 +64,7 @@ TEST_CASE("Every rolled item stays within its entry's quantity bounds", "[loot]"
     // Sweep a range of rng responses; thyme qty must always land in [1,2], stone in [1,1].
     for (int k = 0; k < 8; ++k)
     {
-        const observations::RollRng rng = [k](int n) { return n < k ? n : k; };
+        const psyche::RollRng rng = [k](int n) { return n < k ? n : k; };
         for (const auto& inst : loot::roll(herbTable(), rng))
         {
             if (inst.id == "wild_thyme")
@@ -82,7 +82,7 @@ TEST_CASE("The roll count always lands within rolls_min..rolls_max", "[loot]")
     const Table t = herbTable();
     for (int k = 0; k <= 5; ++k)
     {
-        const observations::RollRng rng = [k](int n) { return k <= n ? k : n; };
+        const psyche::RollRng rng = [k](int n) { return k <= n ? k : n; };
         const auto out = loot::roll(t, rng);
         REQUIRE(out.size() >= static_cast<std::size_t>(t.rolls_min));
         REQUIRE(out.size() <= static_cast<std::size_t>(t.rolls_max));
@@ -103,7 +103,7 @@ TEST_CASE("A weighted pick lands on the entry whose cumulative band contains the
         // is the weighted-index pick over [0,99]; the second is qty. Return weightRoll for
         // the index call and 0 for qty (min).
         int call = 0;
-        const observations::RollRng rng = [&call, weightRoll](int)
+        const psyche::RollRng rng = [&call, weightRoll](int)
         { return call++ == 0 ? weightRoll : 0; };
         return loot::roll(t, rng);
     };

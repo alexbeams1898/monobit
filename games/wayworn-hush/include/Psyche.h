@@ -26,7 +26,7 @@
 // "Memory" is not a stat -- it is the accumulated record (observed / thoughts
 // / flags) these draw on. Faculties: wonder / reason / perception. Spirit EXP is
 // reported to the caller (growth owns the total; see Growth.h).
-namespace observations
+namespace psyche
 {
 
 // Random nudge source for thought rolls: given n, returns an int in [0, n].
@@ -54,7 +54,13 @@ struct Action
     std::string label;             // the deed as the player chooses it
     unlock::Condition unlock_when; // when it is OFFERED (empty = always)
     std::string result_text;       // what doing it feels like (surfaced on take)
-    std::string set_flag;          // world-state it sets (empty = none)
+    // The words the PLAYER says aloud on taking it (quoted under his name, pushed
+    // BEFORE result_text -- so on a speaker encounter the exchange reads your line,
+    // then their reply). Empty = the deed is silent. `label` may paraphrase; this
+    // carries the actual words. The third voice: perception is unquoted, speakers
+    // are quoted as themselves, `say` is quoted as YOU.
+    std::string say;
+    std::string set_flag; // world-state it sets (empty = none)
     // Item effects, declared as OPAQUE ids (like set_flag): the observation system carries
     // them but never interprets them -- the GAME enacts the grant (it owns the satchel/loot).
     // grant_item -> deposit that item; grant_table -> roll that loot table. So a "Pick up" /
@@ -105,6 +111,21 @@ struct Thought
     std::string text;              // shown on a hit
     std::string miss_text;         // shown on a MISS -- the faint "something here you
                                    // can't place" pull (failure is content)
+    // WHO says it, if anyone. Empty = a true thought: inner, unquoted, written to
+    // the notebook. "player" = a remark in the player's voice (quoted under his
+    // chosen name); an npc id = a remark in THEIR voice. Remarks are authored in
+    // the sibling `remarks` list (voice defaults to "player" there) but live in
+    // this same struct -- one engine entity, three voices; thoughts are written,
+    // remarks are said, and remarks never reach the notebook.
+    std::string voice;
+    std::string voice_name; // display name for an npc voice, resolved after load
+
+    // THE remark test -- the one place the voiced/written distinction is asked, so
+    // every consumer (line routing, notebook membership, note record) agrees.
+    bool isRemark() const
+    {
+        return !voice.empty();
+    }
     // Secondary-stat feeders: name -> levels-per-+1 (e.g. survival:2 = +1 per 2
     // survival levels). Lived experience aiding a synthesis. Mostly for
     // conclusions; empty for a plain association.
@@ -137,7 +158,7 @@ struct Thought
 // observe verb (discrete objects you choose to study). ENTER: ambient -- fires on its own
 // when you reach the box (areas / moods that wash over you), no button. The mode is
 // authored per placement in LDtk, not baked into the object type, so any shape can use
-// either mode. See docs/design/OBSERVATION-SYSTEM.md.
+// either mode. See docs/design/PSYCHE.md.
 enum class Trigger
 {
     Observe,
@@ -160,7 +181,7 @@ struct Encounter
     std::string placement_id;
     // Placement is an AABB authored in LDtk (the Encounter box) and applied at load. The
     // box marks WHERE the thing is; you interact when within `interact_reach` of it (glow +
-    // observe). (x, y) is the box CENTER, (w, h) its size, all world px. observations.json
+    // observe). (x, y) is the box CENTER, (w, h) its size, all world px. psyche.json
     // holds the CONTENT (tiers/thoughts/actions), not the location.
     float x = 0.0f;
     float y = 0.0f;
@@ -225,17 +246,26 @@ struct RollConfig
     int value_nudge_cap = 1; // most bands value alone can add to difficulty
     int exp_per_value = 5;   // Spirit EXP earned per point of value (reward scaling)
     // Faculty EXP earned per point of value -- feeds the passive, use-based stat growth
-    // (docs/design/OBSERVATION-SYSTEM.md §5). A thought grants THIS to its own faculty; a
+    // (docs/design/PSYCHE.md §5). A thought grants THIS to its own faculty; a
     // reading grants it to the reading's faculty. Rarity/tier already fold into `value`, so a
     // rare thought grows its faculty more, automatically.
     int stat_exp_per_value = 4;
 };
 
-// Which kind a surfaced line is -- drives how the box styles it (plain objective
-// observation vs colored subjective thought).
+// Which kind a surfaced line is -- drives how the box styles it, and how the
+// teaching layer names it. Observation vs Impression is WHO INITIATED (the
+// consent gradient, docs/design/GAME-SYSTEMS.md section 8): an observation is
+// chosen -- he walked up and looked; an impression is pressed on him -- the
+// senses take it in whether he looks or not (an alarm, a crash downstairs, a
+// scene playing at him). Same content engine, different arrival -- the same way
+// a remark is a thought that left through a mouth.
 enum class LineKind
 {
-    Observation, // objective, plain
+    Observation, // objective, chosen (the observe verb)
+    Impression,  // objective, unbidden (Enter triggers, scenes, miss pulls,
+                 // a deed's felt result)
+    Remark,      // speech, quoted -- his own or another's (say lines, replies,
+                 // voiced remarks)
     Thought      // subjective, faculty + rarity styled
 };
 
@@ -282,9 +312,21 @@ struct State
     std::unordered_set<std::string> taken;              // one-shot action ids performed
 
     std::deque<PendingLine> pending; // lines waiting to surface
+
+    // The player's display name (the renamable pilgrim), for player-voiced lines
+    // (`say` deeds, spoken thoughts). RUNTIME state: set by the game at world-enter
+    // after the save is applied; never authored, never saved here.
+    std::string player_name;
 };
 
-// Loads authored encounters + thoughts from config/observations.json and
+// Does `cond` hold against the CURRENT knowledge (observed things, fired thoughts,
+// flags, stat levels)? The one public gate for systems outside the observation
+// engine (scene starts, future world state) -- same satisfaction rules as every
+// unlock inside it. An empty condition holds.
+bool conditionMet(const State& state, const growth::GrowthState& growth,
+                  const unlock::Condition& cond);
+
+// Loads authored encounters + thoughts from config/psyche.json and
 // builds the trigger index. `actions_path` (optional) loads action-kind defaults
 // from config/actions.json and resolves each encounter's action list
 // (kind defaults + per-spot overrides); omit/empty for no actions.
@@ -292,7 +334,7 @@ void load(State& state, const std::string& path, const std::string& actions_path
 
 // Where an observation lives in the world -- authored in LDtk (an entity carrying the
 // observable id), applied to the loaded content by applyPlacements. Separates the
-// CONTENT (observations.json) from the PLACEMENT (the map): move the entity, the
+// CONTENT (psyche.json) from the PLACEMENT (the map): move the entity, the
 // observation follows, with no coordinate to hand-sync.
 struct Placement
 {
@@ -336,7 +378,7 @@ enum class Outcome
 };
 
 // Result of a call into the engine: outcome (for feedback) + Spirit EXP earned
-// this call (the caller adds `earned` to growth -- observations hold no total).
+// this call (the caller adds `earned` to growth -- psyche holds no total).
 struct ObserveResult
 {
     Outcome outcome = Outcome::None;
@@ -378,9 +420,11 @@ ObserveResult observe(State& state, const growth::GrowthState& growth, float px,
 
 // Observe a SPECIFIC observable by id (what the interaction system calls once it has
 // resolved the active target). Same reveal + ambient-engine as observe(); no-op if the id
-// is unknown or the encounter is currently hidden (visible_when unmet).
+// is unknown or the encounter is currently hidden (visible_when unmet). `impression`
+// marks the reading as pressed rather than chosen (a scene firing content at the
+// player) -- see LineKind.
 ObserveResult observeById(State& state, const growth::GrowthState& growth, const std::string& id,
-                          const RollRng& rng);
+                          const RollRng& rng, bool impression = false);
 
 // Is the encounter with this id present in the world right now? False if unknown or its
 // visible_when is unmet. THE public answer to "does this spot exist" -- a hidden encounter
@@ -395,6 +439,20 @@ bool visible(const State& state, const growth::GrowthState& growth, const std::s
 // Returns EXP earned.
 ObserveResult triggerProximity(State& state, const growth::GrowthState& growth, float px, float py,
                                const RollRng& rng);
+
+// Force an authored remark to be said NOW, bypassing its gate and roll -- the
+// world can force what he hears (a scene's voice through a door), never what he
+// concludes. Fires once (a fired remark is a held memory like any other) and
+// cascades like an ambient fire. No-op if the id is unknown, not a remark, or
+// already said.
+ObserveResult forceRemark(State& state, const growth::GrowthState& growth, const std::string& id,
+                          const RollRng& rng);
+
+// Substitute the pilgrim's chosen name into every authored text field holding
+// the {player} placeholder -- tiers, deed labels/says/results, thoughts,
+// remarks. Called once at world-enter (content reloads fresh per walk, so a
+// rename or a new pilgrim can never see another walk's binding).
+void bindPlayerName(State& state, const std::string& name);
 
 // External event sets a quest/event flag, then runs the ambient engine (a flag
 // change can satisfy a thought's unlock_when, DE-passive style). Returns EXP
@@ -475,4 +533,4 @@ std::vector<std::string> explainStatus(const State& state, const growth::GrowthS
 // (Dev X-ray only; see PROCESSING-MODEL.md.)
 std::vector<std::string> explainCentrality(const State& state, const Thought& r);
 
-} // namespace observations
+} // namespace psyche

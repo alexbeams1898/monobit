@@ -85,15 +85,8 @@ function connect(fromKey, toKey) {
     if (!obsOf(c).includes(id)) c.observed = obsOf(c).concat(id);
     return clauses;
   };
-  const addFlag = (cond, name) => {
-    const clauses = clauseList(cond);
-    if (!clauses.length) return [{ flag: name }];
-    if (!clauses[0].flag) { clauses[0].flag = name; return clauses; }
-    clauses.push({ flag: name }); return clauses;
-  };
   const applyTo = (cond, setter) => {
     if (fk === "e" || fk === "t") setter(addObserved(cond, fid));
-    else if (fk === "f") setter(addFlag(cond, fid));
   };
 
   if (toKey.includes("#")) {
@@ -117,10 +110,8 @@ function connect(fromKey, toKey) {
     } else if (tk === "e") {
       const e = encounters().find(x => x.id === tid);
       applyTo(e.visible_when, v => e.visible_when = v);
-    } else if (tk === "f" && fk === "t") {
-      thoughts().find(x => x.id === fid).set_flag = tid;
     } else {
-      return;
+      return; // flags have no nodes; flag gates are authored in the panels
     }
   }
   markDirty(); render();

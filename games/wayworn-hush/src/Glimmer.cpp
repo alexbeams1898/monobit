@@ -47,7 +47,7 @@ void load(Config& cfg, const std::string& path)
     cfg.warm_b = j.value("warm_b", cfg.warm_b);
 }
 
-void spawn(EntityManager& em, const observations::State& obs, const Config& cfg,
+void spawn(EntityManager& em, const psyche::State& obs, const Config& cfg,
            const std::unordered_set<std::string>& gone)
 {
     auto& reg = em.registry();
@@ -56,7 +56,7 @@ void spawn(EntityManager& em, const observations::State& obs, const Config& cfg,
         // Observe-mode only: one entity that IS both the interactable (input) and its
         // glimmer (highlight). An Enter (ambient) encounter fires on proximity, not the
         // interact verb, so it carries no glimmer.
-        if (o.trigger != observations::Trigger::Observe)
+        if (o.trigger != psyche::Trigger::Observe)
             continue;
         // Not placed in the current level -> not here (content lives elsewhere in the world).
         if (o.placement_id.empty())
@@ -79,7 +79,7 @@ void spawn(EntityManager& em, const observations::State& obs, const Config& cfg,
     }
 }
 
-void refreshPresence(EntityManager& em, const observations::State& obs,
+void refreshPresence(EntityManager& em, const psyche::State& obs,
                      const growth::GrowthState& growth)
 {
     // The single source for "does this encounter exist right now". Set BEFORE the interaction
@@ -89,7 +89,7 @@ void refreshPresence(EntityManager& em, const observations::State& obs,
     auto& reg = em.registry();
     for (auto [e, inter] : reg.view<interaction::Interactable>().each())
         inter.present =
-            inter.observe_id.empty() || observations::visible(obs, growth, inter.observe_id);
+            inter.observe_id.empty() || psyche::visible(obs, growth, inter.observe_id);
 }
 
 void update(EntityManager& em, const growth::GrowthState& growth, const formulas::Config& formulas,

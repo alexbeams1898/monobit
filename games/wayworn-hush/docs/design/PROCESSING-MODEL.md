@@ -3,7 +3,7 @@
 > **Owns:** what happens *inside* the pilgrim when he observes something — the
 > objective reading, the subjective **realization** it can spark, and how those
 > feed back to unlock more. The game's core mechanic ("observing is the combat").
-> [OBSERVATION-SYSTEM.md](OBSERVATION-SYSTEM.md) owns the *verb* + *HUD*; this doc
+> [PSYCHE.md](PSYCHE.md) owns the *verb* + *HUD*; this doc
 > owns the *cognition*.
 >
 > **Status:** BUILT (core + VALUE model). The two-type engine, the `unlock_when`
@@ -378,5 +378,5 @@ backend plumbing; it surfaces nowhere.)
 
 ## Cross-references
 
-[OBSERVATION-SYSTEM.md](OBSERVATION-SYSTEM.md) · [GAME-SYSTEMS.md](GAME-SYSTEMS.md)
+[PSYCHE.md](PSYCHE.md) · [GAME-SYSTEMS.md](GAME-SYSTEMS.md)
 · [THEME.md](THEME.md)

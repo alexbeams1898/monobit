@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Observations.h"
+#include "Psyche.h"
 #include "WorldClock.h"
 
 #include <string>
@@ -10,7 +10,7 @@
 // The notebook: the thoughts the pilgrim has reached. See docs/design/NOTEBOOK.md.
 //
 // It keeps only WHEN each landed. Which ones landed is already
-// observations::State::fired, and the thoughts themselves are authored content
+// psyche::State::fired, and the thoughts themselves are authored content
 // reloaded each run; a copy here could disagree with either or go stale when a
 // thought is re-tuned. Everything else is a read-time view.
 namespace notebook
@@ -37,7 +37,7 @@ void note(Record& rec, const std::string& thought_id, double at_seconds);
 
 struct Entry
 {
-    const observations::Thought* thought = nullptr; // into the authored table, never a copy
+    const psyche::Thought* thought = nullptr; // into the authored table, never a copy
     double at = kUntimed;                           // world seconds, or kUntimed
 };
 
@@ -48,7 +48,7 @@ bool timed(const Entry& e);
 // there, and the moment is stored, so this is the true order he wrote them.
 // Further orderings (sort/filter/search) belong here beside it -- the notebook owns
 // what order its pages are in, not the screen that draws them.
-std::vector<Entry> found(const Record& rec, const observations::State& obs);
+std::vector<Entry> found(const Record& rec, const psyche::State& obs);
 
 // The same entries, split into the days he wrote them; the untimed gather last. The
 // clock resolves a moment to a day, so both agree how long a day is.
@@ -57,7 +57,7 @@ struct Day
     int day = 0; // 0 = the untimed page
     std::vector<Entry> entries;
 };
-std::vector<Day> byDay(const Record& rec, const observations::State& obs,
+std::vector<Day> byDay(const Record& rec, const psyche::State& obs,
                        const worldclock::WorldClock& clock);
 
 } // namespace notebook

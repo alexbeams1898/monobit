@@ -7,10 +7,13 @@ add_library(wayworn-systems STATIC
     src/GameLoop.cpp
     src/WorldInit.cpp
     src/Npc.cpp
+    src/Scene.cpp
+    src/Ambience.cpp
+    src/Tutorial.cpp
     src/PlayerMovement.cpp
     src/PlayerConfig.cpp
     src/Arcs.cpp
-    src/Observations.cpp
+    src/Psyche.cpp
     src/UnlockCondition.cpp
     src/Growth.cpp
     src/ThoughtBox.cpp
@@ -90,8 +93,10 @@ endif()
 # ---------------------------------------------------------------------------
 add_executable(wayworn-tests
     tests/scaffold_test.cpp
+    tests/ambience_test.cpp
+    tests/tutorial_test.cpp
     tests/arcs_test.cpp
-    tests/observations_test.cpp
+    tests/psyche_test.cpp
     tests/growth_test.cpp
     tests/pause_page_test.cpp
     tests/unlock_condition_test.cpp
@@ -116,6 +121,7 @@ add_executable(wayworn-tests
     tests/notebook_test.cpp
     tests/ldtk_import_test.cpp
     tests/npc_test.cpp
+    tests/scene_test.cpp
 )
 target_link_libraries(wayworn-tests PRIVATE wayworn-systems Catch2::Catch2WithMain)
 set_target_properties(wayworn-tests PROPERTIES

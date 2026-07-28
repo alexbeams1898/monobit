@@ -20,7 +20,7 @@ Candidate box(float x, float y)
 
 // A Context with empty observation/growth state -- enough to dispatch a direct action
 // (which only touches satchel + items + loot). rng is unused by a plain Pickup.
-const observations::RollRng kNoRng = [](int) { return 0; };
+const psyche::RollRng kNoRng = [](int) { return 0; };
 
 // An actionable-only interactable (no observe_id) at the origin: a direct Pickup/Gather.
 interaction::Interactable actionAt(interaction::ActionKind kind, const std::string& target)
@@ -138,7 +138,7 @@ TEST_CASE("Firing an actionable-only Pickup deposits the item and despawns it di
     reg.emplace<interaction::Interactable>(
         pickup, actionAt(interaction::ActionKind::Pickup, "river_stone"));
 
-    observations::State obs;
+    psyche::State obs;
     growth::GrowthState growth;
     inventory::Satchel satchel;
     loot::Registry loot;
@@ -171,7 +171,7 @@ TEST_CASE("An item that is only targeted (not fired) stays in the world", "[inte
     reg.emplace<interaction::Interactable>(
         pickup, actionAt(interaction::ActionKind::Pickup, "river_stone"));
 
-    observations::State obs;
+    psyche::State obs;
     growth::GrowthState growth;
     inventory::Satchel satchel;
     loot::Registry loot;
@@ -208,7 +208,7 @@ TEST_CASE("An observable-AND-actionable spot observes (the take is a deed, not d
     inter.target = "river_stone";
     reg.emplace<interaction::Interactable>(spot, inter);
 
-    observations::State obs;
+    psyche::State obs;
     growth::GrowthState growth;
     inventory::Satchel satchel;
     loot::Registry loot;
@@ -250,7 +250,7 @@ TEST_CASE("Firing an actionable-only Gather rolls the table into the satchel and
     reg.emplace<interaction::Interactable>(node,
                                            actionAt(interaction::ActionKind::Gather, "herbs"));
 
-    observations::State obs;
+    psyche::State obs;
     growth::GrowthState growth;
     inventory::Satchel satchel;
     interaction::Context ctx{obs, growth, kNoRng, satchel, items, loot, 40.0f};
@@ -279,7 +279,7 @@ TEST_CASE("A Gather naming an unknown table fires but deposits nothing", "[inter
     reg.emplace<interaction::Interactable>(node,
                                            actionAt(interaction::ActionKind::Gather, "ghost"));
 
-    observations::State obs;
+    psyche::State obs;
     growth::GrowthState growth;
     inventory::Satchel satchel;
     interaction::Context ctx{obs, growth, kNoRng, satchel, items, loot, 40.0f};

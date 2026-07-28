@@ -32,8 +32,9 @@ class AudioSystem
 
     // Tracked SFX — returns a voice index (>= 0) that can be stopped later.
     // Returns -1 if pool is full or audio is not initialized.
+    // fade_in_ms: if > 0, fade from silence to volume over this many ms.
     static int playSfxTracked(const std::string& path, float volume = 1.0f, float pitch = 1.0f,
-                              bool loop = false);
+                              bool loop = false, int fade_in_ms = 0);
 
     // Stop a tracked SFX by voice index (from playSfxTracked). Fades out over fade_ms.
     static void stopSfx(int voice_index, int fade_ms = 50);

@@ -112,6 +112,7 @@ void reloadHudFonts(GameState& gs, int windowW, int windowH)
     const FontHandle body = FontManager::loadFont(sFontCfg.face, sFontCfg.body_frac * s);
     const FontHandle label = FontManager::loadFont(sFontCfg.face, sFontCfg.label_frac * s);
     thought_box::init(body, label, sBoxCfg, gs.hud);
+    tutorial::init(body, label);     // teaching cards share the box's role fonts
     screen_style::init(body, label); // the shared register every full-screen surface draws in
     pause_page::init(body);
     notify::init(label, gs.hud.notification);
@@ -189,16 +190,16 @@ void anchorInterpolation(EntityManager& em)
 // This is the reset. Reloading from config is what makes it structural: the fields config
 // owns are rebuilt from the one source of truth, so nothing can be left dirty because
 // someone forgot to add it to a clear-list. Only the two loaders whose output a walk
-// changes are here -- observations (which holds the record of what's been seen/done) and
+// changes are here -- psyche (which holds the record of what's been seen/done) and
 // growth (whose stat_levels a walk raises from their authored starting values). The rest
 // (tables, feel, art paths) is read-only at runtime and loaded once at boot.
 void resetAuthoredState(GameState& gs)
 {
-    observations::load(gs.observations, "config/observations.json", "config/actions.json");
+    psyche::load(gs.psyche, "config/psyche.json", "config/actions.json");
     // Bind speakers: content authors WHO talks as an npc id; the display name is
     // authored once, in that character's config. Unknown speakers read under their
     // raw id -- visible in play, loud in the log, never silently mute.
-    for (auto& o : gs.observations.encounters)
+    for (auto& o : gs.psyche.encounters)
     {
         if (o.speaker.empty())
             continue;
@@ -212,6 +213,24 @@ void resetAuthoredState(GameState& gs)
         else
         {
             o.speaker_name = it->second.name;
+        }
+    }
+    // Remarks in an npc's voice resolve the same way ("player" resolves at push
+    // time -- the pilgrim's name isn't known until the save is applied).
+    for (auto& t : gs.psyche.thoughts)
+    {
+        if (t.voice.empty() || t.voice == "player")
+            continue;
+        const auto it = gs.npcs.npcs.find(t.voice);
+        if (it == gs.npcs.npcs.end())
+        {
+            std::fprintf(stderr, "[npc] remark '%s' voice '%s' has no config/npcs entry\n",
+                         t.id.c_str(), t.voice.c_str());
+            t.voice_name = t.voice;
+        }
+        else
+        {
+            t.voice_name = it->second.name;
         }
     }
     growth::load(gs.growth, "config/faculties.json");
@@ -343,9 +362,15 @@ void applyRegion(Engine& engine, EntityManager& em, GameState& gs, const ldtk::R
     // until the player has first stepped clear of every box.
     gs.region = region.level_id;
     gs.region_warps = region.warps;
+    gs.region_spawns = region.spawns;
     gs.region_interior = region.interior;
     gs.warp_armed = false;
     gs.pending_warp = {};
+    // Any running scene's bodies died with the last region's registry; a scene
+    // never survives a region switch (movement holds while one runs anyway).
+    gs.scene_rt = {};
+    // The old room's sounds don't follow you through a door.
+    ambience::stopAll(gs.ambience_state, gs.ambience_config);
 
     gs.player = world_init::spawnPlayer(em, gs.player_config);
     Arrival at = resolveArrival(region, spawn_id, from_level);
@@ -395,29 +420,31 @@ void applyRegion(Engine& engine, EntityManager& em, GameState& gs, const ldtk::R
 
     // Bind observation PLACEMENTS from the map onto the loaded observation content: an
     // entity carrying an `encounter` field supplies its position/size/trigger. Content
-    // (observations.json) and placement (LDtk) meet by id here -- before glimmer spawns
+    // (psyche.json) and placement (LDtk) meet by id here -- before glimmer spawns
     // (it reads each encounter's world position). A placement naming unknown content is
     // an authoring gap and logged; content with no placement HERE is simply elsewhere in
     // the world (other levels hold it), so it is not reported.
     {
-        std::vector<observations::Placement> placements;
+        std::vector<psyche::Placement> placements;
         placements.reserve(region.encounters.size());
         for (const auto& p : region.encounters)
-            placements.push_back({p.id, p.placement_id, p.x, p.y, p.w, p.h,
-                                  observations::triggerFromString(p.trigger)});
-        const auto rep = observations::applyPlacements(gs.observations, placements);
+            placements.push_back(
+                {p.id, p.placement_id, p.x, p.y, p.w, p.h, psyche::triggerFromString(p.trigger)});
+        const auto rep = psyche::applyPlacements(gs.psyche, placements);
         for (const auto& id : rep.placements_without_encounter)
             std::fprintf(stderr, "[observe] placement '%s' has no observation content\n",
                          id.c_str());
     }
 
-    glimmer::spawn(em, gs.observations, gs.glimmer_config, gs.gone);
+    glimmer::spawn(em, gs.psyche, gs.glimmer_config, gs.gone);
     world_items::spawn(em, region.pickups, gs.items, gs.loot_tables, gs.world_items_config,
                        gs.gone);
     ldtk::spawnProps(em, region);
 
     // The people standing in this level. A placement naming an unknown character is
     // an authoring slip -- loud, not silent, or the kitchen is just mysteriously empty.
+    // Bodies are recorded by npc id so scenes can steer the placed people too.
+    gs.region_npcs.clear();
     for (const auto& n : region.npcs)
     {
         const auto it = gs.npcs.npcs.find(n.npc);
@@ -425,7 +452,7 @@ void applyRegion(Engine& engine, EntityManager& em, GameState& gs, const ldtk::R
             std::fprintf(stderr, "[npc] no character '%s' (config/npcs) for a placement in '%s'\n",
                          n.npc.c_str(), region.level_id.c_str());
         else
-            npc::spawn(em, it->second, n.wx, n.wy, n.facing);
+            gs.region_npcs[n.npc] = npc::spawn(em, it->second, n.wx, n.wy, n.facing);
     }
 }
 
@@ -503,14 +530,33 @@ bool enterWorld(Engine& engine, EntityManager& em, GameState& gs, const std::str
     // empty record -- every taken thing back on the ground, to be taken again.
     savegame::apply(*pilgrim, gs);
     gs.app.active_id = pilgrim->id;
+    // Player-voiced lines (`say` deeds, spoken thoughts) speak under the pilgrim's
+    // chosen name. Set AFTER resetAuthoredState (which reloads psyche) so it
+    // survives the reset.
+    gs.psyche.player_name = pilgrim->name.empty() ? pilgrim->id : pilgrim->name;
+    // Authored text speaks his chosen name: every {player} placeholder binds now,
+    // in place, so all downstream surfaces (box, notebook, pause) read resolved
+    // words with no per-surface logic.
+    psyche::bindPlayerName(gs.psyche, gs.psyche.player_name);
 
     // A quit mid-warp-fade leaves the fade phase behind; a new walk starts lit.
     gs.warp_fade = {};
+
+    // Sounds are the last walk's too: silence them, reset the per-walk state, then
+    // arm it against the restored flags -- a start_on_flag whose flag this pilgrim
+    // already holds must NOT replay at boot (the TV's clunk belongs to the moment
+    // it was turned off, not to every load after).
+    ambience::stopAll(gs.ambience_state, gs.ambience_config);
+    gs.ambience_state = {};
+    ambience::arm(gs.ambience_state, gs.ambience_config, gs.psyche.flags);
 
     // Seed the stat-change fingerprint from the RESTORED stats: the pump must see
     // only growth that happens in this walk, never the restore itself (which would
     // re-roll eligible thoughts at boot and surface miss lines nobody earned).
     gs.stats_seen_sum = growth::levelSum(gs.growth);
+    // Same rule for the unlock pump's baseline seeding: fresh per walk, rebuilt
+    // from this pilgrim's restored observation record on the first pump.
+    gs.seeded_spots.clear();
 
     // Terrain + player + props, filtered by the walk above. The region IS the map -- a
     // failed load is fatal. A walk resumes in the level it left; a fresh one starts
@@ -571,9 +617,14 @@ bool enterWorld(Engine& engine, EntityManager& em, GameState& gs, const std::str
 
     // The region's ambient bed. Loops with a slow fade-in so the world eases in rather
     // than snapping on. Low volume -- the score is sparse and unhurried (see
-    // docs/design/AESTHETIC.md). Runs silent if no audio device.
-    AudioSystem::playMusic(gs.world_config.ambient_track, gs.world_config.ambient_volume,
-                           /*loop=*/true, gs.world_config.ambient_fade_in_ms);
+    // docs/design/AESTHETIC.md). Runs silent if no audio device. A gated score waits:
+    // it first sounds when ambient_gate_flag lands (the game loop watches for it), so
+    // the opening belongs to the room's own noises, not the soundtrack.
+    gs.music_started = gs.world_config.ambient_gate_flag.empty() ||
+                       gs.psyche.flags.count(gs.world_config.ambient_gate_flag) > 0;
+    if (gs.music_started)
+        AudioSystem::playMusic(gs.world_config.ambient_track, gs.world_config.ambient_volume,
+                               /*loop=*/true, gs.world_config.ambient_fade_in_ms);
 
     // Everything above was spawned mid-tick; anchor it before a frame renders it.
     anchorInterpolation(em);
@@ -669,7 +720,7 @@ int main(int argc, char* argv[])
 
     GameState& gs = em.registry().ctx().emplace<GameState>();
     gs.player_config = loadPlayerConfig("config/player.json");
-    observations::load(gs.observations, "config/observations.json", "config/actions.json");
+    psyche::load(gs.psyche, "config/psyche.json", "config/actions.json");
     growth::load(gs.growth, "config/faculties.json");
     footsteps::load(gs.footstep_config, "config/footsteps.json");
     surfaces::load(gs.surface_config, "config/surfaces.json");
@@ -684,6 +735,8 @@ int main(int argc, char* argv[])
     inventory::load(gs.items, "config/items");
     npc::load(gs.npcs,
               "config/npcs"); // authored characters (bodies; speech is observation content)
+    scene::load(gs.scenes, "config/scenes");                    // choreography that plays the graph
+    ambience::load(gs.ambience_config, "config/ambience.json"); // named world-sound channels
     loot::load(gs.loot_tables, "config/loot");    // gather tables (rolled by ActionKind::Gather)
     crafting::load(gs.recipes, "config/recipes"); // recipes (combine -> made thing)
     crafting::loadConfig(gs.crafting_config, "config/crafting.json"); // outcome/XP tuning
@@ -697,7 +750,7 @@ int main(int argc, char* argv[])
     {
         arcs::Registry authored;
         arcs::load(authored, "config/arcs.json");
-        for (const auto& p : arcs::validate(authored, arcs::survey(gs.observations)))
+        for (const auto& p : arcs::validate(authored, arcs::survey(gs.psyche)))
             std::fprintf(stderr, "[arc] '%s' %s\n", p.arc.c_str(), p.detail.c_str());
     }
 
@@ -730,6 +783,7 @@ int main(int argc, char* argv[])
     // render into these bands. reloadHudFonts loads the role fonts at the current size and
     // points the HUD systems at them.
     hud::loadRegions(gs.hud, "config/hud.json");
+    tutorial::load(gs.tutorial_config, "config/tutorial.json");
     // How the player likes the HUD. Config authors the DEFAULT; a save then carries what
     // they actually chose. Read in that order and merged field-by-field (decodeSettings
     // falls back to what it is handed), so a setting the player has never touched keeps the

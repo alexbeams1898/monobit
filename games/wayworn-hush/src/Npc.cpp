@@ -29,6 +29,13 @@ Config parseConfig(const nlohmann::json& j, const std::string& fallback_id)
         c.idle_frames = idle->value("frames", c.idle_frames);
         c.idle_duration = idle->value("duration", c.idle_duration);
     }
+    if (const auto walk = j.find("walk"); walk != j.end() && walk->is_object())
+    {
+        c.walk_row = walk->value("row", c.walk_row);
+        c.walk_frames = walk->value("frames", c.walk_frames);
+        c.walk_duration = walk->value("duration", c.walk_duration);
+        c.walk_speed = walk->value("speed", c.walk_speed);
+    }
     if (const auto col = j.find("collider"); col != j.end() && col->is_object())
     {
         c.collider_w = col->value("w", c.collider_w);

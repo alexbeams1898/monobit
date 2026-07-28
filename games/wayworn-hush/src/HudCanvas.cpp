@@ -78,8 +78,8 @@ void loadRegions(Regions& out, const std::string& path)
     const nlohmann::json j = nlohmann::json::parse(f, nullptr, /*allow_exceptions=*/false);
     if (j.is_discarded())
         return;
-    out.thought = readRect(j, "thought", out.thought);
-    out.observation = readRect(j, "observation", out.observation);
+    out.upper = readRect(j, "upper", out.upper);
+    out.content = readRect(j, "content", out.content);
     out.notification = readRect(j, "notification", out.notification);
     out.pad_x = j.value("pad_x", out.pad_x);
     out.pad_y = j.value("pad_y", out.pad_y);

@@ -51,7 +51,7 @@ observe a spot ─▶ read what's there ─▶ [action menu] ─▶ take an acti
 ## Encounters have two halves (the coupling)
 
 An **Encounter** is a glowing spot in the world. It offers two verbs, and it must
-offer **both**: you can **observe** it (its reading tiers — OBSERVATION-SYSTEM.md)
+offer **both**: you can **observe** it (its reading tiers — PSYCHE.md)
 or **act on** it (its deeds — this doc). The two are independent at play time — a
 walk could lean entirely on observing, or entirely on acting, and either is a
 valid way through — but a spot that authors only one half is a content gap, not a
@@ -157,7 +157,7 @@ a spot's glimmer to its faculty hue — so the signal and the menu are one syste
   kinds + their default action sets are data (config), not hardcoded.
 - **Config home** = `config/actions.json` holds `action_kinds` (each kind → its
   default action list). Encounters carry a `kind` name (+ optional overrides) in
-  `observations.json`. Separate authored surface from spots/thoughts.
+  `psyche.json`. Separate authored surface from spots/thoughts.
 - **Resolution** = merged **once at load** into a `std::vector<Action>` stored on
   the `Encounter` (kind defaults + `add`/`remove`/`replace`), the same
   compute-once pattern as tiers. The menu just reads the resolved list.
@@ -183,7 +183,7 @@ a spot's glimmer to its faculty hue — so the signal and the menu are one syste
 }
 ```
 ```json
-// config/observations.json -- an encounter references a kind + optional overrides
+// config/psyche.json -- an encounter references a kind + optional overrides
 { "id": "stone", "kind": "inanimate", "value": 2, "tiers": [ ... ],
   "actions": {
     "add":     [ { "id": "clear_moss", "label": "Clear the moss",
@@ -229,6 +229,6 @@ filters to offered-and-not-taken(one_shot) when the menu opens.
 ## Cross-references
 
 [PROCESSING-MODEL.md](PROCESSING-MODEL.md) (cognition engine, thoughts, signals) ·
-[OBSERVATION-SYSTEM.md](OBSERVATION-SYSTEM.md) (the observe verb) ·
+[PSYCHE.md](PSYCHE.md) (the observe verb) ·
 [GAME-SYSTEMS.md](GAME-SYSTEMS.md) (gather/craft, the wider loop) ·
 [THEME.md](THEME.md) (register)

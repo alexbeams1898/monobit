@@ -133,7 +133,8 @@ void renderSelf(const growth::GrowthState& g, float cx, float y, Canvas canvas)
     const float x = cx - w * 0.5f;
 
     // The banked, unspent currency (spirit_exp) -- what rises when you earn Spirit. Distinct from
-    // growth::spirit(), which is the sum of buff levels already BOUGHT with it (0 until buffs exist).
+    // growth::spirit(), which is the sum of buff levels already BOUGHT with it (0 until buffs
+    // exist).
     softTextCentered("Spirit  " + std::to_string(g.spirit_exp), cx, y, kText);
     y += lineH() * 1.8f;
 
@@ -553,7 +554,7 @@ void drawNotebookRow(const growth::GrowthState& g, const notebook::Entry& e, flo
     if (active)
         UIRenderer::drawRect(x, y, rowW, rowH, kCellCursor);
 
-    const observations::Thought& t = *e.thought;
+    const psyche::Thought& t = *e.thought;
     const float textX = x + rowH * 0.5f; // indented under the dateline, as a written page is
     const std::string label = elide(t.text, rowW - (textX - x) - rowH * 0.2f);
     softText(label, textX, y + (rowH - UIRenderer::measureText(sFont, label).height) * 0.5f,
@@ -579,7 +580,7 @@ void drawNotebookDetail(const growth::GrowthState& g, const notebook::Entry& e,
                         const worldclock::WorldClock& clock, bool can_tell_time, float x, float y,
                         float w, float h)
 {
-    const observations::Thought& t = *e.thought;
+    const psyche::Thought& t = *e.thought;
     const Color hue = reading_color::forReading(g, t.faculty, t.difficulty);
     const float pad = lineH() * 0.7f;
     const screen_style::Inset in = screen_style::paperPanel(x, y, w, h, hue, pad, pad);
@@ -625,7 +626,7 @@ void renderNotebook(PauseState& pause, const growth::GrowthState& g, const Conte
                     const Mouse& mouse, float cx, float y, Canvas canvas)
 {
     const notebook::Record& rec = content.notebook;
-    const observations::State& obs = content.observations;
+    const psyche::State& obs = content.psyche;
     const std::vector<notebook::Day> days = notebook::byDay(rec, obs, content.clock);
     const float contentW = contentBandW(canvas);
     const float leftX = cx - contentW * 0.5f;

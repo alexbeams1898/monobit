@@ -11,8 +11,8 @@ using crafting::Recipe;
 
 namespace
 {
-const observations::RollRng kZero = [](int) { return 0; };  // luck roll = 0 (min)
-const observations::RollRng kMax = [](int n) { return n; }; // luck roll = n (max)
+const psyche::RollRng kZero = [](int) { return 0; };  // luck roll = 0 (min)
+const psyche::RollRng kMax = [](int n) { return n; }; // luck roll = n (max)
 
 // A recipe: 2 thyme + 1 water -> tea; scales on "survival". No gate -- ingredients are the only
 // requirement.

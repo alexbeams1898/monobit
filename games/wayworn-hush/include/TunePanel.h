@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Growth.h"
-#include "Observations.h"
+#include "Psyche.h"
 #include "PlayerConfig.h"
 
 // The F1 tunables panel -- a dev overlay for live-tweaking feel values without a
@@ -21,6 +21,6 @@ void toggle();
 // encounters, thoughts, inputs/yields, runtime status). Save buttons patch
 // player.json / atmosphere.json; stat edits are live-only. Call from the ImGui hook.
 void render(PlayerConfig& player_config, growth::GrowthState& growth,
-            const observations::State& obs);
+            const psyche::State& obs);
 
 } // namespace tune_panel

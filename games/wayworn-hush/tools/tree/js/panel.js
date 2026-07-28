@@ -1,7 +1,7 @@
 // The side-panel editors: structured forms over the raw objects; anything a form
 // doesn't cover is preserved untouched and listed so nothing silently vanishes.
-import { S, esc, encounters, thoughts, actionsOf, allObservableIds, clauseList, obsOf,
-         markDirty, renameObservable } from "./state.js";
+import { S, esc, encounters, thoughts, remarks, actionsOf, allObservableIds, clauseList,
+         obsOf, flagsOf, markDirty, renameObservable } from "./state.js";
 import { edgeKey } from "./render.js";
 
 const $ = (id) => document.getElementById(id);
@@ -13,7 +13,8 @@ const KNOWN = {
         "_comment", "x", "y", "w", "h"],
   thought: ["id", "faculty", "text", "miss_text", "set_flag", "emotional_weight",
             "feeders", "unlock_when", "_comment"],
-  action: ["id", "label", "result_text", "set_flag", "one_shot", "unlock_when", "_comment"],
+  action: ["id", "label", "say", "result_text", "set_flag", "one_shot", "consumes_spot",
+           "unlock_when", "_comment"],
 };
 
 export function closePanel() {
@@ -34,9 +35,10 @@ export function openEdgePanel(edge) {
   const h = document.createElement("h2"); h.textContent = "Connection"; p.appendChild(h);
   const kindDesc = {
     obs: "unlocks-from: the target requires the source as held knowledge",
-    gateflag: "flag gate: the target requires this flag",
-    setflag: "sets: taking/landing the source raises this flag",
+    flagwire: "a flag wire: the source's act raises the flag; the target requires it",
     visible: "visibility: the target encounter is hidden until this holds",
+    plays: "choreography: the scene fires this content",
+    mutex: "mutual exclusion: shared completion flag -- only one can ever run",
   };
   const d = document.createElement("div");
   d.innerHTML = `<div class="dimtext" style="margin-bottom:6px">${esc(kindDesc[edge.cls] || edge.cls)}</div>
@@ -58,9 +60,56 @@ export function openPanel(key) {
   p.className = "open";
   p.innerHTML = "";
   const kind = S.selected.slice(0, 1), id = S.selected.slice(2);
-  if (kind === "f") return openFlagPanel(p, id);
   if (kind === "t") return openThoughtPanel(p, thoughts().find(t => t.id === id));
+  if (kind === "r") return openRemarkPanel(p, remarks().find(r => r.id === id));
+  if (kind === "s") return openScenePanel(p, S.scenes.find(s => s.id === id));
   return openEncounterPanel(p, encounters().find(e => e.id === id));
+}
+
+// A remark: said, not written -- the spoken sibling of a thought.
+function openRemarkPanel(p, r) {
+  if (!r) return;
+  const h = document.createElement("h2"); h.textContent = "Remark"; p.appendChild(h);
+  field(p, "id", r.id, v => { renameObservable(r.id, v); r.id = v; });
+  field(p, "voice (player, or an npc id)", r.voice || "player",
+        v => r.voice = (v && v !== "player") ? v : undefined);
+  field(p, "text (the words said)", r.text, v => r.text = v, "textarea");
+  field(p, "miss_text (eligible but the roll missed -- stays inner)", r.miss_text,
+        v => r.miss_text = v || undefined, "textarea");
+  field(p, "set_flag", r.set_flag, v => r.set_flag = v || undefined);
+  heading(p, "said when");
+  condEditor(p, r.unlock_when, v => { r.unlock_when = v; markDirty(); rerender(); });
+  extraNote(p, r, ["id", "voice", "text", "miss_text", "set_flag", "unlock_when", "_comment"]);
+  deleteButton(p, "remark", () => {
+    S.doc.remarks.splice(S.doc.remarks.indexOf(r), 1);
+  });
+}
+
+// Scenes are read-only in the tool (hand-edited files): show the choreography and
+// where to edit it.
+function openScenePanel(p, s) {
+  if (!s) return;
+  const h = document.createElement("h2"); h.textContent = "Scene: " + s.id; p.appendChild(h);
+  const d = document.createElement("div");
+  const stepLine = (st) => {
+    if (st.enter) return `enter ${st.enter} at ${st.at || "?"}`;
+    if (st.leave) return `leave ${st.leave}`;
+    if (st.move) return `move ${st.move} → ${st.to || "?"}`;
+    if (st.face) return `face ${st.face} ${st.dir || ""}`;
+    if (st.wait != null) return `wait ${st.wait}s`;
+    if (st.observe) return `observe ${st.observe}`;
+    if (st.menu) return `menu ${st.menu}`;
+    if (st.set_flag) return `set_flag ${st.set_flag}`;
+    if (st.sound) return `sound ${st.sound}`;
+    if (st.stop_sound) return `stop_sound ${st.stop_sound}`;
+    return "?";
+  };
+  d.innerHTML = `<div>level: <b>${esc(s.level || "?")}</b> · completes → ⚑ ${esc(s.set_flag || "MISSING")}</div>
+    <ol style="margin:8px 0 0 18px">${(s.steps || []).map(st =>
+      `<li>${esc(stepLine(st))}</li>`).join("")}</ol>
+    <div class="dimtext" style="margin-top:8px">read-only here — edit
+    config/scenes/${esc(s.id)}.json (Reload picks it up)</div>`;
+  p.appendChild(d);
 }
 
 function field(holder, label, value, onChange, kind = "text") {
@@ -106,9 +155,13 @@ export function condEditor(holder, cond, onChange, allowStat = true) {
   const wrap = document.createElement("div");
   const clauses = clauseList(cond).map(c => JSON.parse(JSON.stringify(c)));
   const commit = () => {
-    const cleaned = clauses.filter(c => obsOf(c).length || c.flag || Object.keys(c.stat || {}).length);
+    const cleaned = clauses.filter(c =>
+      obsOf(c).length || flagsOf(c).length || Object.keys(c.stat || {}).length);
     onChange(cleaned.length ? cleaned : undefined);
   };
+  // Authored form stays minimal: one flag saves as a string, several as an array.
+  const setFlags = (c, list) =>
+    c.flag = list.length === 0 ? undefined : (list.length === 1 ? list[0] : list);
   const redraw = () => {
     wrap.innerHTML = "";
     clauses.forEach((c, ci) => {
@@ -116,6 +169,8 @@ export function condEditor(holder, cond, onChange, allowStat = true) {
       div.className = "clause";
       const obsChips = obsOf(c).map((id, i) =>
         `<span class="chip">${esc(id)}<span class="x" data-obs="${i}">×</span></span>`).join("");
+      const flagChips = flagsOf(c).map((f, i) =>
+        `<span class="chip">${esc(f)}<span class="x" data-flagdel="${i}">×</span></span>`).join("");
       const statChips = Object.entries(c.stat || {}).map(([s, lvl]) =>
         `<span class="chip">${esc(s)} ≥ ${lvl}<span class="x" data-stat="${esc(s)}">×</span></span>`).join("");
       div.innerHTML = `
@@ -123,8 +178,8 @@ export function condEditor(holder, cond, onChange, allowStat = true) {
           <select data-addobs><option value="">+ add…</option>
           ${allObservableIds().filter(id => !obsOf(c).includes(id)).map(id =>
             `<option>${esc(id)}</option>`).join("")}</select></div>
-        <div style="margin-top:5px">flag:
-          <input type="text" data-flag value="${esc(c.flag || "")}" style="width:150px"
+        <div style="margin-top:5px">flags: ${flagChips}
+          <input type="text" data-flag placeholder="+ flag…" style="width:130px"
             list="flagNames"></div>
         ${allowStat ? `<div style="margin-top:5px">stat gates: ${statChips}
           <span class="row" style="margin-top:3px">
@@ -142,8 +197,14 @@ export function condEditor(holder, cond, onChange, allowStat = true) {
         c.observed = obsOf(c).concat(ev.target.value); commit(); redraw();
       };
       div.querySelector("[data-flag]").onchange = (ev) => {
-        c.flag = ev.target.value.trim() || undefined; commit();
+        const f = ev.target.value.trim();
+        if (!f || flagsOf(c).includes(f)) return;
+        setFlags(c, flagsOf(c).concat(f)); commit(); redraw();
       };
+      div.querySelectorAll(".x[data-flagdel]").forEach(x => x.onclick = () => {
+        const list = flagsOf(c); list.splice(Number(x.dataset.flagdel), 1);
+        setFlags(c, list); commit(); redraw();
+      });
       if (allowStat) {
         div.querySelector("[data-addstat]").onclick = () => {
           const s = div.querySelector("[data-statname]").value.trim();
@@ -224,10 +285,14 @@ function openEncounterPanel(p, e) {
     s.querySelector(".del").onclick = () => { e.actions.add.splice(i, 1); markDirty(); rerender(); openPanel(S.selected); };
     field(s, "id", a.id, v => a.id = v);
     field(s, "label (the menu line)", a.label, v => a.label = v);
+    field(s, "say (the player's spoken words, quoted under his name)", a.say,
+          v => a.say = v || undefined, "textarea");
     field(s, "result_text" + (e.speaker ? " (spoken by them)" : ""), a.result_text,
           v => a.result_text = v || undefined, "textarea");
     field(s, "set_flag", a.set_flag, v => a.set_flag = v || undefined);
     checkbox(s, "one_shot", a.one_shot, v => a.one_shot = v || undefined);
+    checkbox(s, "consumes_spot (removes the spot; ends its menu)", a.consumes_spot,
+             v => a.consumes_spot = v || undefined);
     const lbl = document.createElement("label"); lbl.textContent = "offered when"; s.appendChild(lbl);
     condEditor(s, a.unlock_when, v => { a.unlock_when = v; markDirty(); rerender(); });
     extraNote(s, a, KNOWN.action);
@@ -255,6 +320,8 @@ function openThoughtPanel(p, t) {
   field(p, "text (the thought, the player's voice)", t.text, v => t.text = v, "textarea");
   field(p, "miss_text (eligible but the roll missed)", t.miss_text,
         v => t.miss_text = v || undefined, "textarea");
+  checkbox(p, "spoken (said aloud in the player's voice; never written to the notebook)",
+           t.spoken, v => t.spoken = v || undefined);
   field(p, "set_flag", t.set_flag, v => t.set_flag = v || undefined);
   field(p, "emotional_weight", t.emotional_weight || 0, v => t.emotional_weight = v || undefined, "number");
   heading(p, "unlocks when");
@@ -265,14 +332,3 @@ function openThoughtPanel(p, t) {
   });
 }
 
-function openFlagPanel(p, name) {
-  const h = document.createElement("h2"); h.textContent = "Flag: " + name; p.appendChild(h);
-  const d = document.createElement("div"); d.className = "dimtext";
-  const setters = [];
-  thoughts().forEach(t => { if (t.set_flag === name) setters.push("thought " + t.id); });
-  encounters().forEach(e => actionsOf(e).forEach(a => {
-    if (a.set_flag === name) setters.push(`'${e.id}' action ${a.id}`); }));
-  d.innerHTML = `Set by: ${setters.length ? setters.map(esc).join(", ") : "<b>nothing</b>"}.<br>
-    Flags exist by being referenced; rename/remove them where they are set and read.`;
-  p.appendChild(d);
-}

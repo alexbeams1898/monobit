@@ -1,10 +1,12 @@
-// Shared state + data helpers. The doc is the parsed observations.json, mutated
+// Shared state + data helpers. The doc is the parsed psyche.json, mutated
 // in place so unknown fields round-trip untouched.
 export const S = {
-  doc: null,          // observations.json
+  doc: null,          // psyche.json
   layout: {},         // node key -> {x, y} (the committed sidecar)
   actionKinds: {},    // kind -> {actions: [...]} (read-only context)
   npcNames: {},       // npc id -> display name (read-only context)
+  scenes: [],         // config/scenes/*.json (read-only in the tool; hand-edited)
+  world: { levels: {}, placements: {} }, // the map's progression: level ranks + encounter homes
   dirty: false,
   connected: false,
   selected: null,     // node key
@@ -16,10 +18,16 @@ export const S = {
 
 export const encounters = () => (S.doc && S.doc.encounters) || [];
 export const thoughts = () => (S.doc && S.doc.thoughts) || [];
+export const remarks = () => (S.doc && S.doc.remarks) || []; // said, not written
 export const clauseList = (cond) => Array.isArray(cond) ? cond : [];
 export const obsOf = (clause) => {
   const o = clause.observed;
   return o == null ? [] : (Array.isArray(o) ? o : [o]);
+};
+// A clause's flag field, like observed, is a string or an array (ALL required).
+export const flagsOf = (clause) => {
+  const f = clause.flag;
+  return f == null || f === "" ? [] : (Array.isArray(f) ? f : [f]);
 };
 // Every action an encounter offers: kind defaults + its own add list.
 export function actionsOf(enc) {
@@ -29,13 +37,19 @@ export function actionsOf(enc) {
 }
 export function allFlagNames() {
   const flags = new Set();
-  const scan = (cond) => clauseList(cond).forEach(c => { if (c.flag) flags.add(c.flag); });
+  const scan = (cond) => clauseList(cond).forEach(c => flagsOf(c).forEach(f => flags.add(f)));
   thoughts().forEach(t => { if (t.set_flag) flags.add(t.set_flag); scan(t.unlock_when); });
   encounters().forEach(e => {
     scan(e.visible_when);
     (e.tiers || []).forEach(t => scan(t.unlock_when));
     actionsOf(e).forEach(a => { if (a.set_flag) flags.add(a.set_flag); scan(a.unlock_when); });
   });
+  S.scenes.forEach(s => {
+    if (s.set_flag) flags.add(s.set_flag);
+    scan(s.start_when);
+    (s.steps || []).forEach(st => { if (st.set_flag) flags.add(st.set_flag); });
+  });
+  remarks().forEach(r => { if (r.set_flag) flags.add(r.set_flag); scan(r.unlock_when); });
   return [...flags];
 }
 export function allStatNames() {
@@ -51,7 +65,9 @@ export function allStatNames() {
   return [...stats];
 }
 export const allObservableIds = () =>
-  encounters().map(e => e.id).concat(thoughts().map(t => t.id));
+  encounters().map(e => e.id)
+    .concat(thoughts().map(t => t.id))
+    .concat(remarks().map(r => r.id));
 
 export function uniqueId(base) {
   let id = base, n = 2;
@@ -69,12 +85,13 @@ export function renameObservable(oldId, newId) {
     else if (c.observed === oldId) c.observed = newId;
   });
   thoughts().forEach(t => fix(t.unlock_when));
+  remarks().forEach(r => fix(r.unlock_when));
   encounters().forEach(e => {
     fix(e.visible_when);
     (e.tiers || []).forEach(t => fix(t.unlock_when));
     ((e.actions && e.actions.add) || []).forEach(a => fix(a.unlock_when));
   });
-  ["e:", "t:"].forEach(p => {
+  ["e:", "t:", "r:"].forEach(p => {
     if (S.layout[p + oldId]) { S.layout[p + newId] = S.layout[p + oldId]; delete S.layout[p + oldId]; }
   });
   markDirty();

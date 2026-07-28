@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Ambience.h"
 #include "AppState.h"
 #include "Crafting.h"
 #include "Footsteps.h"
@@ -13,11 +14,13 @@
 #include "LdtkImport.h"
 #include "Notebook.h"
 #include "Npc.h"
-#include "Observations.h"
 #include "PlayerConfig.h"
+#include "Psyche.h"
+#include "Scene.h"
 #include "Settings.h"
 #include "Structures.h"
 #include "Surfaces.h"
+#include "Tutorial.h"
 #include "WatchHud.h"
 #include "WorldClock.h"
 #include "WorldConfig.h"
@@ -95,7 +98,7 @@ struct GameState
     app::State app; // what the program is doing (greeting / playing); gates the world tick
     entt::entity player = entt::null;
     PlayerConfig player_config;
-    observations::State observations;
+    psyche::State psyche;
     growth::GrowthState growth;
     PauseState pause;
     footsteps::Config footstep_config;   // authored pool + cadence
@@ -126,10 +129,15 @@ struct GameState
     crafting::State crafting_state;           // realized-recipe discovery state
     inventory::Satchel satchel;               // what the pilgrim carries
     notebook::Record notebook; // dated record of readings (gated on carrying the notebook)
-    // Unlock ids (see observations::availableUnlocks) already announced via a
+    // Unlock ids (see psyche::availableUnlocks) already announced via a
     // notification, so "1 new observation / action available" toasts fire exactly
     // once per new unlock, not every frame.
     std::unordered_set<std::string> announced_unlocks;
+    // Spots whose baseline deeds the unlock pump has already seeded as announced
+    // (a deed reachable the moment its spot is FIRST observed is what the menu
+    // shows, not news -- only unlocks appearing after that toast). Ephemeral:
+    // never saved, rebuilt from the observation record by the first pump.
+    std::unordered_set<std::string> seeded_spots;
 
     // Placed things this pilgrim has removed from the world for good -- a pickup taken,
     // a spot consumed -- keyed by placement id (the stable identity the map gives every
@@ -145,7 +153,11 @@ struct GameState
     // destination's own warp -- the doormat you step out of -- never bounces back.
     std::string region;                            // current LDtk level identifier
     std::vector<ldtk::WarpPlacement> region_warps; // this level's exits
-    bool region_interior = false;                  // inside space (light/sound/camera differ)
+    std::vector<ldtk::SpawnPoint> region_spawns;   // named points (arrivals + scene marks)
+    // The level's PLACED characters by npc id, so a scene can steer someone who is
+    // already standing there (no `enter` needed) -- scene-spawned bodies shadow these.
+    std::unordered_map<std::string, entt::entity> region_npcs;
+    bool region_interior = false; // inside space (light/sound/camera differ)
     bool warp_armed = false;
     // A warp crossed this tick, applied at the TOP of a later update -- a safe point
     // where no system holds references into the registry the switch will clear. The
@@ -171,6 +183,19 @@ struct GameState
         Phase phase = Phase::None;
         float t = 0.0f; // seconds into the current phase
     } warp_fade;
+
+    scene::Registry scenes;           // authored scenes (config/scenes/*.json), loaded at boot
+    scene::Runtime scene_rt;          // the running scene, if any -- movement holds while active
+    ambience::Config ambience_config; // named world-sound channels (config/ambience.json)
+    ambience::State ambience_state;   // which channels are sounding
+    tutorial::Config tutorial_config; // first-time teaching cards (config/tutorial.json)
+    tutorial::State tutorial_state;   // seen set (saved) + the queued card, if any
+
+    // Whether the ambient bed (the score) is sounding yet this walk. The world may
+    // hold it back behind world_config.ambient_gate_flag -- the opening belongs to
+    // the room's own sounds; the score enters when that flag lands (or immediately,
+    // on walks that already hold it). Ephemeral; set at world-enter.
+    bool music_started = false;
 
     // The stat-change pump's fingerprint: growth::levelSum as of the last engine
     // run over the stat keys. Lives HERE (per-walk, ephemeral, never saved) and is

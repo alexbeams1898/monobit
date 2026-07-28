@@ -144,6 +144,7 @@ json encodePilgrim(const Data& d)
                 {"notebook", json{{"at", d.notebook_at}}},
                 {"known_recipes", fromSet(d.known_recipes)},
                 {"announced", fromSet(d.announced)},
+                {"tutorial_seen", fromSet(d.tutorial_seen)},
                 {"clock_seconds", d.clock_seconds},
                 {"place", json{{"x", d.place.x},
                                {"y", d.place.y},
@@ -167,6 +168,7 @@ Data decodePilgrim(const json& j)
         toNumMap(*it, "at", d.notebook_at);
     toSet(j, "known_recipes", d.known_recipes);
     toSet(j, "announced", d.announced);
+    toSet(j, "tutorial_seen", d.tutorial_seen);
     d.clock_seconds = j.value("clock_seconds", 0.0);
     if (const auto it = j.find("place"); it != j.end() && it->is_object())
     {
@@ -314,10 +316,10 @@ void capture(const GameState& gs, float player_x, float player_y, Data& d)
 {
     // Identity (id/name) is NOT captured from the world -- the world doesn't own it. This
     // writes the walk into an existing pilgrim, leaving who they are untouched.
-    d.record.observed_tier = gs.observations.observed_tier;
-    d.record.fired = gs.observations.fired;
-    d.record.flags = gs.observations.flags;
-    d.record.taken = gs.observations.taken;
+    d.record.observed_tier = gs.psyche.observed_tier;
+    d.record.fired = gs.psyche.fired;
+    d.record.flags = gs.psyche.flags;
+    d.record.taken = gs.psyche.taken;
     d.world.gone = gs.gone;
 
     d.self.spirit_exp = gs.growth.spirit_exp;
@@ -338,6 +340,7 @@ void capture(const GameState& gs, float player_x, float player_y, Data& d)
     d.notebook_at = gs.notebook.at;
     d.known_recipes = gs.crafting_state.known;
     d.announced = gs.announced_unlocks;
+    d.tutorial_seen = gs.tutorial_state.seen;
     d.clock_seconds = gs.clock.seconds;
     d.place.x = player_x;
     d.place.y = player_y;
@@ -347,10 +350,10 @@ void capture(const GameState& gs, float player_x, float player_y, Data& d)
 
 void apply(const Data& data, GameState& gs)
 {
-    gs.observations.observed_tier = data.record.observed_tier;
-    gs.observations.fired = data.record.fired;
-    gs.observations.flags = data.record.flags;
-    gs.observations.taken = data.record.taken;
+    gs.psyche.observed_tier = data.record.observed_tier;
+    gs.psyche.fired = data.record.fired;
+    gs.psyche.flags = data.record.flags;
+    gs.psyche.taken = data.record.taken;
     gs.gone = data.world.gone;
 
     gs.growth.spirit_exp = data.self.spirit_exp;
@@ -369,6 +372,10 @@ void apply(const Data& data, GameState& gs)
     gs.notebook.at = data.notebook_at;
     gs.crafting_state.known = data.known_recipes;
     gs.announced_unlocks = data.announced;
+    // Whole-struct reset THEN the saved seen-set: the queue and edge-detect flags
+    // are this walk's, never carried from a previous one.
+    gs.tutorial_state = tutorial::State{};
+    gs.tutorial_state.seen = data.tutorial_seen;
     gs.clock.seconds = data.clock_seconds;
 }
 

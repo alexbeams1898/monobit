@@ -52,7 +52,7 @@ enum class Phase
 };
 
 // --- Line state ---
-observations::PendingLine sLine; // reading on screen (empty text = none)
+psyche::PendingLine sLine; // reading on screen (empty text = none)
 Phase sPhase = Phase::None;
 float sPhaseT = 0.0f;              // seconds elapsed in the current phase
 int sRevealed = 0;                 // characters of the CURRENT PAGE revealed so far
@@ -80,6 +80,8 @@ std::vector<Option> sMenuOpts; // current offered deeds
 int sMenuSel = 0;              // highlighted option
 bool sMenuQueued = false;      // the deed menu wants to re-open once state.pending is empty
                                // (after a deed's result line has been read)
+bool sMenuMustChoose = false;  // a decision that cannot be walked away from: no Leave
+                               // option, F/RMB ignored -- only a consuming deed ends it
 // Last-rendered menu geometry, stashed so mouse hit-testing matches exactly what
 // was drawn (no recompute drift).
 float sMenuX = 0.0f;
@@ -159,20 +161,27 @@ void turnPage()
 // appear tone, pitch/volume scaled by rarity + a shimmer layer for rare+ readings.
 void playAppearSfx()
 {
-    if (sLine.kind == observations::LineKind::Thought && sLine.is_new)
+    if (sLine.kind == psyche::LineKind::Thought && sLine.is_new)
     {
         AudioSystem::playSfx(sCfg.notebook_sound, 0.8f, 1.0f);
         return;
     }
     const float tier = static_cast<float>(std::max(0, sLine.difficulty - 1)); // 0..4
-    const float pitch = 1.0f + tier * 0.06f;
-    const float vol = 0.7f * (1.0f + tier * 0.12f);
+    float pitch = 1.0f + tier * 0.06f;
+    float vol = 0.7f * (1.0f + tier * 0.12f);
+    // An impression arrives on the senses, not by choice -- it announces itself
+    // more softly and a shade lower than a chosen looking.
+    if (sLine.kind == psyche::LineKind::Impression)
+    {
+        vol *= 0.7f;
+        pitch *= 0.92f;
+    }
     AudioSystem::playSfx(sCfg.appear_sound, vol, pitch);
     if (sLine.difficulty >= 4) // Rare / Legendary get a brighter shimmer layer
         AudioSystem::playSfx(sCfg.appear_sound, vol * 0.5f, pitch * 1.6f);
 }
 
-void loadLine(observations::PendingLine line, int windowW, int windowH)
+void loadLine(psyche::PendingLine line, int windowW, int windowH)
 {
     sItem = ItemKind::Line;
     sLine = std::move(line);
@@ -185,9 +194,9 @@ void loadLine(observations::PendingLine line, int windowW, int windowH)
     sRevealed = 0;
     sLastBlip = 0;
     sPageStart = 0;
-    // Wrap + paginate to the LOWER band's inner content width (all readings share
-    // that one box for now -- see renderLine).
-    const hud::Rect region = hud::resolve(sRegions.observation, windowW, windowH);
+    // Wrap + paginate to the content band's inner width -- ALL boxes render
+    // there, distinguished by register (paper vs window), never by position.
+    const hud::Rect region = hud::resolve(sRegions.content, windowW, windowH);
     const float padX = sRegions.pad_x * hud::scale(windowW, windowH);
     const float padY = sRegions.pad_y * hud::scale(windowW, windowH);
     sWrapped = wrapText(sLine.text, region.w - 2.0f * padX);
@@ -213,15 +222,21 @@ const char* const kLeaveId = "__leave__";
 // Returns false when there are no real deeds AND `alwaysShow` is false -- so the reading's
 // AUTO-follow menu doesn't open a Leave-only box, but the RUNNING/Act path (alwaysShow) does
 // (a spot with nothing to do still shows "Leave").
-bool buildMenu(const observations::State& state, const growth::GrowthState& growth,
+bool buildMenu(const psyche::State& state, const growth::GrowthState& growth,
                const std::string& spot, bool alwaysShow = false)
 {
     sMenuOpts.clear();
-    for (const auto* a : observations::availableActions(state, growth, spot))
+    for (const auto* a : psyche::availableActions(state, growth, spot))
         sMenuOpts.push_back(Option{a->id, a->label});
     if (sMenuOpts.empty() && !alwaysShow)
         return false;
-    sMenuOpts.push_back(Option{kLeaveId, "Leave"});
+    // A must-choose menu offers no exit -- unless it has run out of deeds, which is
+    // an authoring error (a decision with nothing to decide); Leave then keeps the
+    // game playable instead of trapping the player in an empty box.
+    if (sMenuMustChoose && sMenuOpts.empty())
+        std::fprintf(stderr, "[box] must-choose menu for '%s' has no deeds\n", spot.c_str());
+    if (!sMenuMustChoose || sMenuOpts.empty())
+        sMenuOpts.push_back(Option{kLeaveId, "Leave"});
     return true;
 }
 
@@ -329,7 +344,7 @@ void init(FontHandle body_font, FontHandle heading_font, const Config& config,
     sRegions = regions;
 }
 
-void update(observations::State& state, const growth::GrowthState& growth, float dt, int windowW,
+void update(psyche::State& state, const growth::GrowthState& growth, float dt, int windowW,
             int windowH)
 {
     if (sItem == ItemKind::None)
@@ -339,7 +354,7 @@ void update(observations::State& state, const growth::GrowthState& growth, float
         // deed menu, and a deed's result_text shows before the menu re-opens).
         if (!state.pending.empty())
         {
-            observations::PendingLine next = state.pending.front();
+            psyche::PendingLine next = state.pending.front();
             state.pending.pop_front();
             loadLine(std::move(next), windowW, windowH);
             return;
@@ -393,38 +408,66 @@ bool menuActive()
     return sItem == ItemKind::Menu && sPhase != Phase::FadeOut;
 }
 
+bool activeLineEarnedSpirit()
+{
+    return sItem == ItemKind::Line && sPhase != Phase::FadeOut && sLine.spirit_exp > 0;
+}
+
+bool activeLineKind(psyche::LineKind& out)
+{
+    if (sItem != ItemKind::Line || sPhase == Phase::FadeOut)
+        return false;
+    out = sLine.kind;
+    return true;
+}
+
+bool fullyShown()
+{
+    return sItem != ItemKind::None && sPhase == Phase::Done;
+}
+
+bool settled()
+{
+    // Fully at rest: nothing on screen AND no menu re-open queued. Distinct from
+    // !active(): the box's own lifecycle has one-frame gaps (a result line fading
+    // out before the queued deed menu re-opens) where nothing is showing but the
+    // exchange is NOT over -- a waiter that read active() would slip through them.
+    return sItem == ItemKind::None && !sMenuQueued;
+}
+
 bool activeThought(const growth::GrowthState& growth, Color& out_color)
 {
-    if (sItem != ItemKind::Line || sLine.kind != observations::LineKind::Thought ||
+    if (sItem != ItemKind::Line || sLine.kind != psyche::LineKind::Thought ||
         sPhase == Phase::FadeOut)
         return false;
     out_color = reading_color::forReading(growth, sLine.faculty, sLine.difficulty, 1.0f);
     return true;
 }
 
-observations::ObserveResult pushObserve(observations::State& state,
-                                        const growth::GrowthState& growth, const std::string& spot,
-                                        const observations::RollRng& rng)
+psyche::ObserveResult pushObserve(psyche::State& state, const growth::GrowthState& growth,
+                                  const std::string& spot, const psyche::RollRng& rng,
+                                  bool impression)
 {
     // Run the spot's reading (the WALKING/Observe stance: queues lines; update() drains them).
     // The whole result goes back to the caller -- the EXP to bank, and any thoughts that
     // landed, which the game writes into the notebook. The box adds nothing to it.
     sMenuSpot = spot;
-    return observations::observeById(state, growth, spot, rng);
+    return psyche::observeById(state, growth, spot, rng, impression);
 }
 
-void openDeedMenu(observations::State& state, const growth::GrowthState& growth,
-                  const std::string& spot)
+void openDeedMenu(psyche::State& state, const growth::GrowthState& growth, const std::string& spot,
+                  bool must_choose)
 {
     // The RUNNING/Act stance: open the deed menu immediately. Always shows, even if the spot
     // has no deeds right now -- you get a "Leave"-only menu, not a dead press.
     sMenuSpot = spot;
+    sMenuMustChoose = must_choose;
     buildMenu(state, growth, spot, /*alwaysShow=*/true);
     openMenu();
 }
 
-ConfirmResult confirm(observations::State& state, const growth::GrowthState& growth,
-                      const observations::RollRng& rng)
+ConfirmResult confirm(psyche::State& state, const growth::GrowthState& growth,
+                      const psyche::RollRng& rng)
 {
     if (sItem == ItemKind::Line)
     {
@@ -461,10 +504,12 @@ ConfirmResult confirm(observations::State& state, const growth::GrowthState& gro
         // the caller banks + deposits them.
         sItem = ItemKind::None;
         sPhase = Phase::None;
-        const observations::ObserveResult r =
-            observations::takeAction(state, growth, sMenuSpot, actionId, rng);
+        const psyche::ObserveResult r = psyche::takeAction(state, growth, sMenuSpot, actionId, rng);
         // A deed that CONSUMES the spot leaves nothing to return to -- don't re-queue.
+        // That is also how a decision menu ends: its terminal deeds consume.
         sMenuQueued = r.consumed_spot.empty();
+        if (!r.consumed_spot.empty())
+            sMenuMustChoose = false; // decided -- the box may close normally
         return {r.earned, r.granted, r.gathered, r.taught, r.landed, r.stat_gains, r.consumed_spot};
     }
     return {};
@@ -483,8 +528,8 @@ void moveDown()
         sMenuSel = (sMenuSel + 1) % static_cast<int>(sMenuOpts.size());
 }
 
-ConfirmResult menuMouse(observations::State& state, const growth::GrowthState& growth,
-                        const observations::RollRng& rng, float mx, float my, bool clicked)
+ConfirmResult menuMouse(psyche::State& state, const growth::GrowthState& growth,
+                        const psyche::RollRng& rng, float mx, float my, bool clicked)
 {
     if (!menuActive() || sPhase != Phase::Done || sMenuOpts.empty())
         return {};
@@ -500,7 +545,7 @@ ConfirmResult menuMouse(observations::State& state, const growth::GrowthState& g
 
 void back()
 {
-    if (sItem == ItemKind::Menu)
+    if (sItem == ItemKind::Menu && !sMenuMustChoose)
     {
         sMenuQueued = false; // don't re-open; leaving the spot
         sPhase = Phase::FadeOut;
@@ -524,6 +569,7 @@ void reset()
     sMenuOpts.clear();
     sMenuSel = 0;
     sMenuQueued = false;
+    sMenuMustChoose = false;
     sMenuX = 0.0f;
     sMenuY = 0.0f;
     sMenuW = 0.0f;
@@ -541,12 +587,12 @@ void renderLine(const growth::GrowthState& growth, int windowW, int windowH, flo
     // position: a THOUGHT is a notebook entry (paper + ink, dated, headered with its
     // faculty/rarity identity); an OBSERVATION is just perceived -- a bare line in a
     // dark window, no header (the register itself signals the kind).
-    const bool isThought = sLine.kind == observations::LineKind::Thought;
+    const bool isThought = sLine.kind == psyche::LineKind::Thought;
     // Speech: someone else's line in the perception window -- headed by the
     // speaker's name instead of a faculty/rarity identity.
     const bool isSpeech = !isThought && !sLine.speaker.empty();
     const bool showHeader = (isThought || isSpeech) && sPageStart == 0;
-    const hud::Rect region = hud::resolve(sRegions.observation, windowW, windowH);
+    const hud::Rect region = hud::resolve(sRegions.content, windowW, windowH);
 
     const ContentArea c = drawPanel(region, windowW, windowH, alpha, dropOffset, isThought, hue);
 
@@ -616,7 +662,7 @@ void renderMenu(int windowW, int windowH, float alpha, float dropOffset)
     // the OBSERVATION register (dark dialogue window), selection in warm gold.
     const Color chrome{0.85f, 0.85f, 0.82f, 1.0f};
     const float bodyLineH = static_cast<float>(FontManager::lineHeight(sFont));
-    const hud::Rect region = hud::resolve(sRegions.observation, windowW, windowH);
+    const hud::Rect region = hud::resolve(sRegions.content, windowW, windowH);
     const ContentArea c =
         drawPanel(region, windowW, windowH, alpha, dropOffset, /*notebook=*/false, chrome);
 

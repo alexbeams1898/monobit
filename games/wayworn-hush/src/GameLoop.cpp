@@ -31,6 +31,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <random>
 
@@ -367,8 +368,19 @@ void noteLanded(GameState& gs, const std::vector<std::string>& landed)
 {
     if (landed.empty() || !inventory::has(gs.satchel, "notebook"))
         return;
+    // Thoughts are written; remarks are said. A remark never reaches the
+    // notebook -- it left through a mouth instead (Thought::isRemark is the one
+    // authority; notebook::found applies the same test on display).
+    const auto isRemark = [&](const std::string& id)
+    {
+        for (const auto& t : gs.psyche.thoughts)
+            if (t.id == id)
+                return t.isRemark();
+        return false;
+    };
     for (const auto& id : landed)
-        notebook::note(gs.notebook, id, gs.clock.seconds);
+        if (!isRemark(id))
+            notebook::note(gs.notebook, id, gs.clock.seconds);
 }
 
 // Bank everything an observe/act result earned: Spirit currency, faculty EXP (passive stat
@@ -476,6 +488,11 @@ void leaveToTitle(EntityManager& em, GameState& gs)
     gs.app.world_built = false;
 
     AudioSystem::stopMusic();
+    // The world's sounds and its running scene are the walk's, not the title's --
+    // a quit mid-scene must not leave an alarm ringing over the menu, or a scene
+    // runtime pointing into a registry the next walk reloads.
+    ambience::stopAll(gs.ambience_state, gs.ambience_config);
+    gs.scene_rt = {};
     thought_box::reset();
     title_screen::reset();
     gs.app.phase = app::Phase::Greeting;
@@ -734,16 +751,6 @@ void autosaveTick(const EntityManager& em, GameState& gs, double dt)
         writeSave(em, gs);
 }
 
-// Pre-mark a just-observed spot's already-offered actions as announced (no toast)
-// -- they're shown in the menu right there. Only actions that unlock LATER (via
-// growth / a flag) toast as a "1 new action" pull-back. Tiers stay un-seeded.
-void seedObservedActionsAsKnown(GameState& gs, const std::string& spot)
-{
-    for (const auto& id : observations::availableUnlocks(gs.observations, gs.growth))
-        if (id.rfind(spot + ":", 0) == 0) // "<spot>:<actionid>"
-            gs.announced_unlocks.insert(id);
-}
-
 // Re-run the engine over the stat keys only when the stats actually changed (the
 // levelSum fingerprint), so growth can land a thought / re-open a miss without a
 // per-frame scan. The fingerprint lives in GameState and is SEEDED at world-enter
@@ -755,16 +762,71 @@ void pumpStatChangeThoughts(GameState& gs)
     if (statSum == gs.stats_seen_sum)
         return;
     gs.stats_seen_sum = statSum;
-    const observations::ObserveResult r =
-        observations::evaluateStats(gs.observations, gs.growth, observeNudge);
+    const psyche::ObserveResult r = psyche::evaluateStats(gs.psyche, gs.growth, observeNudge);
     applyGains(gs, r); // a stat rising can land a thought -- banked, grown, written down
+}
+
+// Teach at the moment the thing is ON SCREEN: edge-detect the box's surfaces, one
+// site for every path that can raise them (the deliberate verb, a scene, an Enter
+// trigger). Order within a call is pedagogy -- the surface first, its reward
+// after -- and fire() dedups by the seen set, so re-checks are free.
+// The line kinds' teaching names -- each surfaces as its own first-time event,
+// because each IS its own thing (chosen / pressed / spoken / concluded).
+const char* lineEventName(psyche::LineKind kind)
+{
+    switch (kind)
+    {
+    case psyche::LineKind::Observation:
+        return "observation";
+    case psyche::LineKind::Impression:
+        return "impression";
+    case psyche::LineKind::Remark:
+        return "remark";
+    case psyche::LineKind::Thought:
+        return "thought";
+    }
+    return "";
+}
+
+void pumpTutorial(GameState& gs)
+{
+    auto& tut = gs.tutorial_state;
+    // Only a FULLY shown surface teaches: the typewriter has finished (or the
+    // menu is open and holding), so the card stops a complete moment -- the
+    // player reads the whole thing lit under the hole, never a half-typed line.
+    const bool shown = thought_box::fullyShown();
+    const bool menuUp = shown && thought_box::menuActive();
+    psyche::LineKind kind{};
+    const bool lineUp = shown && thought_box::activeLineKind(kind);
+    if (lineUp && !tut.line_was_up)
+    {
+        tutorial::fire(tut, gs.tutorial_config, lineEventName(kind));
+        if (thought_box::activeLineEarnedSpirit())
+            tutorial::fire(tut, gs.tutorial_config, "spirit");
+    }
+    if (menuUp && !tut.menu_was_up)
+        tutorial::fire(tut, gs.tutorial_config, "deed_menu");
+    tut.line_was_up = lineUp;
+    tut.menu_was_up = menuUp;
 }
 
 // Conclusions are just deeper observations -- they surface the same way.
 void pumpUnlockNotifications(GameState& gs)
 {
-    const std::unordered_set<std::string> now =
-        observations::availableUnlocks(gs.observations, gs.growth);
+    const std::unordered_set<std::string> now = psyche::availableUnlocks(gs.psyche, gs.growth);
+    // A spot's deeds reachable the moment it FIRST becomes observed are baseline --
+    // the menu already shows them -- so they seed as announced, silently; only a
+    // deed that unlocks AFTER that (a flag lands, a stat rises) is news. Deeper
+    // TIERS stay un-seeded on purpose: "more to read here" is real news even at
+    // first observation. Seeding lives HERE, not at each observe call site, so
+    // every path an observation lands through (deliberate, scene, Enter trigger)
+    // obeys the rule -- including a resumed walk, whose whole record seeds on the
+    // first pump instead of toasting at boot.
+    for (const auto& [spot, tier] : gs.psyche.observed_tier)
+        if (gs.seeded_spots.insert(spot).second)
+            for (const auto& id : now)
+                if (id.find('@') == std::string::npos && id.rfind(spot + ":", 0) == 0)
+                    gs.announced_unlocks.insert(id);
     for (const auto& id : now)
         if (gs.announced_unlocks.insert(id).second) // first time we've seen it
             notify::push(id.find('@') != std::string::npos ? "1 new observation available"
@@ -811,11 +873,19 @@ bool mouseWorld(const Engine& engine, const EntityManager& em, float& out_x, flo
 // this frame (so it won't also fire an interactable / leak into the pause page).
 bool handleReadingInput(EntityManager& em, GameState& gs, bool clicked)
 {
+    // The teaching card holds everything -- it stopped the world to point at one
+    // thing. Space (or a click) moves past it; nothing else gets this frame.
+    if (tutorial::current(gs.tutorial_state) != nullptr)
+    {
+        if (pressedThisFrame(em, SDL_SCANCODE_SPACE) || clicked)
+            tutorial::dismiss(gs.tutorial_state);
+        return true;
+    }
     if (thought_box::menuActive())
     {
         if (pressedThisFrame(em, SDL_SCANCODE_SPACE))
             // A deed can fire a thought (EXP) and/or grant an item -- enact both.
-            enactConfirm(em, gs, thought_box::confirm(gs.observations, gs.growth, observeNudge));
+            enactConfirm(em, gs, thought_box::confirm(gs.psyche, gs.growth, observeNudge));
         if (pressedThisFrame(em, SDL_SCANCODE_W))
             thought_box::moveUp();
         if (pressedThisFrame(em, SDL_SCANCODE_S))
@@ -827,7 +897,7 @@ bool handleReadingInput(EntityManager& em, GameState& gs, bool clicked)
     if (thought_box::active()) // a reading Line: Space OR a click anywhere advances it
     {
         if (pressedThisFrame(em, SDL_SCANCODE_SPACE) || clicked)
-            enactConfirm(em, gs, thought_box::confirm(gs.observations, gs.growth, observeNudge));
+            enactConfirm(em, gs, thought_box::confirm(gs.psyche, gs.growth, observeNudge));
         return true;
     }
     return false;
@@ -891,7 +961,7 @@ bool learnRecipe(GameState& gs, const std::string& recipeId)
 }
 
 // Run a craft attempt from the Craft tab's selected materials: match them against the recipe
-// table (gated by the same knowledge observations use), and on an exact match make it -- the
+// table (gated by the same knowledge psyche uses), and on an exact match make it -- the
 // craft consumes inputs + grants the output, and here we bank its XP, set any first-craft
 // reveal flag, and toast the find. Every outcome (made / near-miss / short on materials) surfaces
 // as a notification toast; the pot is cleared either way.
@@ -933,7 +1003,7 @@ void attemptCraft(GameState& gs)
     for (const auto& [stat, exp] : out.stat_gains)
         grantStatExp(gs, stat, exp);
     if (!out.revealed_flag.empty())
-        gs.observations.flags.insert(out.revealed_flag);
+        gs.psyche.flags.insert(out.revealed_flag);
     if (const inventory::ItemDef* def = gs.items.find(out.output_item))
         notify::push("Made " + std::to_string(out.output_qty) + "x " + def->name,
                      reading_color::rarityColor(def->rarity));
@@ -1036,20 +1106,342 @@ void onInteractionFired(GameState& gs, const interaction::Outcome& out)
     const std::string& spot = out.observe_target;
     if (out.act)
     {
-        // Running (Act stance) -> the deed menu. Seed baseline deeds as announced (the spot
-        // was observed on a prior visit, so they're available) so they don't toast as "new".
-        seedObservedActionsAsKnown(gs, spot);
-        thought_box::openDeedMenu(gs.observations, gs.growth, spot);
+        // Running (Act stance) -> the deed menu.
+        thought_box::openDeedMenu(gs.psyche, gs.growth, spot);
         return;
     }
-    // Walking (Observe stance) -> the reading only. Bank its EXP. Seed the baseline deeds AFTER
-    // observing (observing is what makes them available -- observed_tier is set by pushObserve)
-    // so they don't toast "1 new action available"; only later-unlocked deeds announce.
-    const observations::ObserveResult observed =
-        thought_box::pushObserve(gs.observations, gs.growth, spot, observeNudge);
+    // Walking (Observe stance) -> the reading only. Bank its EXP. The unlock pump
+    // seeds the spot's baseline deeds as announced (no "new action" toast for what
+    // the menu already shows); only later-unlocked deeds announce.
+    const psyche::ObserveResult observed =
+        thought_box::pushObserve(gs.psyche, gs.growth, spot, observeNudge);
     applyGains(gs, observed);
-    seedObservedActionsAsKnown(gs, spot);
     markProgress(gs); // a reading landed -- worth keeping
+}
+
+// --- scenes: choreography that plays the graph (see Scene.h) -------------------
+
+const ldtk::SpawnPoint* sceneMarker(const GameState& gs, const std::string& id)
+{
+    for (const auto& s : gs.region_spawns)
+        if (s.id == id)
+            return &s;
+    return nullptr;
+}
+
+// Start the first eligible scene: right level, completion flag unset, start_when
+// held against current knowledge.
+void maybeStartScene(GameState& gs)
+{
+    for (const auto& d : gs.scenes.scenes)
+    {
+        if (d.level != gs.region || gs.psyche.flags.count(d.set_flag) > 0)
+            continue;
+        if (!psyche::conditionMet(gs.psyche, gs.growth, d.start_when))
+            continue;
+        gs.scene_rt = {};
+        gs.scene_rt.active = true;
+        gs.scene_rt.def = &d;
+        std::fprintf(stderr, "[scene] '%s' begins\n", d.id.c_str());
+        return;
+    }
+}
+
+// A scene's end: raise its completion flag through the engine (later content
+// sequences off it), note the progress, release the world.
+void finishScene(GameState& gs)
+{
+    applyGains(gs, psyche::setFlag(gs.psyche, gs.growth, gs.scene_rt.def->set_flag, observeNudge));
+    markProgress(gs);
+    std::fprintf(stderr, "[scene] '%s' done\n", gs.scene_rt.def->id.c_str());
+    gs.scene_rt = {};
+}
+
+// The body a scene step steers: one it spawned itself (`enter`), else the level's
+// PLACED character of that id -- a scene in the kitchen walks the Mom who is
+// already there without re-entering her.
+entt::entity sceneBody(const GameState& gs, const std::string& who)
+{
+    const auto it = gs.scene_rt.bodies.find(who);
+    if (it != gs.scene_rt.bodies.end())
+        return it->second;
+    const auto placed = gs.region_npcs.find(who);
+    return placed != gs.region_npcs.end() ? placed->second : entt::null;
+}
+
+void sceneFace(EntityManager& em, entt::entity body, float dx, float dy)
+{
+    if (auto* f = em.registry().try_get<FacingDirection>(body))
+    {
+        f->dx = dx;
+        f->dy = dy;
+        f->render_dx = dx;
+        f->render_dy = dy;
+    }
+}
+
+void sceneAnim(EntityManager& em, entt::entity body, int row, int frames, float duration)
+{
+    auto* a = em.registry().try_get<Animation>(body);
+    if (a != nullptr && a->current_row != row)
+    {
+        a->current_row = row;
+        a->current_frames = frames;
+        a->current_duration = duration;
+    }
+}
+
+// An npc appears at a marker. Instant.
+bool sceneEnterStep(EntityManager& em, GameState& gs, const scene::Step& s)
+{
+    const auto* m = sceneMarker(gs, s.target);
+    const auto cfg = gs.npcs.npcs.find(s.who);
+    if (m == nullptr || cfg == gs.npcs.npcs.end())
+    {
+        std::fprintf(stderr, "[scene] enter '%s' at '%s': unknown npc/marker -- skipped\n",
+                     s.who.c_str(), s.target.c_str());
+        return true;
+    }
+    gs.scene_rt.bodies[s.who] = npc::spawn(em, cfg->second, m->wx, m->wy, s.facing);
+    return true;
+}
+
+// Walk the body toward the marker; true on arrival. Straight line, no
+// pathfinding -- the author keeps the path clear.
+bool sceneMoveStep(EntityManager& em, GameState& gs, const scene::Step& s, float dt)
+{
+    const entt::entity body = sceneBody(gs, s.who);
+    const auto* m = sceneMarker(gs, s.target);
+    const auto cfg = gs.npcs.npcs.find(s.who);
+    if (body == entt::null || m == nullptr || cfg == gs.npcs.npcs.end() ||
+        !em.registry().valid(body))
+    {
+        std::fprintf(stderr, "[scene] move '%s' -> '%s': missing body/marker -- skipped\n",
+                     s.who.c_str(), s.target.c_str());
+        return true;
+    }
+    const npc::Config& c = cfg->second;
+    auto& t = em.registry().get<Transform>(body);
+    const float dx = m->wx - t.x;
+    const float dy = m->wy - t.y;
+    const float dist = std::sqrt(dx * dx + dy * dy);
+    const float step = c.walk_speed * dt;
+    if (dist <= step)
+    {
+        t.x = m->wx;
+        t.y = m->wy;
+        sceneAnim(em, body, c.idle_row, c.idle_frames, c.idle_duration);
+        return true;
+    }
+    t.x += dx / dist * step;
+    t.y += dy / dist * step;
+    sceneFace(em, body, dx / dist, dy / dist);
+    sceneAnim(em, body, c.walk_row, c.walk_frames, c.walk_duration);
+    return false;
+}
+
+// Fire encounter content through the box -- the step where a scene hands the pace
+// to the player. A blocking step waits for the box to clear; a non-blocking observe
+// fires and moves on (the body keeps walking while its words are read); a
+// non-blocking menu holds only until the CHOICE lands, so the reply text overlaps
+// whatever the scene does next.
+bool sceneBoxStep(GameState& gs, const scene::Step& s, bool menu)
+{
+    auto& rt = gs.scene_rt;
+    if (!rt.pushed)
+    {
+        if (!menu)
+        {
+            // A scene firing content at the player is the world reaching him
+            // unbidden -- an observe step is an impression, a remark step is a
+            // voice made to speak now.
+            if (s.kind == scene::Step::Kind::Remark)
+                applyGains(gs, psyche::forceRemark(gs.psyche, gs.growth, s.target, observeNudge));
+            else
+                applyGains(gs, thought_box::pushObserve(gs.psyche, gs.growth, s.target,
+                                                        observeNudge, /*impression=*/true));
+            if (!s.blocking)
+                return true;
+            rt.pushed = true;
+            return false;
+        }
+        // A menu must wait its turn: earlier readings (a non-blocking observe's
+        // lines) are still on screen or queued -- the choice comes after the words.
+        if (!thought_box::settled() || !gs.psyche.pending.empty())
+            return false;
+        thought_box::openDeedMenu(gs.psyche, gs.growth, s.target, s.must_choose);
+        rt.pushed = true;
+        return false;
+    }
+    // Blocking steps wait for the WHOLE exchange (settled + nothing queued to
+    // surface); a non-blocking menu only until the choice lands.
+    const bool busy = menu && !s.blocking ? thought_box::menuActive()
+                                          : (!thought_box::settled() || !gs.psyche.pending.empty());
+    if (busy)
+        return false;
+    rt.pushed = false;
+    return true;
+}
+
+void sceneLeaveStep(EntityManager& em, GameState& gs, const scene::Step& s)
+{
+    const entt::entity body = sceneBody(gs, s.who);
+    if (body != entt::null && em.registry().valid(body))
+        em.registry().destroy(body);
+    gs.scene_rt.bodies.erase(s.who);
+}
+
+void sceneFaceStep(EntityManager& em, const GameState& gs, const scene::Step& s)
+{
+    float dx = 0.0f;
+    float dy = 1.0f;
+    ldtk::facingVec(s.facing, dx, dy);
+    const entt::entity body = sceneBody(gs, s.who);
+    if (body != entt::null && em.registry().valid(body))
+        sceneFace(em, body, dx, dy);
+}
+
+bool sceneWaitStep(GameState& gs, const scene::Step& s, float dt)
+{
+    gs.scene_rt.timer += dt;
+    if (gs.scene_rt.timer < s.seconds)
+        return false;
+    gs.scene_rt.timer = 0.0f;
+    return true;
+}
+
+// How dark a scene's FadeIn holds the screen right now: 1 (full black) -> 0 as the
+// step's timer runs. Non-zero only while a FadeIn step IS the current step -- the
+// scene starts (and first renders) at full black, so an opening literally wakes up.
+float sceneFadeAlpha(const GameState& gs)
+{
+    const auto& rt = gs.scene_rt;
+    if (!rt.active || rt.step >= rt.def->steps.size())
+        return 0.0f;
+    const scene::Step& s = rt.def->steps[rt.step];
+    if (s.kind != scene::Step::Kind::FadeIn || s.seconds <= 0.0f)
+        return 0.0f;
+    return 1.0f - std::clamp(rt.timer / s.seconds, 0.0f, 1.0f);
+}
+
+// One step; true = complete (advance to the next).
+bool runSceneStep(EntityManager& em, GameState& gs, const scene::Step& s, float dt)
+{
+    switch (s.kind)
+    {
+    case scene::Step::Kind::Enter:
+        return sceneEnterStep(em, gs, s);
+    case scene::Step::Kind::Leave:
+        sceneLeaveStep(em, gs, s);
+        return true;
+    case scene::Step::Kind::Move:
+        return sceneMoveStep(em, gs, s, dt);
+    case scene::Step::Kind::Face:
+        sceneFaceStep(em, gs, s);
+        return true;
+    case scene::Step::Kind::Wait:
+    case scene::Step::Kind::FadeIn: // same clock; the overlay reads the step's progress
+        return sceneWaitStep(gs, s, dt);
+    case scene::Step::Kind::Observe:
+    case scene::Step::Kind::Remark:
+        return sceneBoxStep(gs, s, /*menu=*/false);
+    case scene::Step::Kind::Menu:
+        return sceneBoxStep(gs, s, /*menu=*/true);
+    case scene::Step::Kind::SetFlag:
+        applyGains(gs, psyche::setFlag(gs.psyche, gs.growth, s.target, observeNudge));
+        return true;
+    case scene::Step::Kind::Sound:
+        ambience::start(gs.ambience_state, gs.ambience_config, s.target);
+        return true;
+    case scene::Step::Kind::StopSound:
+        ambience::stop(gs.ambience_state, gs.ambience_config, s.target);
+        return true;
+    }
+    return true;
+}
+
+// The gated score enters the moment its flag lands (enterWorld handles walks that
+// already hold it, and worlds with no gate).
+void tickMusicGate(GameState& gs)
+{
+    if (gs.music_started || gs.psyche.flags.count(gs.world_config.ambient_gate_flag) == 0)
+        return;
+    gs.music_started = true;
+    AudioSystem::playMusic(gs.world_config.ambient_track, gs.world_config.ambient_volume,
+                           /*loop=*/true, gs.world_config.ambient_fade_in_ms);
+}
+
+// WHO HAS THE FLOOR this tick -- the one statement of the input policy, computed
+// once and asked semantic questions, instead of each consumer or-ing its own
+// subset of modal states. New authorities (a cutscene camera, a sleep fade) add a
+// field + amend the answers HERE, not another conditional at every call site.
+struct Control
+{
+    bool menu = false;  // the action menu is modal (its W/S drive selection)
+    bool fade = false;  // a warp fade runs (the crossing step is committed)
+    bool scene = false; // a scene runs (the world has the floor)
+    bool card = false;  // a teaching card is up (the world holds its breath)
+
+    // Movement keys: frozen by any authority above (the box still takes its own
+    // input -- readings and menus keep their pace even mid-scene).
+    bool movementFrozen() const
+    {
+        return menu || fade || scene || card;
+    }
+    // Starting NEW world interactions (observe/act on what's in reach): only the
+    // player's to do, and only when the world isn't speaking.
+    bool mayInteract() const
+    {
+        return !scene && !card;
+    }
+};
+
+Control control(const GameState& gs)
+{
+    Control c;
+    c.menu = thought_box::menuActive();
+    c.fade = gs.warp_fade.phase != GameState::WarpFade::Phase::None;
+    c.scene = gs.scene_rt.active;
+    c.card = tutorial::current(gs.tutorial_state) != nullptr;
+    return c;
+}
+
+// The per-tick bookkeeping running under the world (after the pause guard --
+// a paused world holds all of this still):
+//   - world time; a teaching card holds it too (the moment is stopped, not
+//     elapsing), which also drives notebook datelines and the later day/night;
+//   - the autosave throttle (writes when something worth keeping landed);
+//   - the ambience flag bus (a stop_on_flag channel dies the moment its flag
+//     exists -- the TV goes quiet because the deed turned it off);
+//   - the gated score.
+void tickWorldBookkeeping(EntityManager& em, GameState& gs, const Control& ctl, double dt)
+{
+    if (!ctl.card)
+        worldclock::tick(gs.clock, dt);
+    autosaveTick(em, gs, dt);
+    ambience::tick(gs.ambience_state, gs.ambience_config, gs.psyche.flags);
+    tickMusicGate(gs);
+}
+
+// Tick: start an eligible scene when idle; else advance the running one. Player
+// movement holds while active (gameUpdate); the box keeps taking input, which is
+// how Observe/Menu steps let the player set the reading pace. Instant steps chain
+// within one tick; blocking ones return and resume next tick.
+void tickScene(EntityManager& em, GameState& gs, float dt)
+{
+    if (!gs.scene_rt.active)
+    {
+        maybeStartScene(gs);
+        if (!gs.scene_rt.active)
+            return;
+    }
+    while (gs.scene_rt.step < gs.scene_rt.def->steps.size())
+    {
+        if (!runSceneStep(em, gs, gs.scene_rt.def->steps[gs.scene_rt.step], dt))
+            return;
+        ++gs.scene_rt.step;
+    }
+    finishScene(gs);
 }
 } // namespace
 
@@ -1106,42 +1498,42 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // Cheap + idempotent (diffs against announced_unlocks), so once/frame.
     pumpUnlockNotifications(gs);
 
-    // Only the action MENU is modal (captures F/W/S/Space + freezes movement); a
-    // reading never freezes you. So the pause page must not see those keys while a
-    // menu is up.
-    const bool menuUp = thought_box::menuActive();
+    // First-time teaching cards, fired off what is on screen right now.
+    pumpTutorial(gs);
 
-    enactPageAction(engine, em, gs, stepPausePage(em, gs, menuUp));
-
-    // Freeze the world while the page is open: skip movement, observing, camera.
-    // Animation is halted in gamePreRender (it runs at wall-clock rate there).
-    if (gs.pause.open)
-        return;
-
-    // World time advances only while unfrozen (drives notebook datelines; later the
-    // day/night cycle). Placed after the pause guard so a paused world holds time.
-    worldclock::tick(gs.clock, dt);
-
-    // Keep the pilgrimage as it happens: writes only when something worth keeping has
-    // landed since the last write, and no more often than the throttle. Leaving the
-    // page or the game writes regardless (see enactPageAction).
-    autosaveTick(em, gs, dt);
-
-    // Snapshot positions for render interpolation before integrating.
+    // Snapshot positions for render interpolation before anything moves a body
+    // this tick -- the player's integration OR a scene's choreography.
     for (auto [e, t, pt] : reg.view<Transform, PreviousTransform>().each())
     {
         pt.x = t.x;
         pt.y = t.y;
     }
 
+    // Scenes: the world acting on its own. Held while the pause page freezes the
+    // world, like everything else in it -- and while a teaching card has stopped
+    // the moment to point at it.
+    if (!gs.pause.open && tutorial::current(gs.tutorial_state) == nullptr)
+        tickScene(em, gs, static_cast<float>(dt));
+
+    // Who has the floor this tick (see Control). AFTER the scene tick, so a scene
+    // that just started (or just opened a menu) governs input this very tick.
+    const Control ctl = control(gs);
+
+    enactPageAction(engine, em, gs, stepPausePage(em, gs, ctl.menu));
+
+    // Freeze the world while the page is open: skip movement, observing, camera.
+    // Animation is halted in gamePreRender (it runs at wall-clock rate there).
+    if (gs.pause.open)
+        return;
+
+    tickWorldBookkeeping(em, gs, ctl, dt);
+
     const PlayerConfig& pc = gs.player_config;
 
-    // The action menu freezes movement (its W/S drive selection), and so does a warp
-    // fade in progress -- the step that crossed the threshold is committed. Readings
-    // leave you free to walk -- and walking away dismisses them (below).
+    // Movement keys go through the ONE policy (see Control). Readings leave you
+    // free to walk -- and walking away dismisses them (below).
     static const Uint8 kNoKeys[SDL_NUM_SCANCODES] = {};
-    const bool fadeUp = gs.warp_fade.phase != GameState::WarpFade::Phase::None;
-    const Uint8* keys = (menuUp || fadeUp) ? kNoKeys : SDL_GetKeyboardState(nullptr);
+    const Uint8* keys = ctl.movementFrozen() ? kNoKeys : SDL_GetKeyboardState(nullptr);
 
     // Hold Shift to fast-walk: faster movement + brisker leg cadence.
     const bool fast = keys[SDL_SCANCODE_LSHIFT] != 0 || keys[SDL_SCANCODE_RSHIFT] != 0;
@@ -1191,8 +1583,8 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // is within range -- no observe verb. Deliberate object observing stays in
     // handleObserveInput. Fires once each; earns Spirit EXP like a deliberate reading, and
     // its thoughts are written down like one.
-    const observations::ObserveResult ambient =
-        observations::triggerProximity(gs.observations, gs.growth, pt.x, pt.y, observeNudge);
+    const psyche::ObserveResult ambient =
+        psyche::triggerProximity(gs.psyche, gs.growth, pt.x, pt.y, observeNudge);
     applyGains(gs, ambient);
 
     // Read the left-click ONCE (mouseClicked consumes it) so the same click can't both
@@ -1203,7 +1595,9 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // advancing it). Otherwise resolve the active interactable (nearest in reach or under
     // the cursor), and Space OR a click ON it fires -- observe now, pick-up/craft/open
     // later. The InteractionSystem also sets the `active` flag that drives the glow.
-    if (!handleReadingInput(em, gs, clicked))
+    // During a scene the box still takes input (its readings/menus ARE the scene's
+    // pace), but no NEW world interaction can start -- the world has the floor.
+    if (!handleReadingInput(em, gs, clicked) && ctl.mayInteract())
     {
         interaction::Intent intent;
         intent.px = pt.x;
@@ -1215,16 +1609,16 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
         // observes. Slow down to notice; move with intent to do.
         const Uint8* keyState = SDL_GetKeyboardState(nullptr);
         intent.act = keyState[SDL_SCANCODE_LSHIFT] != 0 || keyState[SDL_SCANCODE_RSHIFT] != 0;
-        const interaction::Context ctx{gs.observations,
+        const interaction::Context ctx{gs.psyche,
                                        gs.growth,
                                        observeNudge,
                                        gs.satchel,
                                        gs.items,
                                        gs.loot_tables,
-                                       gs.observations.interact_reach};
+                                       gs.psyche.interact_reach};
         // Decide which encounters are present THIS frame before resolving a target, so a
         // hidden one is never interactable and a just-revealed one is.
-        glimmer::refreshPresence(em, gs.observations, gs.growth);
+        glimmer::refreshPresence(em, gs.psyche, gs.growth);
         const interaction::Outcome fired = interaction::update(em, intent, ctx);
         gs.growth.spirit_exp += fired.earned;
         if (fired.fired)
@@ -1270,8 +1664,11 @@ void gamePreRender(Engine& engine, EntityManager& em)
     // tick (see engines/engine/docs/ENGINE.md "Animation system").
     AnimationSystem::update(em, static_cast<float>(engine.frameDt()));
 
-    thought_box::update(gs.observations, gs.growth, static_cast<float>(engine.frameDt()),
-                        engine.windowWidth(), engine.windowHeight());
+    // A teaching card stops the moment: the typewriter (and any queued line)
+    // holds under it, exactly where it was, until the card is read.
+    if (tutorial::current(gs.tutorial_state) == nullptr)
+        thought_box::update(gs.psyche, gs.growth, static_cast<float>(engine.frameDt()),
+                            engine.windowWidth(), engine.windowHeight());
 }
 
 void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, float alpha)
@@ -1341,6 +1738,23 @@ void drawWarpDebug(const Engine& engine, EntityManager& em, const GameState& gs)
             box(t.x, t.y, col->width, col->height, c);
         }
     }
+}
+
+// The over-everything layer, in its stacking order: the teaching card's hold
+// (dim + hone + the card), the notification toasts above it (a card pointing at
+// the notification band must leave the toast it points at lit -- and stops its
+// clock, dt 0, so it can't fade out under the card), the screen fade above all
+// (the warp's quick dip or a scene's slow waking; whichever holds more darkness
+// wins).
+void renderOverEverything(const Engine& engine, GameState& gs, int ww, int wh)
+{
+    const tutorial::Card* card = tutorial::current(gs.tutorial_state);
+    if (card != nullptr)
+        tutorial::render(*card, gs.hud, ww, wh);
+    notify::render(card != nullptr ? 0.0f : static_cast<float>(engine.frameDt()), ww, wh);
+    if (const float a = std::max(warpFadeAlpha(gs), sceneFadeAlpha(gs)); a > 0.0f)
+        UIRenderer::drawRect(0.0f, 0.0f, static_cast<float>(ww), static_cast<float>(wh),
+                             Color{0.0f, 0.0f, 0.0f, a});
 }
 
 void gameRenderUI(Engine& engine, EntityManager& em)
@@ -1430,16 +1844,16 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     // player opened it and it is asking them something -- so hiding the HUD must never
     // leave it on screen with dead clicks.
     enactConfirm(em, gs,
-                 thought_box::menuMouse(gs.observations, gs.growth, observeNudge,
-                                        static_cast<float>(mx), static_cast<float>(my), lClick));
+                 thought_box::menuMouse(gs.psyche, gs.growth, observeNudge, static_cast<float>(mx),
+                                        static_cast<float>(my), lClick));
 
     // Pause page over everything (no-op when closed). Mouse is interchangeable
     // with the keyboard controls: hover a tab to highlight, click to switch,
     // click Quit on the System tab to exit. Mouse handling lives here because it
     // hit-tests the geometry render() draws.
     const pause_page::Mouse mouse{static_cast<float>(mx), static_cast<float>(my), lClick};
-    const pause_page::Content content{gs.observations, gs.satchel, gs.items,         gs.notebook,
-                                      gs.clock,        gs.recipes, gs.crafting_state};
+    const pause_page::Content content{gs.psyche, gs.satchel, gs.items,         gs.notebook,
+                                      gs.clock,  gs.recipes, gs.crafting_state};
     // Resolve item-icon paths to textures through the engine's cache (the page stays engine-
     // type-free). Empty path -> 0 (a swatch fallback in the grid).
     const pause_page::IconResolver icon = [&engine](const std::string& path) -> std::uint32_t
@@ -1450,17 +1864,7 @@ void gameRenderUI(Engine& engine, EntityManager& em)
                     pause_page::render(gs.pause, gs.growth, content, mouse, icon,
                                        engine.windowWidth(), engine.windowHeight()));
 
-    // Notification toasts render LAST -- above the pause page's dark overlay -- so a craft/find
-    // toast stays visible while the Craft tab is open. Non-blocking, self-fading, always on top.
-    // CONTENT, not HUD: a toast exists because something just happened, and says so once. The
-    // HUD mode doesn't silence it any more than it silences a reading.
-    notify::render(static_cast<float>(engine.frameDt()), ww, wh);
-
-    // The warp fade, over everything: whatever is on screen goes to black with the
-    // world and comes back with it.
-    if (const float a = warpFadeAlpha(gs); a > 0.0f)
-        UIRenderer::drawRect(0.0f, 0.0f, static_cast<float>(ww), static_cast<float>(wh),
-                             Color{0.0f, 0.0f, 0.0f, a});
+    renderOverEverything(engine, gs, ww, wh);
 
     clearOneShotInput(em);
 }
@@ -1470,5 +1874,5 @@ void gameRenderImGui(Engine& /*engine*/, EntityManager& em)
     // Dev tunables panel (F1). No-op when hidden. Edits player_config + stats
     // live; the Cognition tab shows the observation state's live tree.
     auto& gs = em.registry().ctx().get<GameState>();
-    tune_panel::render(gs.player_config, gs.growth, gs.observations);
+    tune_panel::render(gs.player_config, gs.growth, gs.psyche);
 }

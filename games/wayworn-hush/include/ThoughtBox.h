@@ -3,7 +3,7 @@
 #include "Growth.h"
 #include "HudCanvas.h"
 #include "Notebook.h"
-#include "Observations.h"
+#include "Psyche.h"
 #include "UIRenderer.h" // Color
 
 #include <string>
@@ -17,9 +17,9 @@ using FontHandle = int;
 //           holds, and waits for Space to advance (Souls-like manual read).
 //   Menu -- a list of options (e.g. the deeds you can do at a spot after
 //           observing): W/S move the selection, Space confirms, F/RMB backs out.
-// Systems stay pure -- they enqueue text Lines via observations::State.pending
+// Systems stay pure -- they enqueue text Lines via psyche::State.pending
 // and Menus via openDeedMenu(); the box owns look, animation, and input.
-// See docs/design/OBSERVATION-SYSTEM.md + ACTIONS.md + AESTHETIC.md.
+// See docs/design/PSYCHE.md + ACTIONS.md + AESTHETIC.md.
 namespace thought_box
 {
 
@@ -52,8 +52,8 @@ void init(FontHandle body_font, FontHandle heading_font, const Config& config,
 //
 // Purely a display. What a landed thought MEANS -- that it belongs in the notebook,
 // on a particular day -- is the game's business, decided from
-// observations::ObserveResult::landed at the moment it fires.
-void update(observations::State& state, const growth::GrowthState& growth, float dt, int windowW,
+// psyche::ObserveResult::landed at the moment it fires.
+void update(psyche::State& state, const growth::GrowthState& growth, float dt, int windowW,
             int windowH);
 
 // True while the box shows anything (a Line dropping in / typing / held, or a
@@ -64,6 +64,27 @@ bool active();
 // True while an action Menu is the current item (so the game routes W/S to it).
 bool menuActive();
 
+// True when the box is fully at rest: nothing showing AND no menu re-open queued.
+// Waiters (a scene's blocking box step) ask THIS, not active() -- the box's own
+// lifecycle has one-frame gaps where nothing is on screen mid-exchange.
+bool settled();
+
+// True while a Line that earned Spirit is on screen (its "+N Spirit" toast lands
+// with it). The tutorial pump reads this to teach the reward at the moment it is
+// visible.
+bool activeLineEarnedSpirit();
+
+// The kind of the Line on screen, if one is (false when the box shows nothing or
+// a menu). The tutorial pump maps this to its first-time events -- observation,
+// impression, remark, thought are taught as distinct things.
+bool activeLineKind(psyche::LineKind& out);
+
+// True when the current item is COMPLETELY on screen: a line's typewriter has
+// finished (this page fully revealed), or a menu is open and holding. The
+// tutorial pump waits for this, so a card stops a finished moment -- never a
+// half-rendered one.
+bool fullyShown();
+
 // True while a THOUGHT reading (not a plain observation / deed-result) is on
 // screen; if so, out_color is its faculty hue. Drives the over-head thought bubble
 // (head_marker) -- the bubble shows exactly while the thought is up, in its color.
@@ -72,14 +93,19 @@ bool activeThought(const growth::GrowthState& growth, Color& out_color);
 // Run a spot's OBSERVE reading (the EarthBound "Check"): queues the reading lines; update()
 // drains them. Returns the observation's whole result -- the EXP to bank, and any thoughts
 // that landed for the caller to write down. The box passes it through untouched.
-observations::ObserveResult pushObserve(observations::State& state,
-                                        const growth::GrowthState& growth, const std::string& spot,
-                                        const observations::RollRng& rng);
+// `impression` marks the reading as pressed rather than chosen (a scene firing it
+// at the player) -- see psyche::LineKind.
+psyche::ObserveResult pushObserve(psyche::State& state, const growth::GrowthState& growth,
+                                  const std::string& spot, const psyche::RollRng& rng,
+                                  bool impression = false);
 
 // Open a spot's deed menu (the RUNNING/Act stance). Always shows, even with no deeds (a
-// "Leave"-only menu), so a run-interact is never a dead press.
-void openDeedMenu(observations::State& state, const growth::GrowthState& growth,
-                  const std::string& spot);
+// "Leave"-only menu), so a run-interact is never a dead press. The menu re-opens after
+// each deed's result line until a deed CONSUMES the spot (the moment has passed) or the
+// player leaves. `must_choose` is a scene's decision beat: no Leave, no backing out --
+// the deeds repeat until a consuming one is taken.
+void openDeedMenu(psyche::State& state, const growth::GrowthState& growth, const std::string& spot,
+                  bool must_choose = false);
 
 // What a confirm did that the game must enact: EXP to bank, plus any item effects a
 // taken deed declared (ids only -- the box, like observations, is inventory-ignorant; the
@@ -101,8 +127,8 @@ struct ConfirmResult
 //   back (F / RMB) -- Menu: close it
 // The RNG is threaded so taking a deed can run the ambient engine (deed -> flag
 // -> a missed thought may fire). Returns what the caller must enact (see ConfirmResult).
-ConfirmResult confirm(observations::State& state, const growth::GrowthState& growth,
-                      const observations::RollRng& rng);
+ConfirmResult confirm(psyche::State& state, const growth::GrowthState& growth,
+                      const psyche::RollRng& rng);
 // Forget whatever is on screen: a line mid-typewriter, an open deed menu, a queued
 // re-open. The box holds this between frames, so a walk that ends with a reading up would
 // otherwise carry it into the next one. Call when a world goes away.
@@ -116,8 +142,8 @@ void back();
 // left press this frame) confirms the hovered option. No-op unless a menu is up.
 // Mirrors the pause page's mouse handling; interchangeable with W/S + Space.
 // Returns what the caller must enact (like confirm).
-ConfirmResult menuMouse(observations::State& state, const growth::GrowthState& growth,
-                        const observations::RollRng& rng, float mx, float my, bool clicked);
+ConfirmResult menuMouse(psyche::State& state, const growth::GrowthState& growth,
+                        const psyche::RollRng& rng, float mx, float my, bool clicked);
 
 // Draw the box (if active), tinted via `growth`. Content renders into its fixed
 // HUD region (thought vs observation, by the item's kind). Window-space.

@@ -111,7 +111,15 @@ std::string writeFixture()
       {"__identifier": "Npc", "iid": "n1", "px": [24, 40], "width": 16, "height": 16,
        "fieldInstances": [{"__identifier": "npc", "__value": "mom"},
                           {"__identifier": "facing", "__value": "west"},
-                          {"__identifier": "encounter", "__value": "mom_talk"}]}
+                          {"__identifier": "encounter", "__value": "mom_talk"}]},
+      {"__identifier": "Rug", "iid": "r1", "px": [32, 32], "width": 16, "height": 16,
+       "__tile": {"x": 0, "y": 0, "w": 16, "h": 16},
+       "fieldInstances": [{"__identifier": "plane", "__value": "floor"}]},
+      {"__identifier": "Bed", "iid": "b1", "px": [48, 48], "width": 16, "height": 32,
+       "__tile": {"x": 0, "y": 16, "w": 16, "h": 32},
+       "fieldInstances": [{"__identifier": "plane", "__value": "cover"},
+                          {"__identifier": "cover_height", "__value": 24}]},
+      {"__identifier": "Blocker", "iid": "bl1", "px": [64, 64], "width": 16, "height": 8}
     ]},
     {"__identifier": "Ground", "__type": "Tiles", "__gridSize": 16, "__cWid": 4, "__cHei": 4,
      "gridTiles": [{"px": [0, 0], "src": [16, 0]},
@@ -227,6 +235,38 @@ TEST_CASE("An Npc parses as a placement AND registers its talk encounter", "[ldt
     // Npc entities never leak into the untyped-object pile.
     for (const auto& o : shore.objects)
         REQUIRE(o.type != "Npc");
+}
+
+TEST_CASE("A prop's plane is authored; cover_top splits a bed into on and under", "[ldtk]")
+{
+    // The fixture's Rug (plane=floor) and Bed (plane=cover, cover_top=8): one
+    // authored bed becomes TWO sprites -- the part you lie ON (upper, floor
+    // plane) and the blanket that ENCLOSES (lower, cover plane), split 16 world
+    // px (8 source px) from the top. A floor prop never gets a collider.
+    const ldtk::Region shore = loadFixture({});
+    REQUIRE(shore.props.size() == 4);
+    const auto& rug = shore.props[0];
+    REQUIRE(rug.plane == ldtk::Prop::Plane::Floor);
+    REQUIRE_FALSE(rug.col_solid);
+
+    const auto& pillow = shore.props[1];
+    const auto& blanket = shore.props[2];
+    REQUIRE(pillow.plane == ldtk::Prop::Plane::Floor);
+    REQUIRE(pillow.sh == 16);
+    REQUIRE(blanket.plane == ldtk::Prop::Plane::Cover);
+    REQUIRE(blanket.sh == 48);
+    REQUIRE(blanket.sy == pillow.sy + 16); // the art continues where the split cut
+    REQUIRE_FALSE(blanket.col_solid);      // a collider would ride the upper piece
+}
+
+TEST_CASE("A Blocker is a hand-placed solid box and nothing else", "[ldtk]")
+{
+    const ldtk::Region shore = loadFixture({});
+    const auto& b = shore.props[3];
+    REQUIRE(b.sw == 0); // no art -- pure collision
+    REQUIRE(b.col_solid);
+    REQUIRE(b.col_w == Approx(32.0f)); // 16x8 authoring box -> 32x16 world
+    REQUIRE(b.col_h == Approx(16.0f));
 }
 
 TEST_CASE("A Warp with no target_level is dropped, not kept broken", "[ldtk]")

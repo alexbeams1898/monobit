@@ -126,29 +126,29 @@ void statsTab(growth::GrowthState& growth)
 
 // --- Cognition tab: the live tree read from the observation state ----------
 
-ImVec4 statusColor(observations::ThoughtStatus st)
+ImVec4 statusColor(psyche::ThoughtStatus st)
 {
     switch (st)
     {
-    case observations::ThoughtStatus::Fired:
+    case psyche::ThoughtStatus::Fired:
         return {0.55f, 0.80f, 0.50f, 1.0f}; // green
-    case observations::ThoughtStatus::Available:
+    case psyche::ThoughtStatus::Available:
         return {0.98f, 0.86f, 0.45f, 1.0f}; // gold -- eligible, will roll
-    case observations::ThoughtStatus::OutOfReach:
+    case psyche::ThoughtStatus::OutOfReach:
         return {0.55f, 0.57f, 0.62f, 1.0f}; // grey
     }
     return {1, 1, 1, 1};
 }
 
-const char* statusWord(observations::ThoughtStatus st)
+const char* statusWord(psyche::ThoughtStatus st)
 {
     switch (st)
     {
-    case observations::ThoughtStatus::Fired:
+    case psyche::ThoughtStatus::Fired:
         return "FIRED";
-    case observations::ThoughtStatus::Available:
+    case psyche::ThoughtStatus::Available:
         return "available";
-    case observations::ThoughtStatus::OutOfReach:
+    case psyche::ThoughtStatus::OutOfReach:
         return "out of reach";
     }
     return "";
@@ -162,17 +162,17 @@ std::string clauseText(const unlock::Clause& c)
         s += (i ? " + " : "") + c.observed[i];
     for (const auto& [name, lvl] : c.stat)
         s += (s.empty() ? "" : " | ") + name + ">=" + std::to_string(lvl);
-    if (!c.flag.empty())
-        s += (s.empty() ? "" : " | ") + std::string("flag:") + c.flag;
+    for (const auto& f : c.flags)
+        s += (s.empty() ? "" : " | ") + std::string("flag:") + f;
     return s.empty() ? "(always)" : s;
 }
 
-void drawEncounterNode(const observations::State& obs, const growth::GrowthState& g,
-                       const observations::Encounter& o)
+void drawEncounterNode(const psyche::State& obs, const growth::GrowthState& g,
+                       const psyche::Encounter& o)
 {
     const int reached = obs.observed_tier.count(o.id) ? obs.observed_tier.at(o.id) : 0;
-    const observations::Signal sig = observations::signalFor(obs, g, o.id);
-    const char* sigName = sig == observations::Signal::Unobserved ? "unseen" : "observed";
+    const psyche::Signal sig = psyche::signalFor(obs, g, o.id);
+    const char* sigName = sig == psyche::Signal::Unobserved ? "unseen" : "observed";
     if (!ImGui::TreeNode(o.id.c_str(), "%s   [%s]   value %d   tier %d/%zu", o.id.c_str(), sigName,
                          o.value, reached, o.tiers.size()))
         return;
@@ -197,15 +197,15 @@ void drawEncounterNode(const observations::State& obs, const growth::GrowthState
     ImGui::TreePop();
 }
 
-void drawThoughtNode(const observations::State& obs, const growth::GrowthState& g,
-                     const observations::Thought& r)
+void drawThoughtNode(const psyche::State& obs, const growth::GrowthState& g,
+                     const psyche::Thought& r)
 {
-    const auto st = observations::statusOf(obs, g, r);
+    const auto st = psyche::statusOf(obs, g, r);
     ImGui::TextColored(statusColor(st), "%s", statusWord(st));
     ImGui::SameLine();
     // Header: kind + faculty + the derived rarity word (from difficulty).
     if (!ImGui::TreeNode(r.id.c_str(), "%s   [%s %s | %s]", r.id.c_str(),
-                         observations::isSynthesis(r) ? "CONCLUSION" : "thought", r.faculty.c_str(),
+                         psyche::isSynthesis(r) ? "CONCLUSION" : "thought", r.faculty.c_str(),
                          reading_color::rarityWord(r.difficulty)))
         return;
 
@@ -223,7 +223,7 @@ void drawThoughtNode(const observations::State& obs, const growth::GrowthState& 
     // Expandable: how that centrality number was derived (upstream + downstream).
     if (ImGui::TreeNode((r.id + "_centrality").c_str(), "  how centrality is calculated"))
     {
-        for (const auto& line : observations::explainCentrality(obs, r))
+        for (const auto& line : psyche::explainCentrality(obs, r))
             ImGui::TextColored({0.58f, 0.62f, 0.7f, 1.0f}, "%s", line.c_str());
         ImGui::TreePop();
     }
@@ -237,12 +237,12 @@ void drawThoughtNode(const observations::State& obs, const growth::GrowthState& 
         ImGui::Text("  -> sets flag: %s", r.set_flag.c_str());
     // Why it's at this status + what flips it.
     ImGui::Spacing();
-    for (const auto& line : observations::explainStatus(obs, g, r))
+    for (const auto& line : psyche::explainStatus(obs, g, r))
         ImGui::TextColored({0.62f, 0.64f, 0.68f, 1.0f}, "%s", line.c_str());
     ImGui::TreePop();
 }
 
-void cognitionTab(const observations::State& obs, const growth::GrowthState& g)
+void cognitionTab(const psyche::State& obs, const growth::GrowthState& g)
 {
     ImGui::TextDisabled("Live cognition tree (dev X-ray -- reads the loaded state).");
     ImGui::Spacing();
@@ -254,7 +254,7 @@ void cognitionTab(const observations::State& obs, const growth::GrowthState& g)
             drawThoughtNode(obs, g, r);
 }
 
-void render(PlayerConfig& pc, growth::GrowthState& growth, const observations::State& obs)
+void render(PlayerConfig& pc, growth::GrowthState& growth, const psyche::State& obs)
 {
     if (!sVisible)
         return;

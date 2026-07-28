@@ -6,12 +6,12 @@
 namespace
 {
 // A thought table standing in for authored config: ids paired with a rarity band.
-observations::State withThoughts(const std::vector<std::pair<std::string, int>>& ids)
+psyche::State withThoughts(const std::vector<std::pair<std::string, int>>& ids)
 {
-    observations::State s;
+    psyche::State s;
     for (const auto& [id, band] : ids)
     {
-        observations::Thought t;
+        psyche::Thought t;
         t.id = id;
         t.text = id + " text";
         t.difficulty = band;
@@ -21,7 +21,7 @@ observations::State withThoughts(const std::vector<std::pair<std::string, int>>&
 }
 
 // Mark a thought as landed, the way the observation engine does.
-void fire(observations::State& s, const std::string& id)
+void fire(psyche::State& s, const std::string& id)
 {
     s.fired.insert(id);
 }
@@ -51,7 +51,7 @@ TEST_CASE("note ignores an empty id", "[notebook]")
 TEST_CASE("found() returns ONLY what he has reached", "[notebook]")
 {
     // What he hasn't thought is not his and has no line in his notebook.
-    observations::State s = withThoughts({{"a", 1}, {"b", 1}, {"c", 1}});
+    psyche::State s = withThoughts({{"a", 1}, {"b", 1}, {"c", 1}});
     fire(s, "b");
     notebook::Record r;
     notebook::note(r, "b", 30.0);
@@ -62,9 +62,25 @@ TEST_CASE("found() returns ONLY what he has reached", "[notebook]")
     REQUIRE(rows[0].at == 30.0);
 }
 
+TEST_CASE("found() never lists a remark -- said, not written", "[notebook]")
+{
+    // A fired remark (a voiced thought-engine entity) must not surface in the
+    // notebook even UNTIMED -- membership, not just the timestamp record, excludes it.
+    psyche::State s = withThoughts({{"kept", 1}, {"grumble", 1}});
+    s.thoughts[1].voice = "player";
+    fire(s, "kept");
+    fire(s, "grumble");
+    notebook::Record r;
+    notebook::note(r, "kept", 10.0);
+
+    const auto rows = notebook::found(r, s);
+    REQUIRE(rows.size() == 1);
+    REQUIRE(rows[0].thought->id == "kept");
+}
+
 TEST_CASE("found() is chronological, untimed last", "[notebook]")
 {
-    observations::State s = withThoughts({{"a", 2}, {"b", 2}, {"c", 2}});
+    psyche::State s = withThoughts({{"a", 2}, {"b", 2}, {"c", 2}});
     for (const auto& id : {"a", "b", "c"})
         fire(s, id);
     notebook::Record r;
@@ -82,7 +98,7 @@ TEST_CASE("found() orders WITHIN a day by the moment, not authored order", "[not
 {
     // Storing the moment (not a day) is what buys this: "second" is authored first but was
     // thought later, and the page reads in the order he actually wrote it.
-    observations::State s = withThoughts({{"second", 1}, {"first", 1}});
+    psyche::State s = withThoughts({{"second", 1}, {"first", 1}});
     fire(s, "first");
     fire(s, "second");
     notebook::Record r;
@@ -98,7 +114,7 @@ TEST_CASE("rarity does NOT reorder the pages", "[notebook]")
 {
     // It's a notebook: the page is when he was there. A legendary thought reached on day 5
     // still comes after a common one from day 1.
-    observations::State s = withThoughts({{"early_common", 1}, {"late_legendary", 5}});
+    psyche::State s = withThoughts({{"early_common", 1}, {"late_legendary", 5}});
     fire(s, "early_common");
     fire(s, "late_legendary");
     notebook::Record r;
@@ -114,7 +130,7 @@ TEST_CASE("untimed notes hold authored order and don't shuffle", "[notebook]")
 {
     // Untimed notes are all equal to each other, so the sort must leave them where the
     // config put them rather than reordering between frames (the cursor would jump).
-    observations::State s = withThoughts({{"first", 2}, {"second", 2}});
+    psyche::State s = withThoughts({{"first", 2}, {"second", 2}});
     fire(s, "first");
     fire(s, "second");
 
@@ -126,7 +142,7 @@ TEST_CASE("untimed notes hold authored order and don't shuffle", "[notebook]")
 
 TEST_CASE("byDay splits the notes into the days he wrote them", "[notebook]")
 {
-    observations::State s = withThoughts({{"a", 1}, {"b", 1}, {"c", 1}, {"d", 1}});
+    psyche::State s = withThoughts({{"a", 1}, {"b", 1}, {"c", 1}, {"d", 1}});
     for (const auto& id : {"a", "b", "c", "d"})
         fire(s, id);
     notebook::Record r;
@@ -148,7 +164,7 @@ TEST_CASE("byDay holds every note found(), and no more", "[notebook]")
 {
     // The tab walks byDay but indexes the cursor flat: a note in one and not the other
     // would put the detail panel on the wrong entry.
-    observations::State s = withThoughts({{"a", 1}, {"b", 1}, {"c", 1}});
+    psyche::State s = withThoughts({{"a", 1}, {"b", 1}, {"c", 1}});
     fire(s, "a");
     fire(s, "c");
     notebook::Record r;
@@ -163,7 +179,7 @@ TEST_CASE("byDay holds every note found(), and no more", "[notebook]")
 
 TEST_CASE("byDay is empty when nothing has been reached", "[notebook]")
 {
-    const observations::State s = withThoughts({{"a", 1}});
+    const psyche::State s = withThoughts({{"a", 1}});
     REQUIRE(notebook::byDay(notebook::Record{}, s, clock100()).empty());
 }
 
@@ -171,7 +187,7 @@ TEST_CASE("a found thought with no note reads as untimed", "[notebook]")
 {
     // The record only knows moments. A thought that fired while he carried no notebook
     // is still HIS -- `fired` says so -- it just has no time on it.
-    observations::State s = withThoughts({{"a", 1}});
+    psyche::State s = withThoughts({{"a", 1}});
     fire(s, "a");
     const auto rows = notebook::found(notebook::Record{}, s);
     REQUIRE(rows.size() == 1);
@@ -183,7 +199,7 @@ TEST_CASE("a note taken at the very start of the walk is timed, not untimed", "[
     // The boundary the kUntimed sentinel has to survive: second 0 is a real moment (the
     // first instant of day 1), and must not read as "no moment on record". A sentinel of
     // 0 rather than -1 would collapse these two.
-    observations::State s = withThoughts({{"a", 1}});
+    psyche::State s = withThoughts({{"a", 1}});
     fire(s, "a");
     notebook::Record r;
     notebook::note(r, "a", 0.0);
@@ -197,7 +213,7 @@ TEST_CASE("found() carries the thought's authored stats, not a copy", "[notebook
 {
     // An entry points into the thought table, so re-tuning a thought's rarity is
     // reflected in the notebook rather than frozen at the moment it was written.
-    observations::State s = withThoughts({{"a", 1}});
+    psyche::State s = withThoughts({{"a", 1}});
     fire(s, "a");
     notebook::Record r;
     notebook::note(r, "a", 10.0);
@@ -210,7 +226,7 @@ TEST_CASE("a noted id with no thought behind it is dropped", "[notebook]")
 {
     // Content removed since the walk: the note survives in the save, but the
     // collection is the thought table's shape, so it simply doesn't appear.
-    observations::State s = withThoughts({{"a", 1}});
+    psyche::State s = withThoughts({{"a", 1}});
     fire(s, "gone");
     notebook::Record r;
     notebook::note(r, "gone", 10.0);
@@ -220,6 +236,6 @@ TEST_CASE("a noted id with no thought behind it is dropped", "[notebook]")
 
 TEST_CASE("nothing reached means an empty notebook", "[notebook]")
 {
-    const observations::State s = withThoughts({{"a", 1}});
+    const psyche::State s = withThoughts({{"a", 1}});
     REQUIRE(notebook::found(notebook::Record{}, s).empty());
 }

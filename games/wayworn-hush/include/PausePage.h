@@ -3,7 +3,7 @@
 #include "Crafting.h"
 #include "GameLoop.h"
 #include "Growth.h"
-#include "Observations.h"
+#include "Psyche.h"
 
 #include <cstdint>
 #include <functional>
@@ -75,12 +75,12 @@ struct Mouse
 };
 
 // The data the page's read-only tabs display, bundled so the render signature
-// stays small as tabs are added: what's been observed and thought (observations),
+// stays small as tabs are added: what's been observed and thought (psyche),
 // what's carried (satchel + item defs for names/rarity), and when each thought was
-// written down (notebook -- the thoughts themselves come from observations).
+// written down (notebook -- the thoughts themselves come from psyche).
 struct Content
 {
-    const observations::State& observations;
+    const psyche::State& psyche;
     const inventory::Satchel& satchel;
     const inventory::Registry& items;
     const notebook::Record& notebook;

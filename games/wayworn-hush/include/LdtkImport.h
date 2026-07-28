@@ -79,7 +79,7 @@ struct NpcPlacement
 // field). The box AABB (center + size) marks the spot; you interact when within
 // interact_reach of it. `trigger` is its trigger field. Kept as a neutral struct (a
 // trigger STRING, not the observations enum) so the importer takes no dependency on the
-// observation system -- the game maps it to observations::Placement at load.
+// observation system -- the game maps it to psyche::Placement at load.
 struct EncounterPlacement
 {
     // WHICH placed thing this is -- stable across edits, unique among placements, and the
@@ -131,6 +131,23 @@ struct PickupPlacement
 // is spawned then).
 struct Prop
 {
+    // Which plane the thing occupies -- authored as a `plane` field on the entity
+    // (absent = Standing). A 2D top-down world has three honest kinds of object:
+    //   Standing -- upright (house, tree): Y-sorted by its base, walk behind or in
+    //               front, footprint collider at its feet.
+    //   Floor    -- flat underfoot (rug, doormat): always drawn UNDER characters,
+    //               no collider -- you walk on it.
+    //   Cover    -- flat but enclosing (a bed): always drawn OVER characters (a
+    //               body inside is under the covers, the head pokes out above the
+    //               sprite), collider only at its TOP band (the raised back).
+    enum class Plane
+    {
+        Standing,
+        Floor,
+        Cover
+    };
+    Plane plane = Plane::Standing;
+
     float wx = 0.0f; // sprite CENTER in world pixels (32px scale)
     float wy = 0.0f;
     float sort_wy = 0.0f; // Y-sort key = the prop's BASE (pivot) world-Y

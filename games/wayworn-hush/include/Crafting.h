@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Inventory.h"
-#include "Observations.h" // observations::RollRng (the shared int(int) roll source)
+#include "Psyche.h" // psyche::RollRng (the shared int(int) roll source)
 
 #include <string>
 #include <unordered_map>
@@ -77,7 +77,7 @@ struct Registry
     }
 };
 
-// Discovery state (serializes like observations' `taken`/`fired`): recipe ids the player has
+// Discovery state (serializes like psyche's `taken`/`fired`): recipe ids the player has
 // realized by attempting them while their gate held.
 struct State
 {
@@ -140,7 +140,7 @@ Match match(const std::vector<std::string>& selectedTypes, const Registry& regis
 // The outcome quality for a consumable recipe: scaling.base + a formula of the crafting stat +
 // a bounded roll, clamped to quality_max. Deterministic for a Permanent output (returns 1.0).
 // `craftStat` is the player's level in the recipe's scaling stat. Pure over the roll.
-float outcomeQuality(const Recipe& recipe, int craftStat, const observations::RollRng& rng,
+float outcomeQuality(const Recipe& recipe, int craftStat, const psyche::RollRng& rng,
                      const Config& cfg);
 
 // The total XP this craft earns, INVERSE to mastery: reaching above your level (good outcome,
@@ -175,7 +175,7 @@ struct Outcome
 // NOT mark the recipe known -- the caller owns learning (one place), so a first craft and a
 // teach-by-deed can't double-insert. The game enacts the returned flag/XP + the learn.
 Outcome craft(const Recipe& recipe, inventory::Satchel& satchel, const inventory::Registry& items,
-              int craftStat, const observations::RollRng& rng, const Config& cfg,
+              int craftStat, const psyche::RollRng& rng, const Config& cfg,
               const State& state);
 
 } // namespace crafting

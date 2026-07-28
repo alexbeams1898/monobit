@@ -54,14 +54,16 @@ enum class Visibility
 };
 
 // The named HUD regions (canvas fractions), loaded from config/hud.json. Each is
-// a screen-fixed overlay band (see docs/design/HUD.md): THOUGHT (upper, subjective),
-// OBSERVATION (lower, objective + action menu), NOTIFICATION (right, at lower-band
-// top). pad_x / pad_y are inner padding as canvas fractions.
+// a screen-fixed overlay band (see docs/design/HUD.md): CONTENT (lower -- where
+// ALL content boxes render: readings, thoughts, remarks, menus), NOTIFICATION
+// (right, at content-band top), UPPER (no content of its own -- the band above
+// the world's eyeline where a teaching card parks so it never covers the content
+// it points at). pad_x / pad_y are inner padding as canvas fractions.
 struct Regions
 {
     // Canvas-fraction rects {x,y,w,h}. Sensible defaults if the config is absent.
-    Rect thought{0.20f, 0.10f, 0.60f, 0.22f};
-    Rect observation{0.20f, 0.68f, 0.60f, 0.24f};
+    Rect upper{0.20f, 0.10f, 0.60f, 0.22f};
+    Rect content{0.20f, 0.68f, 0.60f, 0.24f};
     Rect notification{0.80f, 0.68f, 0.18f, 0.24f};
     float pad_x = 0.018f;
     float pad_y = 0.022f;

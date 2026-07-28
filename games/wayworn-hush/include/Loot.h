@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Inventory.h"
-#include "Observations.h" // observations::RollRng (the shared int(int) roll source)
+#include "Psyche.h" // psyche::RollRng (the shared int(int) roll source)
 
 #include <string>
 #include <unordered_map>
@@ -66,6 +66,6 @@ void load(Registry& out, const std::string& dir);
 // [0,n]) so a fixed rng gives deterministic output -- the same source the observation rolls
 // use. Returns the drawn items (merged is the caller's job via inventory::add). Empty if
 // the table is empty / all-zero weight.
-std::vector<inventory::ItemInstance> roll(const Table& table, const observations::RollRng& rng);
+std::vector<inventory::ItemInstance> roll(const Table& table, const psyche::RollRng& rng);
 
 } // namespace loot

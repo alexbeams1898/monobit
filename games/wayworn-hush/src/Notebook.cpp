@@ -30,7 +30,7 @@ void note(Record& rec, const std::string& thought_id, double at_seconds)
     rec.at.emplace(thought_id, at_seconds); // emplace: the first note wins
 }
 
-std::vector<Entry> found(const Record& rec, const observations::State& obs)
+std::vector<Entry> found(const Record& rec, const psyche::State& obs)
 {
     std::vector<Entry> out;
     // The collection IS `fired` joined to the authored thoughts. Walking the thought
@@ -39,7 +39,10 @@ std::vector<Entry> found(const Record& rec, const observations::State& obs)
     // the walk -- simply doesn't appear.
     for (const auto& t : obs.thoughts)
     {
-        if (obs.fired.count(t.id) == 0)
+        // Thoughts are written; remarks are said. A remark fires through the same
+        // engine but left through a mouth -- it is never notebook material,
+        // timed or not.
+        if (obs.fired.count(t.id) == 0 || t.isRemark())
             continue;
         const auto it = rec.at.find(t.id);
         out.push_back(Entry{&t, it == rec.at.end() ? kUntimed : it->second});
@@ -51,7 +54,7 @@ std::vector<Entry> found(const Record& rec, const observations::State& obs)
     return out;
 }
 
-std::vector<Day> byDay(const Record& rec, const observations::State& obs,
+std::vector<Day> byDay(const Record& rec, const psyche::State& obs,
                        const worldclock::WorldClock& clock)
 {
     std::vector<Day> days;

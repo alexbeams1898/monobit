@@ -23,8 +23,9 @@ bool clauseHolds(const Clause& c, const Knowledge& k)
     for (const auto& id : c.observed)
         if (!k.has(k.observed, id))
             return false;
-    if (!c.flag.empty() && !k.has(k.flags, c.flag))
-        return false;
+    for (const auto& f : c.flags)
+        if (!k.has(k.flags, f))
+            return false;
     for (const auto& [name, level] : c.stat)
         if (k.stat(name) < level)
             return false;
@@ -46,19 +47,24 @@ Condition parseCondition(const nlohmann::json& j)
     Condition cond;
     if (!j.is_array())
         return cond;
+    // `observed` and `flag` each accept a single string or an array (all required).
+    const auto stringList =
+        [](const nlohmann::json& cj, const char* key, std::vector<std::string>& out)
+    {
+        const auto it = cj.find(key);
+        if (it == cj.end())
+            return;
+        if (it->is_string())
+            out.push_back(it->get<std::string>());
+        else if (it->is_array())
+            for (const auto& v : *it)
+                out.push_back(v.get<std::string>());
+    };
     for (const auto& cj : j)
     {
         Clause c;
-        c.flag = cj.value("flag", std::string{});
-        // `observed` accepts a single string or an array (all required).
-        if (const auto it = cj.find("observed"); it != cj.end())
-        {
-            if (it->is_string())
-                c.observed.push_back(it->get<std::string>());
-            else if (it->is_array())
-                for (const auto& v : *it)
-                    c.observed.push_back(v.get<std::string>());
-        }
+        stringList(cj, "flag", c.flags);
+        stringList(cj, "observed", c.observed);
         if (const auto it = cj.find("stat"); it != cj.end() && it->is_object())
             for (const auto& [name, lvl] : it->items())
                 c.stat[name] = lvl.get<int>();
