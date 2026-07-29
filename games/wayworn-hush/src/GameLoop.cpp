@@ -1608,6 +1608,54 @@ Control control(const GameState& gs)
     return c;
 }
 
+// Resolve what the player is aiming at and fire it if they said so. A reading or
+// menu consumes the frame's input first (it is modal); a scene holds the floor
+// entirely. When targeting doesn't run, every highlight is cleared -- a spot left
+// lit under a modal box reads as still selectable.
+void tickWorldTargeting(const Engine& engine, EntityManager& em, GameState& gs, const Control& ctl,
+                        bool clicked)
+{
+    auto& reg = em.registry();
+    if (handleReadingInput(em, gs, clicked) || !ctl.mayInteract())
+    {
+        for (auto [e, inter] : reg.view<interaction::Interactable>().each())
+            inter.active = false;
+        return;
+    }
+    const auto& pt = reg.get<Transform>(gs.player);
+    interaction::Intent intent;
+    intent.px = pt.x;
+    intent.py = pt.y;
+    // Facing IS the pointer for proximity targeting -- the render facing, so what
+    // the sprite is looking at is what the game targets.
+    if (const auto* f = reg.try_get<FacingDirection>(gs.player))
+    {
+        intent.face_dx = f->render_dx;
+        intent.face_dy = f->render_dy;
+    }
+    intent.mouse_valid = mouseWorld(engine, em, intent.mouse_x, intent.mouse_y);
+    intent.pressed = pressedThisFrame(em, SDL_SCANCODE_SPACE);
+    intent.clicked = clicked;
+    // Running (Shift held) makes interacting an ACT (skip to the deed menu); walking
+    // observes. Slow down to notice; move with intent to do.
+    const Uint8* keyState = SDL_GetKeyboardState(nullptr);
+    intent.act = keyState[SDL_SCANCODE_LSHIFT] != 0 || keyState[SDL_SCANCODE_RSHIFT] != 0;
+    const interaction::Context ctx{gs.psyche,
+                                   gs.growth,
+                                   observeNudge,
+                                   gs.satchel,
+                                   gs.items,
+                                   gs.loot_tables,
+                                   gs.psyche.interact_reach};
+    // Decide which encounters are present THIS frame before resolving a target, so a
+    // hidden one is never interactable and a just-revealed one is.
+    glimmer::refreshPresence(em, gs.psyche, gs.growth);
+    const interaction::Outcome fired = interaction::update(em, intent, ctx);
+    gs.growth.spirit_exp += fired.earned;
+    if (fired.fired)
+        onInteractionFired(gs, fired);
+}
+
 // The per-tick bookkeeping running under the world (after the pause guard --
 // a paused world holds all of this still):
 //   - the hour (participation time: the metronome below + scene realtime);
@@ -1826,33 +1874,7 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // later. The InteractionSystem also sets the `active` flag that drives the glow.
     // During a scene the box still takes input (its readings/menus ARE the scene's
     // pace), but no NEW world interaction can start -- the world has the floor.
-    if (!handleReadingInput(em, gs, clicked) && ctl.mayInteract())
-    {
-        interaction::Intent intent;
-        intent.px = pt.x;
-        intent.py = pt.y;
-        intent.mouse_valid = mouseWorld(engine, em, intent.mouse_x, intent.mouse_y);
-        intent.pressed = pressedThisFrame(em, SDL_SCANCODE_SPACE);
-        intent.clicked = clicked;
-        // Running (Shift held) makes interacting an ACT (skip to the deed menu); walking
-        // observes. Slow down to notice; move with intent to do.
-        const Uint8* keyState = SDL_GetKeyboardState(nullptr);
-        intent.act = keyState[SDL_SCANCODE_LSHIFT] != 0 || keyState[SDL_SCANCODE_RSHIFT] != 0;
-        const interaction::Context ctx{gs.psyche,
-                                       gs.growth,
-                                       observeNudge,
-                                       gs.satchel,
-                                       gs.items,
-                                       gs.loot_tables,
-                                       gs.psyche.interact_reach};
-        // Decide which encounters are present THIS frame before resolving a target, so a
-        // hidden one is never interactable and a just-revealed one is.
-        glimmer::refreshPresence(em, gs.psyche, gs.growth);
-        const interaction::Outcome fired = interaction::update(em, intent, ctx);
-        gs.growth.spirit_exp += fired.earned;
-        if (fired.fired)
-            onInteractionFired(gs, fired);
-    }
+    tickWorldTargeting(engine, em, gs, ctl, clicked);
 
     // World glimmer: an encounter glows only while it's the active target; its brightness is
     // the Perception formula (same for every spot). Fades to 0 otherwise -- nothing lingers.

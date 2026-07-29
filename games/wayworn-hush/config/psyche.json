@@ -11,8 +11,8 @@
         "exp_per_value": 5,
         "stat_exp_per_value": 4
     },
-    "_interact_reach_comment": "World px from an encounter's box edge: get within this and it glows and can be observed. One knob for the whole game.",
-    "interact_reach": 40,
+    "_interact_reach_comment": "World px from an encounter's box edge: get within this WHILE FACING IT and it lights and can be observed. A world tile is 32px, so 72 is a bit over two tiles -- you notice a thing from across a small room, not only nose-to-nose. Facing is what keeps the wider reach unambiguous. One knob for the whole game.",
+    "interact_reach": 72,
     "encounters": [
         {
             "_comment": "the wake-up moment, fired by the wake scene (never placed). No speaker: the tier is HIS half-asleep read of the room, and the menu is the game's first decision -- a must_choose menu, so it repeats until a deed CONSUMES it. The turn-offs are the room's chores (each one_shot, each raising the flag its sound dies on); doing BOTH unlocks get_up. Hiding is always available -- and if he hides, Mom silences the room herself (mom_enters). This beat is the first stroke of who this Will is.",

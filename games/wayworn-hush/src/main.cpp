@@ -436,7 +436,6 @@ void applyRegion(Engine& engine, EntityManager& em, GameState& gs, const ldtk::R
                          id.c_str());
     }
 
-    glimmer::spawn(em, gs.psyche, gs.glimmer_config, gs.gone);
     world_items::spawn(em, region.pickups, gs.items, gs.loot_tables, gs.world_items_config,
                        gs.gone);
     ldtk::spawnProps(em, region);
@@ -455,6 +454,11 @@ void applyRegion(Engine& engine, EntityManager& em, GameState& gs, const ldtk::R
         else
             gs.region_npcs[n.npc] = npc::spawn(em, it->second, n.wx, n.wy, n.facing);
     }
+
+    // LAST, after every drawn thing exists: an encounter's highlight adopts the art
+    // it lights at spawn -- the prop under its box, or, for a person's encounter,
+    // that person's body by name (see glimmer::spawn).
+    glimmer::spawn(em, gs.psyche, gs.glimmer_config, gs.region_npcs, gs.gone);
 }
 
 // Load the level `level` (empty = the configured start) into the world (fatal if it

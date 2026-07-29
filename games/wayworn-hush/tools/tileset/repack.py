@@ -78,9 +78,16 @@ def merge_boxes(boxes):
     return boxes
 
 
-def repack(sprites, grid, sheet_cols):
-    """Lay sprite images out row by row on the grid, tall-to-short."""
-    cells = lambda px: (px + grid - 1) // grid
+def repack(sprites, grid, sheet_cols, gutter=1):
+    """Lay sprite images out row by row on the grid, tall-to-short.
+
+    `gutter` is a transparent margin (texels) guaranteed around every sprite, by
+    reserving a cell block big enough to hold the art PLUS the margin. Effects
+    that sample just outside a sprite's source rect -- the rim outline reads one
+    texel out to find edges -- would otherwise pick up whatever sprite is packed
+    against it and draw a rim around a neighbour's pixels.
+    """
+    cells = lambda px: (px + 2 * gutter + grid - 1) // grid
     order = sorted(range(len(sprites)),
                    key=lambda i: (-sprites[i].height, -sprites[i].width))
     sheet_w = sheet_cols * grid
@@ -102,8 +109,10 @@ def repack(sprites, grid, sheet_cols):
     spots = []
     for s, x, y in placements:
         pad_x = (cells(s.width) * grid - s.width) // 2
-        pad_y = cells(s.height) * grid - s.height
-        out.paste(s, (x + pad_x, y + pad_y))
+        # Bottom-aligned, but never tighter than the gutter -- the clear ring has
+        # to survive the alignment.
+        pad_y = cells(s.height) * grid - s.height - gutter
+        out.paste(s, (x + pad_x, y + max(gutter, pad_y)))
         spots.append((x // grid, y // grid, cells(s.width), cells(s.height)))
     return out, spots
 

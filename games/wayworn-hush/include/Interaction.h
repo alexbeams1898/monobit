@@ -69,6 +69,11 @@ struct Intent
 {
     float px = 0.0f; // player world position
     float py = 0.0f;
+    // Which way the player is looking. With WASD, facing IS the pointer: you say
+    // what you mean by turning toward it, so a spot behind you is not a target
+    // (proximity only -- the cursor is its own pointing, see mouse_*).
+    float face_dx = 0.0f;
+    float face_dy = 1.0f;
     float mouse_x = 0.0f; // cursor world position
     float mouse_y = 0.0f;
     bool mouse_valid = false; // false if the cursor is off-window / no mouse this frame
@@ -85,6 +90,8 @@ struct Intent
 // fire. Pure over a flat list -- the ECS system builds the list from the registry and
 // applies the result. reach = interact_reach (proximity range); the cursor targets by
 // containment (hover). Nearest-wins; a hover target beats a proximity target.
+// A proximity target must also be IN FRONT of the player (see kFacingDot); a hovered
+// one needn't be -- pointing at a thing is already saying which thing you mean.
 struct Resolution
 {
     int index = -1;    // into the provided list; -1 = nothing targeted

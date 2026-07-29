@@ -18,6 +18,19 @@ Candidate box(float x, float y)
     return {x, y, 32.0f, 32.0f};
 }
 
+// An Intent at (px,py) FACING (fx,fy). Proximity targeting requires facing the
+// thing (with WASD, facing is the pointer), so a test about distance has to look
+// at what it means to target -- the default here faces east, toward +x.
+Intent facing(float px, float py, float fx = 1.0f, float fy = 0.0f)
+{
+    Intent it;
+    it.px = px;
+    it.py = py;
+    it.face_dx = fx;
+    it.face_dy = fy;
+    return it;
+}
+
 // A Context with empty observation/growth state -- enough to dispatch a direct action
 // (which only touches satchel + items + loot). rng is unused by a plain Pickup.
 const psyche::RollRng kNoRng = [](int) { return 0; };
@@ -37,9 +50,7 @@ interaction::Interactable actionAt(interaction::ActionKind kind, const std::stri
 TEST_CASE("Nothing targeted when the player is out of reach and no hover", "[interaction]")
 {
     const std::vector<Candidate> items = {box(500, 500)};
-    Intent it;
-    it.px = 0;
-    it.py = 0;
+    Intent it = facing(0, 0, 1.0f, 1.0f); // looking toward it -- still far out of reach
     const auto r = resolve(items, it, 40.0f);
     REQUIRE(r.index == -1);
     REQUIRE_FALSE(r.fire);
@@ -48,9 +59,9 @@ TEST_CASE("Nothing targeted when the player is out of reach and no hover", "[int
 TEST_CASE("Proximity targets the nearest box within reach", "[interaction]")
 {
     const std::vector<Candidate> items = {box(0, 0), box(200, 0)};
-    Intent it;
-    it.px = 30;
-    it.py = 0; // near box 0 (edge at 16), far from box 1
+    // Stand right of box 0 facing WEST, back toward it: near box 0 (edge at 16),
+    // far from box 1.
+    const Intent it = facing(30, 0, -1.0f, 0.0f);
     const auto r = resolve(items, it, 40.0f);
     REQUIRE(r.index == 0);
 }
@@ -58,9 +69,7 @@ TEST_CASE("Proximity targets the nearest box within reach", "[interaction]")
 TEST_CASE("Pressing fires the proximity target", "[interaction]")
 {
     const std::vector<Candidate> items = {box(0, 0)};
-    Intent it;
-    it.px = 0;
-    it.py = 0;
+    Intent it = facing(0, 0); // standing inside the box -- always faced
     it.pressed = true;
     const auto r = resolve(items, it, 40.0f);
     REQUIRE(r.index == 0);
@@ -71,9 +80,7 @@ TEST_CASE("Hover beats proximity: the cursor overrides where you stand", "[inter
 {
     // Player stands in box 0's reach; cursor hovers box 1 (also within player reach).
     const std::vector<Candidate> items = {box(0, 0), box(40, 0)};
-    Intent it;
-    it.px = 0;
-    it.py = 0;
+    Intent it = facing(0, 0);
     it.mouse_valid = true;
     it.mouse_x = 40; // inside box 1
     it.mouse_y = 0;
@@ -85,9 +92,7 @@ TEST_CASE("A click fires only when it landed on a hovered interactable, not empt
           "[interaction]")
 {
     const std::vector<Candidate> items = {box(0, 0)};
-    Intent it;
-    it.px = 0;
-    it.py = 0;
+    Intent it = facing(0, 0);
     it.clicked = true;
 
     SECTION("click over the box (hovering) -> fires")
@@ -293,4 +298,44 @@ TEST_CASE("A Gather naming an unknown table fires but deposits nothing", "[inter
     REQUIRE(out.fired);
     REQUIRE(out.items.empty());
     REQUIRE_FALSE(reg.valid(node)); // still consumed (a one-shot node), just empty-handed
+}
+
+TEST_CASE("Proximity requires FACING the thing -- what's behind you is not a target",
+          "[interaction]")
+{
+    // With WASD, facing IS the pointer: turning toward a thing is how the player
+    // says which thing they mean. A spot at your back is in reach but not chosen.
+    const std::vector<Candidate> items = {box(40, 0)}; // to the EAST of the player
+
+    REQUIRE(resolve(items, facing(0, 0, 1.0f, 0.0f), 40.0f).index == 0);   // facing east: targeted
+    REQUIRE(resolve(items, facing(0, 0, -1.0f, 0.0f), 40.0f).index == -1); // facing west: dark
+    REQUIRE(resolve(items, facing(0, 0, 0.0f, 1.0f), 40.0f).index == -1);  // facing south: dark
+
+    // Standing INSIDE a box is always faced -- there is no "behind" at zero distance.
+    REQUIRE(resolve(items, facing(40, 0, -1.0f, 0.0f), 40.0f).index == 0);
+}
+
+TEST_CASE("Hovering points at a thing regardless of facing", "[interaction]")
+{
+    // The cursor is its own pointing: if you put it on the thing, you have said
+    // which thing you mean, whichever way the body happens to be turned.
+    const std::vector<Candidate> items = {box(40, 0)};
+    Intent it = facing(0, 0, -1.0f, 0.0f); // facing AWAY from the box
+    it.mouse_valid = true;
+    it.mouse_x = 40;
+    it.mouse_y = 0; // cursor on it
+    const auto r = resolve(items, it, 60.0f);
+    REQUIRE(r.index == 0);
+}
+
+TEST_CASE("Facing is measured to the box's nearest point, not its center", "[interaction]")
+{
+    // A wide thing you stand beside (a long counter) reads as ahead when its near
+    // edge is ahead, even though its center is off to one side.
+    const std::vector<Candidate> items = {{100.0f, 0.0f, 200.0f, 32.0f}}; // spans x 0..200
+    // Standing at x=0 facing EAST: the box's center is at x=100 (ahead), and its
+    // nearest point is right at the player -- inside, so faced either way.
+    REQUIRE(resolve(items, facing(-20, 0, 1.0f, 0.0f), 40.0f).index == 0);
+    // Facing WEST from the same spot: the whole box is behind.
+    REQUIRE(resolve(items, facing(-20, 0, -1.0f, 0.0f), 40.0f).index == -1);
 }

@@ -25,15 +25,37 @@ bool boxContains(float px, float py, const Candidate& c)
     return px >= c.cx - c.w * 0.5f && px <= c.cx + c.w * 0.5f && py >= c.cy - c.h * 0.5f &&
            py <= c.cy + c.h * 0.5f;
 }
+
+// How far off dead-ahead still counts as facing a thing, as a dot product of
+// unit vectors: 0 = a full half-plane (anything not behind you). Generous on
+// purpose -- turning toward something should be enough, not aiming at it.
+constexpr float kFacingDot = 0.0f;
+
+// Is the box in front of the player? Measured to the box's NEAREST POINT, not its
+// center, so a wide thing you stand beside still reads as ahead. A box you are
+// standing INSIDE is always faced (there is no "behind" at zero distance).
+bool inFront(const Intent& intent, const Candidate& c)
+{
+    const float nx = std::clamp(intent.px, c.cx - c.w * 0.5f, c.cx + c.w * 0.5f);
+    const float ny = std::clamp(intent.py, c.cy - c.h * 0.5f, c.cy + c.h * 0.5f);
+    const float dx = nx - intent.px;
+    const float dy = ny - intent.py;
+    const float len = std::sqrt(dx * dx + dy * dy);
+    if (len <= 0.0001f)
+        return true;
+    return (dx / len) * intent.face_dx + (dy / len) * intent.face_dy > kFacingDot;
+}
 } // namespace
 
 Resolution resolve(const std::vector<Candidate>& items, const Intent& intent, float reach)
 {
     // Two independent nearest-wins passes (prison-escape's proven shape):
     //   hover  = nearest box the cursor is INSIDE (mouse targeting)
-    //   prox   = nearest box within `reach` of the PLAYER (keyboard targeting)
+    //   prox   = nearest box within `reach` of the PLAYER AND in front of them
     // Hover beats proximity so the cursor overrides where you're standing; both must be in
     // reach of the player (you can't act on something across the map by hovering it).
+    // Facing gates only the proximity pass: with WASD, turning toward a thing is how you
+    // say which thing you mean, while a cursor already says it outright.
     int hover = -1;
     int prox = -1;
     float hoverDist = 0.0f;
@@ -42,7 +64,7 @@ Resolution resolve(const std::vector<Candidate>& items, const Intent& intent, fl
     {
         const Candidate& c = items[static_cast<std::size_t>(i)];
         const float pd = distanceToBox(intent.px, intent.py, c);
-        if (pd <= proxDist)
+        if (pd <= proxDist && inFront(intent, c))
         {
             prox = i;
             proxDist = pd;

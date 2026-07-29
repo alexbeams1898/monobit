@@ -1,10 +1,12 @@
 {
-    "_comment": "Observation glow FEEL (see include/Glimmer.h): fade + breathe only. The glow hints at an OBSERVABLE spot while it's the active target (you're in reach / hovering); nothing lingers once you step away. Peak BRIGHTNESS is NOT here -- it's the Perception formula in config/formulas.json (the stat drives the glow, same for every spot). Items are NOT glowed (floor icon + rim outline). Tunable -- edit + relaunch (dev reads assets from source). Mirrors config/head_marker.json.",
-    "sprite": "assets/sprites/glimmer.png",
-    "size": 64,
+    "_comment": "Encounter HIGHLIGHT feel (see include/Glimmer.h): a lit rim around the thing itself, beating so it reads as selectable. A spot is lit while it's the active target -- in reach AND faced, or hovered -- and nothing lingers once you turn away. How far 'in reach' is lives in psyche.json (interact_reach). Items wear the same rim, steady, through config/world_items.json. Tunable -- edit + relaunch (dev reads assets from source).",
+    "_brightness_comment": "perception_scales hands the dial to the Perception formula (config/formulas.json) -- the world through the character's eyes. Off while the feel is being tuned: every spot lights flat at `brightness`. Flip it back on to restore the stat-driven read.",
+    "perception_scales": false,
+    "brightness": 1.0,
     "fade_speed": 6.0,
-    "pulse_amp": 0.12,
-    "pulse_hz": 0.7,
+    "pulse_amp": 0.35,
+    "pulse_hz": 1.1,
+    "rim_width": 1.5,
     "warm_r": 1.0,
     "warm_g": 0.94,
     "warm_b": 0.78

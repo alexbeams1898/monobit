@@ -39,6 +39,9 @@ uniform vec4      uTint;      // (r, g, b, a) multiplied into the sampled color
 uniform vec4      uOutline;   // (r, g, b, a) -- a > 0 puts this draw in OUTLINE mode
 uniform vec2      uTexelStep; // one source texel in UV space (uSrcRect.zw / src_h_w px)
 uniform float     uOutlineW;  // rim thickness in texels
+uniform vec4      uClipRect;  // the sprite's OWN rect (x, y, w, h) in UV space: rim taps
+                              // outside it are rejected, so a neighbour packed against
+                              // this sprite on the atlas can never light its rim
 
 out vec4 fragColor;
 
@@ -56,16 +59,21 @@ void main()
     }
     if (texture(uTexture, uv).a > 0.02)
         discard; // inside the shape -- the sprite pass draws here, not the rim
+    // Alpha at a tap, but ONLY from this sprite's own rect. An atlas packs sprites
+    // against each other, so an unclamped tap (or a filtered one straddling the
+    // boundary) would read a NEIGHBOUR's pixels and draw rim slivers around them.
     vec2 s = uTexelStep * uOutlineW;
     float near = 0.0;
-    near = max(near, texture(uTexture, uv + vec2( s.x, 0.0)).a);
-    near = max(near, texture(uTexture, uv + vec2(-s.x, 0.0)).a);
-    near = max(near, texture(uTexture, uv + vec2(0.0,  s.y)).a);
-    near = max(near, texture(uTexture, uv + vec2(0.0, -s.y)).a);
-    near = max(near, texture(uTexture, uv + vec2( s.x,  s.y)).a);
-    near = max(near, texture(uTexture, uv + vec2( s.x, -s.y)).a);
-    near = max(near, texture(uTexture, uv + vec2(-s.x,  s.y)).a);
-    near = max(near, texture(uTexture, uv + vec2(-s.x, -s.y)).a);
+    for (int i = 0; i < 8; ++i)
+    {
+        vec2 dir = vec2(i == 0 || i == 4 || i == 5 ?  1.0 : (i == 1 || i == 6 || i == 7 ? -1.0 : 0.0),
+                        i == 2 || i == 4 || i == 6 ?  1.0 : (i == 3 || i == 5 || i == 7 ? -1.0 : 0.0));
+        vec2 t = uv + dir * s;
+        if (t.x < uClipRect.x || t.x > uClipRect.x + uClipRect.z ||
+            t.y < uClipRect.y || t.y > uClipRect.y + uClipRect.w)
+            continue; // outside this sprite -- not ours to read
+        near = max(near, texture(uTexture, t).a);
+    }
     if (near <= 0.02)
         discard; // no opaque neighbor -> not on the rim
     fragColor = vec4(uOutline.rgb, uOutline.a * near);
@@ -88,6 +96,7 @@ static GLint sLocTint = -1;
 static GLint sLocOutline = -1;   // (r,g,b,a); a>0 = outline-mode draw
 static GLint sLocTexelStep = -1; // one source texel in UV space
 static GLint sLocOutlineW = -1;  // rim thickness in texels
+static GLint sLocClipRect = -1;  // the sprite's own rect; rim taps outside it are rejected
 
 // Applies TintOverride if present, otherwise leaves tint at default white.
 // TintSystem (game) owns all tint priority logic and clears/sets TintOverride each frame.
@@ -170,6 +179,7 @@ void RenderSystem::init(int windowW, int windowH)
     sLocOutline = glGetUniformLocation(sProgram, "uOutline");
     sLocTexelStep = glGetUniformLocation(sProgram, "uTexelStep");
     sLocOutlineW = glGetUniformLocation(sProgram, "uOutlineW");
+    sLocClipRect = glGetUniformLocation(sProgram, "uClipRect");
 }
 
 void RenderSystem::resize(int windowW, int windowH)
@@ -473,6 +483,14 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
                             uv.y - sgnV * vStep * e.outline_w,
                             uv.w + sgnU * 2.0f * uStep * e.outline_w,
                             uv.h + sgnV * 2.0f * vStep * e.outline_w);
+                // The sprite's OWN rect, normalized to positive extents (flip-independent):
+                // the shader rejects rim taps outside it, so a neighbour packed against this
+                // sprite on the atlas can never contribute a sliver. Inset a half texel so a
+                // filtered tap sitting exactly on the boundary can't straddle it either.
+                const float clipX = std::min(uv.x, uv.x + uv.w) + uStep * 0.5f;
+                const float clipY = std::min(uv.y, uv.y + uv.h) + vStep * 0.5f;
+                glUniform4f(sLocClipRect, clipX, clipY, std::abs(uv.w) - uStep,
+                            std::abs(uv.h) - vStep);
                 glUniform2f(sLocTexelStep, uStep, vStep);
                 glUniform1f(sLocOutlineW, e.outline_w);
                 glUniform4f(sLocOutline, e.outline_r, e.outline_g, e.outline_b, e.outline_a);
