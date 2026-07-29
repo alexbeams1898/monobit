@@ -125,3 +125,8 @@ games/*/scripts/blender/gen_*.sh
 
 # Local brainstorming / scratch files — iteration surface, not canon.
 *-scratch.md
+
+# Generated tileset inspection aids (rebuild with tools/tileset/repack.py
+# --contact / --labels): a contact sheet is a big derived HTML, and an
+# unfilled labels sidecar is noise until someone actually names sprites.
+*_contact.html

@@ -1372,3 +1372,21 @@ TEST_CASE("chosen readings are observations; pressed ones are impressions", "[ob
     psyche::observeById(s2, g, "bed", kMaxNudge, /*impression=*/true);
     REQUIRE(s2.pending.front().kind == LineKind::Impression);
 }
+
+TEST_CASE("a deed reports the time its author says it takes", "[observations]")
+{
+    // Time is participation, and only the author knows the work: a word costs
+    // nothing, a chore costs the morning. Unauthored = 0, meaning "the game's
+    // default deed cost" -- psyche reports, the game owns the clock.
+    State s = loadFromJson(R"({
+      "encounters": [
+        { "id": "bed", "x": 0, "y": 0, "tiers": [{ "text": "the morning" }],
+          "actions": { "add": [
+            { "id": "lie_in", "label": "Stay a while.", "minutes": 25 },
+            { "id": "word", "label": "Say something." } ] } }
+      ]
+    })");
+    const GrowthState g = self({});
+    REQUIRE(psyche::takeAction(s, g, "bed", "lie_in", kNoNudge).minutes == 25.0);
+    REQUIRE(psyche::takeAction(s, g, "bed", "word", kNoNudge).minutes == 0.0);
+}

@@ -119,6 +119,13 @@ struct ConfirmResult
     std::vector<std::string> landed;   // thought ids that landed (the game writes them down)
     std::vector<std::pair<std::string, int>> stat_gains; // faculty EXP a landed thought earned
     std::string consumed_spot;                           // observable id to despawn (consumes_spot)
+    // True when a DEED was actually taken (vs a line dismissed / menu left) --
+    // distinct from the effect fields, which can all be empty for a deed that
+    // only speaks. Doing is what costs the hour (the participation clock).
+    bool acted = false;
+    // In-world minutes the deed declared (0 = none authored -> the game's
+    // default deed cost applies).
+    double minutes = 0.0;
 };
 
 // Input while the box is up:

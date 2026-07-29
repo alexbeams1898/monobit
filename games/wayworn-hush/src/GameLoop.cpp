@@ -33,6 +33,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <random>
 
 namespace
@@ -184,6 +185,8 @@ void applyPendingWarp(Engine& engine, EntityManager& em, GameState& gs)
     gs.pending_warp = {};
     if (sRegionSwitch != nullptr && !sRegionSwitch(engine, em, gs, pw.level, pw.spawn))
         std::fprintf(stderr, "[region] warp to '%s' failed -- staying put\n", pw.level.c_str());
+    else
+        worldclock::advanceMinutes(gs.clock, gs.clock.costs.warp_minutes); // a crossing costs
 }
 
 // Walk the pending warp through its fade: a crossing starts Out, the region swaps the
@@ -967,6 +970,8 @@ bool learnRecipe(GameState& gs, const std::string& recipeId)
 // as a notification toast; the pot is cleared either way.
 void attemptCraft(GameState& gs)
 {
+    // A making costs the hour whatever comes of it -- the trying is the time.
+    worldclock::advanceMinutes(gs.clock, gs.clock.costs.craft_minutes);
     // The pot's distinct item TYPES (match is type-based; the counts staged in the pot are the
     // player's staging, while craft() consumes each recipe's own declared quantity). No knowledge
     // gate -- the ingredients alone decide whether something forms.
@@ -1083,7 +1088,14 @@ void enactConfirm(EntityManager& em, GameState& gs, const thought_box::ConfirmRe
         learnRecipe(gs, recipeId);
     if (!r.consumed_spot.empty())
         despawnEncounterEntity(em, gs, r.consumed_spot);
-    markProgress(gs); // a deed was taken -- worth keeping
+    if (r.acted)
+    {
+        // What the deed itself says it takes; the default only covers deeds that
+        // name no time of their own.
+        worldclock::advanceMinutes(gs.clock,
+                                   r.minutes > 0.0 ? r.minutes : gs.clock.costs.deed_minutes);
+        markProgress(gs); // a deed was taken -- worth keeping
+    }
 }
 
 // Follow-up after the InteractionSystem fired. A direct actionable-only item already deposited
@@ -1112,9 +1124,12 @@ void onInteractionFired(GameState& gs, const interaction::Outcome& out)
     }
     // Walking (Observe stance) -> the reading only. Bank its EXP. The unlock pump
     // seeds the spot's baseline deeds as announced (no "new action" toast for what
-    // the menu already shows); only later-unlocked deeds announce.
+    // the menu already shows); only later-unlocked deeds announce. A deliberate
+    // looking costs the hour (impressions stay free -- the world pressing in
+    // charges nobody).
     const psyche::ObserveResult observed =
         thought_box::pushObserve(gs.psyche, gs.growth, spot, observeNudge);
+    worldclock::advanceMinutes(gs.clock, gs.clock.costs.observe_minutes);
     applyGains(gs, observed);
     markProgress(gs); // a reading landed -- worth keeping
 }
@@ -1371,6 +1386,186 @@ void tickMusicGate(GameState& gs)
                            /*loop=*/true, gs.world_config.ambient_fade_in_ms);
 }
 
+// --- ambient npc routines: how the placed people live (see Npc.h) --------------
+
+// The next pseudo-random draw in [0,1) from an npc's own stream -- wander spots
+// and wait durations stay per-creature, so two cats never move in lockstep.
+float routineRand(GameState::NpcRoutineState& st)
+{
+    st.rng = st.rng * 1664525u + 1013904223u;
+    return static_cast<float>(st.rng >> 8) / 16777216.0f;
+}
+
+// Routine movement: the walk a scene move has, but COLLISION-CHECKED -- ambient
+// wandering must not phase through furniture (a scene's author keeps its path
+// clear; a cat's path isn't authored). True on arrival OR when blocked -- a
+// blocked walk just ends, and the routine picking somewhere new later reads as
+// a creature changing its mind.
+bool routineWalk(EntityManager& em, entt::entity body, const npc::Config& c, float tx, float ty,
+                 float dt)
+{
+    auto& t = em.registry().get<Transform>(body);
+    const float dx = tx - t.x;
+    const float dy = ty - t.y;
+    const float dist = std::sqrt(dx * dx + dy * dy);
+    const float step = c.walk_speed * dt;
+    if (dist <= step)
+    {
+        t.x = tx;
+        t.y = ty;
+        sceneAnim(em, body, c.idle_row, c.idle_frames, c.idle_duration);
+        return true;
+    }
+    const float nx = t.x + dx / dist * step;
+    const float ny = t.y + dy / dist * step;
+    if (!player_movement::canStand(em, body, nx, ny))
+    {
+        sceneAnim(em, body, c.idle_row, c.idle_frames, c.idle_duration);
+        return true;
+    }
+    t.x = nx;
+    t.y = ny;
+    sceneFace(em, body, dx / dist, dy / dist);
+    sceneAnim(em, body, c.walk_row, c.walk_frames, c.walk_duration);
+    return false;
+}
+
+// Switch the body to a named anim state -- "walk"/"idle" are the built-in rows;
+// anything else looks up the config's named states.
+void routineAnim(EntityManager& em, entt::entity body, const npc::Config& c,
+                 const std::string& name)
+{
+    if (name == "walk")
+    {
+        sceneAnim(em, body, c.walk_row, c.walk_frames, c.walk_duration);
+        return;
+    }
+    if (name == "idle")
+    {
+        sceneAnim(em, body, c.idle_row, c.idle_frames, c.idle_duration);
+        return;
+    }
+    const auto it = c.anims.find(name);
+    if (it == c.anims.end())
+    {
+        std::fprintf(stderr, "[npc] '%s' has no anim state '%s'\n", c.id.c_str(), name.c_str());
+        return;
+    }
+    sceneAnim(em, body, it->second.row, it->second.frames, it->second.duration);
+}
+
+// One routine step; true = complete (advance). Unlike scene steps these don't
+// chain within a tick -- ambient life can afford a tick between beats.
+bool runRoutineStep(EntityManager& em, GameState& gs, const npc::Config& c,
+                    GameState::NpcRoutineState& st, entt::entity body, const npc::RoutineStep& s,
+                    float dt)
+{
+    switch (s.kind)
+    {
+    case npc::RoutineStep::Kind::Wander:
+    {
+        if (!st.moving)
+        {
+            // A uniform draw over the disc around home -- sqrt keeps the area
+            // (not the radius) uniform, so spots don't bunch at the center.
+            const float a = routineRand(st) * 6.2831853f;
+            const float r = std::sqrt(routineRand(st)) * s.radius;
+            st.tx = st.home_x + std::cos(a) * r;
+            st.ty = st.home_y + std::sin(a) * r;
+            st.moving = true;
+        }
+        if (!routineWalk(em, body, c, st.tx, st.ty, dt))
+            return false;
+        st.moving = false;
+        return true;
+    }
+    case npc::RoutineStep::Kind::MoveTo:
+    {
+        const auto* m = sceneMarker(gs, s.target);
+        if (m == nullptr)
+        {
+            std::fprintf(stderr, "[npc] '%s' move_to '%s': no such marker here\n", c.id.c_str(),
+                         s.target.c_str());
+            return true;
+        }
+        return routineWalk(em, body, c, m->wx, m->wy, dt);
+    }
+    case npc::RoutineStep::Kind::Face:
+    {
+        float dx = 0.0f;
+        float dy = 1.0f;
+        ldtk::facingVec(s.target, dx, dy);
+        sceneFace(em, body, dx, dy);
+        return true;
+    }
+    case npc::RoutineStep::Kind::Anim:
+        routineAnim(em, body, c, s.target);
+        return true;
+    case npc::RoutineStep::Kind::Wait:
+        if (st.wait_left < 0.0f)
+            st.wait_left = s.wait_min + routineRand(st) * (s.wait_max - s.wait_min);
+        st.wait_left -= dt;
+        if (st.wait_left > 0.0f)
+            return false;
+        st.wait_left = -1.0f;
+        return true;
+    }
+    return true;
+}
+
+// Ambient life: each placed npc runs whatever routine its schedule puts in
+// force right now (the clock's day-fraction + the knowledge gate -- see
+// npc::activeEntry). A schedule switch resets progress; no entry in force =
+// stand idle where they are. Held whenever the world has the floor (the caller
+// gates on Control), so a scene stealing a body never fights its routine.
+void tickNpcRoutines(EntityManager& em, GameState& gs, float dt)
+{
+    const double frac = worldclock::fractionOfDay(gs.clock);
+    const auto gate = [&](const unlock::Condition& cond)
+    { return psyche::conditionMet(gs.psyche, gs.growth, cond); };
+    for (const auto& [id, body] : gs.region_npcs)
+    {
+        const auto cfgIt = gs.npcs.npcs.find(id);
+        if (cfgIt == gs.npcs.npcs.end() || cfgIt->second.schedule.empty() ||
+            !em.registry().valid(body))
+            continue;
+        const npc::Config& c = cfgIt->second;
+        auto& st = gs.npc_routines[id];
+        if (st.rng == 0)
+        {
+            // First sight of this body: its placed spot is home (wander anchors
+            // there), and its id seeds its own random stream.
+            const auto& t = em.registry().get<Transform>(body);
+            st.home_x = t.x;
+            st.home_y = t.y;
+            st.rng = static_cast<std::uint32_t>(std::hash<std::string>{}(id)) | 1u;
+        }
+        const npc::ScheduleEntry* e = npc::activeEntry(c, frac, gate);
+        if (e == nullptr)
+        {
+            if (!st.routine.empty())
+            {
+                st.routine.clear();
+                st.step = 0;
+                st.wait_left = -1.0f;
+                st.moving = false;
+                routineAnim(em, body, c, "idle");
+            }
+            continue;
+        }
+        if (e->routine != st.routine)
+        {
+            st.routine = e->routine;
+            st.step = 0;
+            st.wait_left = -1.0f;
+            st.moving = false;
+        }
+        const auto& steps = c.routines.at(e->routine);
+        if (!steps.empty() && runRoutineStep(em, gs, c, st, body, steps[st.step], dt))
+            st.step = (st.step + 1) % steps.size();
+    }
+}
+
 // WHO HAS THE FLOOR this tick -- the one statement of the input policy, computed
 // once and asked semantic questions, instead of each consumer or-ing its own
 // subset of modal states. New authorities (a cutscene camera, a sleep fade) add a
@@ -1394,6 +1589,13 @@ struct Control
     {
         return !scene && !card;
     }
+    // Ambient npc life (routines): held whenever something else has the floor --
+    // a scene owns its bodies, a card stops the moment, and a menu is an
+    // engagement the engaged shouldn't stroll away from.
+    bool ambientLifeFrozen() const
+    {
+        return scene || card || menu;
+    }
 };
 
 Control control(const GameState& gs)
@@ -1408,19 +1610,46 @@ Control control(const GameState& gs)
 
 // The per-tick bookkeeping running under the world (after the pause guard --
 // a paused world holds all of this still):
-//   - world time; a teaching card holds it too (the moment is stopped, not
-//     elapsing), which also drives notebook datelines and the later day/night;
+//   - the hour (participation time: the metronome below + scene realtime);
 //   - the autosave throttle (writes when something worth keeping landed);
 //   - the ambience flag bus (a stop_on_flag channel dies the moment its flag
 //     exists -- the TV goes quiet because the deed turned it off);
-//   - the gated score.
+//   - the gated score;
+//   - ambient npc life (routines), when nothing else has the floor.
+// The walk metronome: the hour advances with ground actually crossed. Anchors on
+// first sight; a jump longer than any honest stride (a warp, a spawn) re-anchors
+// without billing -- teleporting is not hiking.
+void advanceWalkTime(EntityManager& em, GameState& gs)
+{
+    if (gs.player == entt::null || !em.registry().valid(gs.player))
+        return;
+    const auto& t = em.registry().get<Transform>(gs.player);
+    const float dx = t.x - gs.clock_px;
+    const float dy = t.y - gs.clock_py;
+    const float dist = std::sqrt(dx * dx + dy * dy);
+    constexpr float kHonestStride = 64.0f; // px/tick far beyond any walking speed
+    if (gs.clock_pos_valid && dist < kHonestStride)
+        worldclock::advanceMinutes(gs.clock, dist / 100.0 * gs.clock.costs.walk_minutes_per_100px);
+    gs.clock_px = t.x;
+    gs.clock_py = t.y;
+    gs.clock_pos_valid = true;
+}
+
 void tickWorldBookkeeping(EntityManager& em, GameState& gs, const Control& ctl, double dt)
 {
-    if (!ctl.card)
+    // TIME IS PARTICIPATION (see WorldClock::Costs): the hour flows with the wall
+    // clock only while a scene holds the floor -- the world acting takes the time
+    // it takes. Otherwise it advances from what the pilgrim does: ground crossed
+    // here, verbs at their own chokepoints. Standing still, the day waits.
+    if (ctl.scene)
         worldclock::tick(gs.clock, dt);
+    else if (!ctl.card)
+        advanceWalkTime(em, gs);
     autosaveTick(em, gs, dt);
     ambience::tick(gs.ambience_state, gs.ambience_config, gs.psyche.flags);
     tickMusicGate(gs);
+    if (!ctl.ambientLifeFrozen())
+        tickNpcRoutines(em, gs, static_cast<float>(dt));
 }
 
 // Tick: start an eligible scene when idle; else advance the running one. Player

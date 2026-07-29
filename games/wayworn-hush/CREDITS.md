@@ -74,3 +74,26 @@ trimmed, peak-normalized to −1 dBFS, and converted to 22050 Hz mono.
 
 The door enter/exit transitions and the observe/notebook UI tones are original
 synthesized sounds, made for this game.
+
+## Interior furniture (Sierrassets)
+
+Household furniture and electronics (the TV and other interior props), plus the
+cat (composited into `assets/sprites/cat_walk.png` from the pack's pets sheet),
+come from **sierrassets' "Pixel Art Furniture Pack"** (name-your-own-price,
+itch.io). The
+license (kept beside the sheets in
+[`assets/tilesets/source/sierrassets/LICENSE.txt`](assets/tilesets/source/sierrassets/LICENSE.txt))
+grants perpetual commercial use and derivative works in shipped games; the raw
+pack may not be redistributed outside the game, so it lives only in this private
+source tree.
+
+- Source: https://sierrassets.itch.io/pixel-art-furniture-pack
+- Author: sierrassets
+- License: Sierrassets custom license (commercial use + derivatives OK; no
+  redistribution of the assets themselves)
+
+Only the pack sheets actually drawn from are kept here; the shipped tilesets are
+those sheets repacked onto the 16px authoring grid by
+[`tools/tileset/repack.py`](tools/tileset/repack.py), which reads the pack's
+per-sprite slice exports. Those exports are a local input (re-download the pack
+to regenerate), not repo content.

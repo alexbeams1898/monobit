@@ -38,7 +38,7 @@ void note(Record& rec, const std::string& thought_id, double at_seconds);
 struct Entry
 {
     const psyche::Thought* thought = nullptr; // into the authored table, never a copy
-    double at = kUntimed;                           // world seconds, or kUntimed
+    double at = kUntimed;                     // world seconds, or kUntimed
 };
 
 // True if this note's moment is on record.

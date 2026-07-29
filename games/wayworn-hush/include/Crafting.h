@@ -175,7 +175,6 @@ struct Outcome
 // NOT mark the recipe known -- the caller owns learning (one place), so a first craft and a
 // teach-by-deed can't double-insert. The game enacts the returned flag/XP + the learn.
 Outcome craft(const Recipe& recipe, inventory::Satchel& satchel, const inventory::Registry& items,
-              int craftStat, const psyche::RollRng& rng, const Config& cfg,
-              const State& state);
+              int craftStat, const psyche::RollRng& rng, const Config& cfg, const State& state);
 
 } // namespace crafting

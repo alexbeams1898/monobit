@@ -11,14 +11,16 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <memory>
 #include <unordered_map>
 #include <unordered_set>
 
 namespace ldtk
 {
 // Defined below with the entity helpers; the internal prop builder reads authored
-// fields through it.
+// fields through them.
 std::string entityField(const nlohmann::json& e, const char* identifier);
+int entityFieldInt(const nlohmann::json& e, const char* identifier, int fallback);
 
 namespace
 {
@@ -158,7 +160,12 @@ Prop buildProp(const Atlas& atlas, const json& e, const json& tile, float wx, fl
     }
     p.wx = wx + static_cast<float>(ww) * (0.5f - pvx);
     p.wy = wy + static_cast<float>(hh) * (0.5f - pvy);
-    p.sort_wy = wy; // px IS the pivot point -> its world Y is the base (feet if pivotY=1)
+    // px IS the pivot point -> its world Y is the base (feet if pivotY=1). A prop
+    // RESTING on another (a clock on a nightstand, a TV on its stand) sorts by
+    // where it SITS, not where its pixels end: `sort_offset` (source px, +down)
+    // pushes the depth base to the supporter's -- Y-sort has no height axis, so
+    // being on top of a thing is authored as sorting just past its base.
+    p.sort_wy = wy + static_cast<float>(entityFieldInt(e, "sort_offset", 0) * 2);
 
     // Which plane the thing occupies (see Prop::Plane). Absent = Standing -- the
     // common case authors nothing. Case-insensitive so a String field ("cover")
@@ -468,12 +475,41 @@ void splitCoverProp(const Prop& p, int t, Region& r)
     r.props.push_back(lower);
 }
 
+// Decoded render atlases by tileset uid. A prop's art may come from a DIFFERENT
+// sheet than the level is painted with (furniture in an Inner-painted room), and
+// both its sprite and its collider's alpha scan must read the sheet it actually
+// draws from. The level's own sheet reuses the one existing decode; any other
+// resolves by the same naming convention and decodes once per load.
+struct AtlasCache
+{
+    const json& project;
+    const std::string& level_path;
+    const Atlas& level_atlas;
+    int level_uid;
+    std::unordered_map<int, std::unique_ptr<Atlas>> owned;
+    std::unordered_map<int, std::string> paths;
+
+    std::pair<const Atlas*, std::string> get(int uid)
+    {
+        if (uid < 0 || uid == level_uid)
+            return {&level_atlas, level_path};
+        if (const auto it = owned.find(uid); it != owned.end())
+            return {it->second.get(), paths[uid]};
+        const std::string path = atlasPathFor(tilesetDef(project, uid), level_path);
+        paths[uid] = path;
+        return {(owned[uid] = std::make_unique<Atlas>(path)).get(), path};
+    }
+};
+
 // A tile-carrying entity -> prop(s): one sprite normally; a cover prop with an
 // authored `cover_height` (the enclosing part's height in source px, from the
 // sprite's bottom) splits in two.
-void collectProp(const Atlas& atlas, const json& e, const json& tile, float wx, float wy, Region& r)
+void collectProp(AtlasCache& atlases, const json& e, const json& tile, float wx, float wy,
+                 Region& r)
 {
-    const Prop p = buildProp(atlas, e, tile, wx, wy);
+    const auto [atlas, path] = atlases.get(tile.value("tilesetUid", -1));
+    Prop p = buildProp(*atlas, e, tile, wx, wy);
+    p.texture_path = path;
     const int coverH = entityFieldInt(e, "cover_height", 0) * 2; // source px -> world px
     if (p.plane == Prop::Plane::Cover && coverH > 0 && coverH < p.sh)
         splitCoverProp(p, p.sh - coverH, r);
@@ -545,7 +581,7 @@ void collectPoint(const json& e, float wx, float wy, Region& r)
     r.spawns.push_back(std::move(s));
 }
 
-void parseEntities(const Atlas& atlas, const json& level, const structures::Config& structureCfg,
+void parseEntities(AtlasCache& atlases, const json& level, const structures::Config& structureCfg,
                    Region& r)
 {
     const json* ents = findLayer(level, "Entities");
@@ -577,7 +613,7 @@ void parseEntities(const Atlas& atlas, const json& level, const structures::Conf
         }
         else if (tile != e.end() && tile->is_object())
         {
-            collectProp(atlas, e, *tile, wx, wy, r);
+            collectProp(atlases, e, *tile, wx, wy, r);
         }
         else if (id == "PlayerSpawn" || id == "Marker")
         {
@@ -927,7 +963,8 @@ Region loadImpl(const std::string& ldtk_path, const std::string& tileset_path,
     // tiles to the config + surface map, so do them before fillTileConfig.
     parseStructures(level, structureCfg, g, uvById, r);
     fillTileConfig(uvById, atlas_path, r);
-    parseEntities(atlas, level, structureCfg, r);
+    AtlasCache atlases{j, atlas_path, atlas, tilesetUid, {}, {}};
+    parseEntities(atlases, level, structureCfg, r);
     // Observation PLACEMENTS come ONLY from the dedicated Encounters layer. Observability
     // is its own concern -- a resizable Encounter box placed anywhere (over a bridge
     // piece, an area, an object). Physical entities (Rock, Tree, Bridge) stay purely
@@ -1013,23 +1050,28 @@ void spawnProps(EntityManager& em, const Region& region)
         // Transform is the sprite's top-left; RenderSystem draws the src rect there.
         reg.emplace<Transform>(e, Transform{p.wx, p.wy});
         Sprite spr{};
-        // The region's RESOLVED atlas (per-level tileset), not a global one -- an
-        // interior's furniture draws from the interior sheet.
-        spr.texture_path = region.config.tileset_path;
+        // The prop's OWN atlas (its tile may come from a different sheet than the
+        // level is painted with); empty = the level's resolved atlas.
+        spr.texture_path = p.texture_path.empty() ? region.config.tileset_path : p.texture_path;
         spr.src_x = p.sx;
         spr.src_y = p.sy;
         spr.src_w = p.sw;
         spr.src_h = p.sh;
         spr.layer = 2; // character layer -- Y-sorted against the player
-        // ONE sprite for the whole prop. A STANDING prop sorts by its BASE (feet)
-        // world-Y, exactly like the player. A FLOOR prop is always underfoot and a
-        // COVER prop always over whoever is inside it -- expressed as sort keys
-        // beyond any real world-Y, so no character can ever out-sort them.
+        // ONE sprite for the whole prop, sorted by an honest world-Y:
+        //   STANDING -- its BASE (feet), exactly like the player.
+        //   FLOOR    -- always underfoot (a rug can't cover anyone), so a key
+        //               beyond any real world-Y.
+        //   COVER    -- its own BOTTOM EDGE. Anyone standing BELOW that line is
+        //               in front of the bed and out-sorts it; anyone lying in it
+        //               is above the line and stays under the covers. A constant
+        //               "over everyone" would drape the blanket over a body
+        //               standing in front of it too.
         constexpr float kUnderEveryone = -1.0e6f;
-        constexpr float kOverEveryone = 1.0e6f;
+        const float bottomEdge = p.wy + static_cast<float>(p.sh) * 0.5f;
         spr.use_sort_anchor = true;
         spr.sort_anchor = p.plane == Prop::Plane::Floor   ? kUnderEveryone
-                          : p.plane == Prop::Plane::Cover ? kOverEveryone
+                          : p.plane == Prop::Plane::Cover ? bottomEdge
                                                           : p.sort_wy;
         reg.emplace<Sprite>(e, spr);
 

@@ -280,3 +280,43 @@ TEST_CASE("deflection conserves speed -- a glide never outruns a free walk", "[m
     REQUIRE(moved <= budget + 0.01f); // one frame's glide <= one frame's free walk
     REQUIRE(freeStep > 0.0f);         // sanity: the free walk actually moved
 }
+
+TEST_CASE("a creature refuses to step onto ANOTHER creature -- Velocity or not", "[movement]")
+{
+    // The cat-walks-onto-the-player bug: collision used to skip entities with
+    // Velocity, so nothing ever blocked against the PLAYER. Solid is solid --
+    // a mover's step check must refuse every other body's box.
+    EntityManager em;
+    makeOpenMap(em);
+    const entt::entity cat = makeActor(em);
+    em.registry().get<Transform>(cat).x = 32.0f;
+    em.registry().get<Transform>(cat).y = 32.0f;
+
+    const entt::entity player = makeActor(em); // has Velocity, like the real one
+    em.registry().get<Transform>(player).x = 64.0f;
+    em.registry().get<Transform>(player).y = 64.0f;
+
+    REQUIRE_FALSE(player_movement::canStand(em, cat, 64.0f, 64.0f)); // onto the player: no
+    REQUIRE(player_movement::canStand(em, cat, 96.0f, 96.0f));       // open ground: fine
+}
+
+TEST_CASE("an overlap can always be walked OUT of -- collision never imprisons", "[movement]")
+{
+    // However two bodies came to overlap (a scene walking someone through you, a
+    // same-tick crossing), blocked means "would ENTER a solid", never "is inside
+    // one" -- the trapped side must be free to leave.
+    EntityManager em;
+    makeOpenMap(em);
+    const entt::entity player = makeActor(em);
+    em.registry().get<Transform>(player).x = 64.0f;
+    em.registry().get<Transform>(player).y = 64.0f;
+
+    const entt::entity cat = makeActor(em); // overlapping the player exactly
+    em.registry().get<Transform>(cat).x = 64.0f;
+    em.registry().get<Transform>(cat).y = 64.0f;
+
+    // Overlapped, every nearby spot must still be reachable -- stepping away is
+    // escaping the cat's box, not entering it.
+    REQUIRE(player_movement::canStand(em, player, 70.0f, 64.0f));
+    REQUIRE(player_movement::canStand(em, player, 64.0f, 58.0f));
+}

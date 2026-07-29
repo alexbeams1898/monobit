@@ -49,7 +49,8 @@
                         ],
                         "set_flag": "got_up",
                         "consumes_spot": true,
-                        "one_shot": true
+                        "one_shot": true,
+                        "minutes": 3
                     },
                     {
                         "id": "pull_covers",
@@ -57,7 +58,9 @@
                         "result_text": "Warm. Dark. For a little while, no such thing as today.",
                         "set_flag": "hid_from_morning",
                         "consumes_spot": true,
-                        "one_shot": true
+                        "one_shot": true,
+                        "_minutes_comment": "'for a little while' is the joke and the cost: the morning gets away from him again.",
+                        "minutes": 25
                     }
                 ]
             }

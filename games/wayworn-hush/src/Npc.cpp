@@ -1,11 +1,13 @@
 #include "Npc.h"
 
 #include "LdtkImport.h" // ldtk::facingVec -- the one authored-facing mapping
+#include "WorldClock.h" // parseClockTime/inWindow -- the one reading of "HH:MM"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 
 #include <nlohmann/json.hpp>
 
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 
@@ -13,6 +15,105 @@ namespace npc
 {
 namespace
 {
+// One routine step from JSON: the first verb key found decides the kind.
+bool parseRoutineStep(const nlohmann::json& j, RoutineStep& s)
+{
+    if (const auto it = j.find("wander"); it != j.end())
+    {
+        s.kind = RoutineStep::Kind::Wander;
+        s.radius = it->get<float>();
+        return s.radius > 0.0f;
+    }
+    if (const auto it = j.find("move_to"); it != j.end())
+    {
+        s.kind = RoutineStep::Kind::MoveTo;
+        s.target = it->get<std::string>();
+        return !s.target.empty();
+    }
+    if (const auto it = j.find("face"); it != j.end())
+    {
+        s.kind = RoutineStep::Kind::Face;
+        s.target = it->get<std::string>();
+        return !s.target.empty();
+    }
+    if (const auto it = j.find("anim"); it != j.end())
+    {
+        s.kind = RoutineStep::Kind::Anim;
+        s.target = it->get<std::string>();
+        return !s.target.empty();
+    }
+    if (const auto it = j.find("wait"); it != j.end())
+    {
+        s.kind = RoutineStep::Kind::Wait;
+        if (it->is_array() && it->size() == 2)
+        {
+            s.wait_min = (*it)[0].get<float>();
+            s.wait_max = (*it)[1].get<float>();
+        }
+        else if (it->is_number())
+        {
+            s.wait_min = s.wait_max = it->get<float>();
+        }
+        return s.wait_max >= s.wait_min && s.wait_max > 0.0f;
+    }
+    return false;
+}
+
+void parseRoutines(const nlohmann::json& j, const std::string& id, Config& c)
+{
+    const auto ro = j.find("routines");
+    if (ro == j.end() || !ro->is_object())
+        return;
+    for (const auto& [name, steps] : ro->items())
+        for (const auto& js : steps)
+        {
+            RoutineStep s;
+            if (parseRoutineStep(js, s))
+                c.routines[name].push_back(std::move(s));
+            else
+                std::fprintf(stderr, "[npc] '%s' routine '%s': unreadable step %s -- dropped\n",
+                             id.c_str(), name.c_str(), js.dump().c_str());
+        }
+}
+
+void parseSchedule(const nlohmann::json& j, const std::string& id, Config& c)
+{
+    for (const auto& e : j.value("schedule", nlohmann::json::array()))
+    {
+        ScheduleEntry entry;
+        entry.routine = e.value("routine", std::string{});
+        if (const auto w = e.find("when"); w != e.end() && w->is_object())
+        {
+            if (const auto f = w->find("from"); f != w->end())
+                entry.from = worldclock::parseClockTime(f->get<std::string>());
+            if (const auto t = w->find("to"); t != w->end())
+                entry.to = worldclock::parseClockTime(t->get<std::string>());
+            if (const auto u = w->find("unlock_when"); u != w->end())
+                entry.when = unlock::parseCondition(*u);
+        }
+        if (entry.routine.empty() || entry.from < 0.0 || entry.to < 0.0 ||
+            c.routines.count(entry.routine) == 0)
+        {
+            std::fprintf(stderr,
+                         "[npc] '%s': schedule entry with a bad time or unknown "
+                         "routine '%s' -- dropped\n",
+                         id.c_str(), entry.routine.c_str());
+            continue;
+        }
+        c.schedule.push_back(std::move(entry));
+    }
+}
+
+// The npc's life, from config: named anim states, routines, the schedule.
+void parseLife(const nlohmann::json& j, const std::string& id, Config& c)
+{
+    if (const auto an = j.find("anims"); an != j.end() && an->is_object())
+        for (const auto& [name, a] : an->items())
+            c.anims[name] =
+                AnimState{a.value("row", 1), a.value("frames", 1), a.value("duration", 0.0f)};
+    parseRoutines(j, id, c);
+    parseSchedule(j, id, c);
+}
 Config parseConfig(const nlohmann::json& j, const std::string& fallback_id)
 {
     Config c;
@@ -41,9 +142,19 @@ Config parseConfig(const nlohmann::json& j, const std::string& fallback_id)
         c.collider_w = col->value("w", c.collider_w);
         c.collider_h = col->value("h", c.collider_h);
     }
+    parseLife(j, c.id, c);
     return c;
 }
 } // namespace
+
+const ScheduleEntry* activeEntry(const Config& cfg, double day_frac,
+                                 const std::function<bool(const unlock::Condition&)>& gate)
+{
+    for (const auto& e : cfg.schedule)
+        if (worldclock::inWindow(day_frac, e.from, e.to) && gate(e.when))
+            return &e;
+    return nullptr;
+}
 
 void load(Registry& reg, const std::string& dir)
 {

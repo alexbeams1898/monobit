@@ -21,7 +21,31 @@ namespace worldclock
 struct WorldClock
 {
     double seconds = 0.0;
-    double seconds_per_day = 4320.0; // the default cadence; config is the dial
+    // The day<->24-hour-face mapping, AND how fast the hour flows during scenes
+    // (the one realtime path -- see Costs). Config is the dial.
+    double seconds_per_day = 17280.0;
+    // Where a FRESH walk's clock starts (elapsed seconds into day 1) -- authored
+    // as "start_time" ("HH:MM") in config. The opening is a specific moment of a
+    // specific morning, not midnight; a resumed walk keeps its own time instead.
+    double start_seconds = 0.0;
+
+    // TIME IS PARTICIPATION: the hour advances from what the pilgrim DOES, never
+    // from the wall clock -- standing still, the day waits (the world still
+    // breathes in real time; only the hour holds). Costs are authored in
+    // IN-WORLD MINUTES (cadence-independent); scenes are the one exception,
+    // flowing at the ambient cadence while they hold the floor (the world acting
+    // takes the time it takes).
+    // Defaults are for the SMALL case -- a look, a word, a door. Anything that is
+    // real work says so itself (a deed's authored `minutes`), so the default never
+    // has to be big enough for clearing a trail.
+    struct Costs
+    {
+        double walk_minutes_per_100px = 0.15; // the metronome: crossing ground
+        double observe_minutes = 0.5;         // a deliberate reading -- a look
+        double deed_minutes = 0.5;            // a deed that names no time (a word)
+        double craft_minutes = 10.0;          // a making
+        double warp_minutes = 0.5;            // a threshold crossed
+    } costs;
 };
 
 // Load the cadence from config/world_clock.json (silent no-op -> defaults if missing).
@@ -29,9 +53,14 @@ struct WorldClock
 // to the save, not to config.
 void load(WorldClock& clock, const std::string& path);
 
-// Advance the clock by dt seconds of world time. Call once per fixed tick, only
-// when the world is unfrozen.
+// Advance the clock by dt seconds of world time -- the SCENE path only (the one
+// place the hour flows with the wall clock; see Costs).
 void tick(WorldClock& clock, double dt);
+
+// Advance by an authored cost, in in-world minutes -- the participation path
+// (walking, reading, deeds, crossings). Cadence-independent: a 3-minute deed is
+// 3 minutes on the face however long a minute takes to pass.
+void advanceMinutes(WorldClock& clock, double minutes);
 
 // Whole in-world days elapsed (0-based -> day 1 is the first day).
 int day(const WorldClock& clock);
@@ -53,5 +82,19 @@ std::string timeAt(const WorldClock& clock, double seconds);
 
 // Day + time ("Day 2, 6:20") -- what a written entry is stamped with.
 std::string stampAt(const WorldClock& clock, double seconds);
+
+// How far into the current day the clock is, as [0,1). The unit schedules speak
+// in -- cadence-independent, so retuning seconds_per_day never moves anyone's
+// appointments.
+double fractionOfDay(const WorldClock& clock);
+
+// An authored "HH:MM" (24-hour face) as a fraction of the day, or -1 on a
+// malformed string. THE parser for schedule times -- one reading of "07:00"
+// everywhere.
+double parseClockTime(const std::string& hhmm);
+
+// Is `frac` inside [from, to)? A window with from > to wraps midnight (a night
+// shift: 22:00-06:00).
+bool inWindow(double frac, double from, double to);
 
 } // namespace worldclock

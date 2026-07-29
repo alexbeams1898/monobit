@@ -22,10 +22,14 @@ bool aabbOverlap(float ax, float ay, float aw, float ah, float bx, float by, flo
     return std::abs(ax - bx) * 2.0f < (aw + bw) && std::abs(ay - by) * 2.0f < (ah + bh);
 }
 
-// True if a center-based box (cx,cy,w,h) overlaps any non-walkable tile OR any solid
-// static prop collider (a tree trunk, a rock -- entities with a solid Collider and no
-// Velocity, spawned from the map's props). Terrain lives in the tile map; props carry
-// pixel-tight boxes the tile grid can't represent, so both are tested together.
+// True if a center-based box (cx,cy,w,h) would stand in any non-walkable tile OR any
+// OTHER entity's solid Collider -- props and creatures alike, so a wandering cat
+// refuses to step onto the player exactly as the player refuses its box. Terrain
+// lives in the tile map; colliders carry pixel-tight boxes the grid can't represent,
+// so both are tested together. One rider: a solid already overlapping self's CURRENT
+// box is exempt -- blocked means "would ENTER a solid", never "is inside one" --
+// so however an overlap came to be (a scene walking someone through you, a same-tick
+// crossing), moving out is always possible and collision can never imprison.
 bool touchesSolid(const EntityManager& em, entt::entity self, float cx, float cy, float w, float h)
 {
     const auto& tm = em.tile_map;
@@ -44,13 +48,18 @@ bool touchesSolid(const EntityManager& em, entt::entity self, float cx, float cy
                     return true;
     }
     const auto& reg = em.registry();
+    const auto* selfT = reg.try_get<Transform>(self);
     auto view = reg.view<const Transform, const Collider>();
     for (auto [e, t, col] : view.each())
     {
-        if (e == self || !col.is_solid || reg.all_of<Velocity>(e))
-            continue; // skip self + non-solid + moving actors (static props only)
-        if (aabbOverlap(cx, cy, w, h, t.x, t.y, col.width, col.height))
-            return true;
+        if (e == self || !col.is_solid)
+            continue; // you are not in your own way
+        if (!aabbOverlap(cx, cy, w, h, t.x, t.y, col.width, col.height))
+            continue;
+        if (selfT != nullptr &&
+            aabbOverlap(selfT->x, selfT->y, w, h, t.x, t.y, col.width, col.height))
+            continue; // already inside it -- escaping, not entering
+        return true;
     }
     return false;
 }

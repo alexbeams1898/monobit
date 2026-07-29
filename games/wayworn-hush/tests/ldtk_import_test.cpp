@@ -1,4 +1,6 @@
 #include "LdtkImport.h"
+#include "ecs/Components.h"
+#include "ecs/EntityManager.h"
 
 #include <filesystem>
 #include <fstream>
@@ -119,7 +121,10 @@ std::string writeFixture()
        "__tile": {"x": 0, "y": 16, "w": 16, "h": 32},
        "fieldInstances": [{"__identifier": "plane", "__value": "cover"},
                           {"__identifier": "cover_height", "__value": 24}]},
-      {"__identifier": "Blocker", "iid": "bl1", "px": [64, 64], "width": 16, "height": 8}
+      {"__identifier": "Blocker", "iid": "bl1", "px": [64, 64], "width": 16, "height": 8},
+      {"__identifier": "Tv", "iid": "tv1", "px": [80, 32], "width": 16, "height": 16,
+       "__tile": {"tilesetUid": 2, "x": 32, "y": 0, "w": 16, "h": 16},
+       "fieldInstances": [{"__identifier": "sort_offset", "__value": 6}]}
     ]},
     {"__identifier": "Ground", "__type": "Tiles", "__gridSize": 16, "__cWid": 4, "__cHei": 4,
      "gridTiles": [{"px": [0, 0], "src": [16, 0]},
@@ -244,7 +249,7 @@ TEST_CASE("A prop's plane is authored; cover_top splits a bed into on and under"
     // plane) and the blanket that ENCLOSES (lower, cover plane), split 16 world
     // px (8 source px) from the top. A floor prop never gets a collider.
     const ldtk::Region shore = loadFixture({});
-    REQUIRE(shore.props.size() == 4);
+    REQUIRE(shore.props.size() == 5); // rug, pillow+blanket (split bed), blocker, tv
     const auto& rug = shore.props[0];
     REQUIRE(rug.plane == ldtk::Prop::Plane::Floor);
     REQUIRE_FALSE(rug.col_solid);
@@ -338,6 +343,33 @@ TEST_CASE("Tile-carrying entities import as Y-sorted props", "[ldtk]")
     }
 }
 
+TEST_CASE("A prop resolves the atlas of ITS OWN tileset, not the level's", "[ldtk]")
+{
+    // Furniture placed in a room painted with another sheet must draw (and
+    // alpha-scan) from the sheet its tile actually comes from. The fixture's Tv
+    // carries a tile from the Inner tileset (uid 2) inside Overworld-painted
+    // Shore; the naming convention resolves Inner.png -> assets/tilesets/inner.png.
+    const ldtk::Region shore = loadFixture("Shore");
+    bool sawTv = false;
+    for (const auto& p : shore.props)
+    {
+        if (p.sx == 64) // the Tv's tile (source x 32 -> render x 64)
+        {
+            REQUIRE(p.texture_path == "assets/tilesets/inner.png");
+            // A prop RESTING on another sorts by where it SITS: sort_offset
+            // (6 source px, x2) pushes the depth base past its supporter's.
+            REQUIRE(p.sort_wy == Approx(32.0f * 2 + 6.0f * 2));
+            sawTv = true;
+        }
+        else if (p.sw > 0)
+        {
+            // Same-sheet props carry the level's own resolved atlas.
+            REQUIRE(p.texture_path == shore.config.tileset_path);
+        }
+    }
+    REQUIRE(sawTv);
+}
+
 TEST_CASE("Prop colliders are derived from the sprite footprint (trunk), not the box", "[ldtk]")
 {
     // The collider must hug the drawn footprint: for a tree, the narrow trunk at the
@@ -377,4 +409,30 @@ TEST_CASE("Every decoration stamp lands on a real cell", "[ldtk]")
     const ldtk::Region r = loadRegion();
     for (const auto& d : r.map.decoration)
         REQUIRE(d.cell < r.map.tiles.size());
+}
+
+TEST_CASE("a cover prop's sort anchor is its own bottom edge, not over everyone", "[ldtk]")
+{
+    // The blanket covers a body LYING IN the bed, but must not drape over one
+    // standing IN FRONT of it. Its sort anchor is its own bottom edge, so feet
+    // below that line out-sort it and feet above it (in the bed) stay under it.
+    // Spawning is what applies the anchor, so this reads the spawned Sprite.
+    EntityManager em;
+    const ldtk::Region shore = loadFixture("Shore");
+    ldtk::spawnProps(em, shore);
+
+    const ldtk::Prop* blanket = nullptr;
+    for (const auto& p : shore.props)
+        if (p.plane == ldtk::Prop::Plane::Cover)
+            blanket = &p;
+    REQUIRE(blanket != nullptr);
+    const float bottomEdge = blanket->wy + static_cast<float>(blanket->sh) * 0.5f;
+
+    bool found = false;
+    for (auto [e, spr] : em.registry().view<Sprite>().each())
+        if (spr.use_sort_anchor && spr.sort_anchor == Approx(bottomEdge))
+            found = true;
+    REQUIRE(found);
+    // A real world-Y, never the old "beyond anything" constant.
+    REQUIRE(bottomEdge < 10000.0f);
 }

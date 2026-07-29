@@ -118,8 +118,7 @@ TEST_CASE("the HUD layout does not carry a visibility of its own", "[hud]")
 
 TEST_CASE("loadRegions reads region rects, keeping defaults for missing fields", "[hud]")
 {
-    const hud::Regions r =
-        loadFrom(R"({"upper":{"x":0.1,"y":0.2,"w":0.5,"h":0.3},"pad_x":0.05})");
+    const hud::Regions r = loadFrom(R"({"upper":{"x":0.1,"y":0.2,"w":0.5,"h":0.3},"pad_x":0.05})");
     REQUIRE(r.upper.x == Approx(0.1f));
     REQUIRE(r.upper.y == Approx(0.2f));
     REQUIRE(r.upper.w == Approx(0.5f));

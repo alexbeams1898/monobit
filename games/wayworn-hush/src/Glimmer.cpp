@@ -79,8 +79,7 @@ void spawn(EntityManager& em, const psyche::State& obs, const Config& cfg,
     }
 }
 
-void refreshPresence(EntityManager& em, const psyche::State& obs,
-                     const growth::GrowthState& growth)
+void refreshPresence(EntityManager& em, const psyche::State& obs, const growth::GrowthState& growth)
 {
     // The single source for "does this encounter exist right now". Set BEFORE the interaction
     // resolve reads it, so a hidden encounter (visible_when unmet) is no target -- neither
@@ -88,8 +87,7 @@ void refreshPresence(EntityManager& em, const psyche::State& obs,
     // non-encounter interactable (an item) has no observe_id and is always present.
     auto& reg = em.registry();
     for (auto [e, inter] : reg.view<interaction::Interactable>().each())
-        inter.present =
-            inter.observe_id.empty() || psyche::visible(obs, growth, inter.observe_id);
+        inter.present = inter.observe_id.empty() || psyche::visible(obs, growth, inter.observe_id);
 }
 
 void update(EntityManager& em, const growth::GrowthState& growth, const formulas::Config& formulas,

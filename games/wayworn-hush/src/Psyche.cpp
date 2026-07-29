@@ -420,6 +420,7 @@ Action parseAction(const nlohmann::json& a)
     act.consumes_spot = a.value("consumes_spot", false);
     act.grows_stat = a.value("grows_stat", std::string{});
     act.grows_exp = a.value("grows_exp", 0);
+    act.minutes = a.value("minutes", 0.0);
     if (const auto it = a.find("unlock_when"); it != a.end())
         act.unlock_when = unlock::parseCondition(*it);
     return act;
@@ -1055,6 +1056,7 @@ ObserveResult deedEffects(const Action& act, const std::string& spot)
         r.consumed_spot = spot; // the game despawns this encounter's world entity
     if (!act.grows_stat.empty() && act.grows_exp > 0)
         r.stat_gains.emplace_back(act.grows_stat, act.grows_exp);
+    r.minutes = act.minutes; // what the author says the doing takes
     return r;
 }
 } // namespace

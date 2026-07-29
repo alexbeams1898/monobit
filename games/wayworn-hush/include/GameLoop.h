@@ -26,6 +26,7 @@
 #include "WorldConfig.h"
 #include "WorldItems.h"
 
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -157,6 +158,20 @@ struct GameState
     // The level's PLACED characters by npc id, so a scene can steer someone who is
     // already standing there (no `enter` needed) -- scene-spawned bodies shadow these.
     std::unordered_map<std::string, entt::entity> region_npcs;
+    // Each placed npc's ambient-routine progress (see npc::RoutineStep and the
+    // routine tick). Keyed like region_npcs and rebuilt with it on every region
+    // switch -- entities don't survive the switch, so neither does this.
+    struct NpcRoutineState
+    {
+        std::string routine; // the schedule entry in force (a switch resets progress)
+        std::size_t step = 0;
+        float wait_left = -1.0f; // <0 = the current Wait hasn't drawn its duration yet
+        bool moving = false;
+        float tx = 0.0f, ty = 0.0f;         // current walk target
+        float home_x = 0.0f, home_y = 0.0f; // placed spot -- wander anchors here
+        std::uint32_t rng = 0;              // per-npc stream (wander spots, wait draws)
+    };
+    std::unordered_map<std::string, NpcRoutineState> npc_routines;
     bool region_interior = false; // inside space (light/sound/camera differ)
     bool warp_armed = false;
     // A warp crossed this tick, applied at the TOP of a later update -- a safe point
@@ -196,6 +211,13 @@ struct GameState
     // the room's own sounds; the score enters when that flag lands (or immediately,
     // on walks that already hold it). Ephemeral; set at world-enter.
     bool music_started = false;
+
+    // The walk metronome's last-seen player position (ephemeral). Invalid until
+    // anchored; a jump larger than any honest stride (a warp, a spawn) re-anchors
+    // without billing the hour -- teleporting is not hiking.
+    float clock_px = 0.0f;
+    float clock_py = 0.0f;
+    bool clock_pos_valid = false;
 
     // The stat-change pump's fingerprint: growth::levelSum as of the last engine
     // run over the stat keys. Lives HERE (per-walk, ephemeral, never saved) and is

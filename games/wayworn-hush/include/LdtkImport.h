@@ -153,6 +153,10 @@ struct Prop
     float sort_wy = 0.0f; // Y-sort key = the prop's BASE (pivot) world-Y
     int sx = 0, sy = 0;   // atlas source rect (pixels, in the 32px render atlas)
     int sw = 0, sh = 0;
+    // The render atlas this prop draws from -- resolved from ITS OWN tile's
+    // tileset, which may differ from the sheet the level is painted with
+    // (furniture in an Inner-painted room). Empty = the level's atlas.
+    std::string texture_path;
 
     bool col_solid = false; // false = fully transparent sprite -> no collider spawned
     float col_cx = 0.0f;    // trunk AABB center + size, world pixels (opaque bounds)

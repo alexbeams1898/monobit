@@ -445,6 +445,7 @@ void applyRegion(Engine& engine, EntityManager& em, GameState& gs, const ldtk::R
     // an authoring slip -- loud, not silent, or the kitchen is just mysteriously empty.
     // Bodies are recorded by npc id so scenes can steer the placed people too.
     gs.region_npcs.clear();
+    gs.npc_routines.clear(); // routine progress belongs to the bodies just despawned
     for (const auto& n : region.npcs)
     {
         const auto it = gs.npcs.npcs.find(n.npc);
@@ -583,6 +584,9 @@ bool enterWorld(Engine& engine, EntityManager& em, GameState& gs, const std::str
         // They have never set out: leave them at the map's spawn (NOT the saved place,
         // which is meaningless before a first step) and give them the notebook -- a key
         // item; carrying it is what lets thoughts be written down (docs/design/INVENTORY.md).
+        // The clock opens at the authored moment (config start_time): a specific
+        // late morning, not midnight -- he overslept before the first frame.
+        gs.clock.seconds = gs.clock.start_seconds;
         inventory::add(gs.satchel, gs.items, inventory::ItemInstance{"notebook"});
         // BANDAID(approved): the watch is meant to be FOUND, not started with -- telling the
         // time is an earned capability (docs/design/INVENTORY.md, NOTEBOOK.md). Granted here

@@ -82,6 +82,10 @@ struct Action
     // choice with no `value` to scale from.
     std::string grows_stat;
     int grows_exp = 0;
+    // How long DOING this takes, in in-world minutes (0 = the default deed cost).
+    // Authored per deed because only the author knows the work: a word costs
+    // nothing, a kettle a few minutes, clearing a trail most of a morning.
+    double minutes = 0.0;
 };
 
 // A subjective thought -- ONE struct for both "thoughts" (fed by one
@@ -400,6 +404,10 @@ struct ObserveResult
     // Set to the encounter's id when a taken deed's consumes_spot fires -- the game removes
     // that spot's world entity (glimmer + interactable). Empty otherwise.
     std::string consumed_spot;
+    // In-world minutes the taken deed declared (Action::minutes; 0 = it named
+    // none, so the game bills its default). Reported, never applied -- psyche
+    // knows what a deed costs, the game owns the clock.
+    double minutes = 0.0;
 };
 
 // Observe the encounter within interact_reach of (px,py) -- reveal the deepest objective

@@ -510,7 +510,8 @@ ConfirmResult confirm(psyche::State& state, const growth::GrowthState& growth,
         sMenuQueued = r.consumed_spot.empty();
         if (!r.consumed_spot.empty())
             sMenuMustChoose = false; // decided -- the box may close normally
-        return {r.earned, r.granted, r.gathered, r.taught, r.landed, r.stat_gains, r.consumed_spot};
+        return {r.earned,     r.granted,       r.gathered,     r.taught, r.landed,
+                r.stat_gains, r.consumed_spot, /*acted=*/true, r.minutes};
     }
     return {};
 }
