@@ -321,6 +321,26 @@ struct State
     // (`say` deeds, spoken thoughts). RUNTIME state: set by the game at world-enter
     // after the save is applied; never authored, never saved here.
     std::string player_name;
+
+    // What he is carrying, as bare item ids -- a MIRROR the game refreshes from the
+    // satchel (psyche owns no inventory; see the `carrying` / `without` clauses).
+    // RUNTIME state, never authored, never saved here (the satchel is the record).
+    std::unordered_set<std::string> carrying;
+
+    // A THOUGHT IS THE NOTEBOOK: it is where he articulates what he never says
+    // aloud, so without one nothing finishes becoming a thought -- it stays
+    // unfired (recoverable the moment he carries one) and `notebook_want_text`
+    // surfaces instead, once per stretch of not having one. Authored: the item id
+    // (empty = the rule is off) and the words. Remarks are exempt -- speech needs
+    // no page. The want is said on every blocked attempt, not once.
+    std::string notebook_item = "notebook";
+    std::string notebook_want_text;
+    // Thoughts the engine turned away for want of a notebook. Their own inputs
+    // (a spot observed) have already happened and won't happen again -- looking at
+    // a spot you have already seen pushes no new key -- so without this the thought
+    // would be lost, not delayed. Picking a notebook up offers exactly these back:
+    // what waited, and nothing else. Runtime, per walk.
+    std::unordered_set<std::string> unwritten;
 };
 
 // Does `cond` hold against the CURRENT knowledge (observed things, fired thoughts,
@@ -461,6 +481,13 @@ ObserveResult forceRemark(State& state, const growth::GrowthState& growth, const
 // remarks. Called once at world-enter (content reloads fresh per walk, so a
 // rename or a new pilgrim can never see another walk's binding).
 void bindPlayerName(State& state, const std::string& name);
+
+// What he carries changed: mirror `held` onto the state and re-run the ambient
+// engine over the items that came or went -- picking up the notebook is exactly
+// when a thought that ached for want of one gets its second look. No-op (and no
+// engine run) when nothing actually changed, so this is safe to call every tick.
+ObserveResult evaluateCarried(State& state, const growth::GrowthState& growth,
+                              const std::unordered_set<std::string>& held, const RollRng& rng);
 
 // External event sets a quest/event flag, then runs the ambient engine (a flag
 // change can satisfy a thought's unlock_when, DE-passive style). Returns EXP

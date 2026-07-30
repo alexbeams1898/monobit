@@ -57,6 +57,10 @@ GrowthState self(std::vector<std::pair<std::string, int>> stats)
 State makeWorld()
 {
     State s;
+    // These tests exercise the engine (rolls, tiers, cascades), not the
+    // notebook rule -- so the world is one where he is carrying one. The rule
+    // itself is covered by its own tests below.
+    s.carrying.insert("notebook");
     // You observe an observable within interact_reach of its box. These tests observe each
     // at its own center (obsAt helper), and the coords are distinct so each is unambiguous.
     Encounter stone;
@@ -239,6 +243,7 @@ TEST_CASE("setFlag fires a flag-gated thought ambiently", "[observations]")
     r.spirit_exp = 3;
     s.thoughts = {r};
     s.trigger_index["flag:bell_rang"] = {0};
+    s.carrying.insert("notebook"); // thoughts need one; the rule has its own tests
 
     ObserveResult res = psyche::setFlag(s, self({}), "bell_rang", kNoNudge);
     REQUIRE(res.outcome == Outcome::Thought);
@@ -283,6 +288,9 @@ State loadFromJson(const std::string& json)
         }
     std::ofstream(path) << doc.dump();
     psyche::load(s, path);
+    // The engine rule "a thought is the notebook" is tested on its own; these
+    // fixtures are about tiers/thoughts/value, so they carry one.
+    s.carrying.insert("notebook");
     std::remove(path.c_str());
     return s;
 }
@@ -660,6 +668,7 @@ State loadWithActions(const std::string& obs, const std::string& actions)
     }
     State s;
     psyche::load(s, obsPath, actPath);
+    s.carrying.insert("notebook"); // see loadFromJson
     std::remove(obsPath.c_str());
     std::remove(actPath.c_str());
     return s;
@@ -1389,4 +1398,127 @@ TEST_CASE("a deed reports the time its author says it takes", "[observations]")
     const GrowthState g = self({});
     REQUIRE(psyche::takeAction(s, g, "bed", "lie_in", kNoNudge).minutes == 25.0);
     REQUIRE(psyche::takeAction(s, g, "bed", "word", kNoNudge).minutes == 0.0);
+}
+
+TEST_CASE("a thought IS the notebook: without one it waits for its own moment", "[observations]")
+{
+    // The rule: a thought is where he articulates what he never says aloud, so
+    // with no notebook nothing finishes becoming one. It stays UNFIRED (a delay,
+    // never a loss) and the want surfaces instead.
+    State s = makeWorld();
+    s.carrying.clear(); // he is carrying nothing
+    s.notebook_want_text = "Something worth keeping -- and nothing to keep it in.";
+    const GrowthState g = self({{"perception", 20}});
+
+    obsAt(s, g, "stone", kMaxNudge);
+    REQUIRE(s.fired.count("moss_thought") == 0); // waited, not lost
+    int wants = 0;
+    for (const auto& line : s.pending)
+        if (line.text == s.notebook_want_text)
+        {
+            ++wants;
+            REQUIRE(line.kind == LineKind::Impression); // the want arrives unbidden
+        }
+    REQUIRE(wants == 1);
+    s.pending.clear();
+
+    // Finding a notebook does NOT dump everything he failed to write down: a
+    // thought belongs to the moment that occasions it, so nothing fires here.
+    const ObserveResult r = psyche::evaluateCarried(s, g, {"notebook"}, kMaxNudge);
+    REQUIRE(s.fired.count("moss_thought") == 0);
+    REQUIRE(r.outcome == Outcome::None);
+
+    // Going BACK and looking again is what lands it -- at the stone, where it
+    // belongs. NOTE: no cheating with observed_tier here; re-observing an
+    // already-seen spot is exactly what the player does, and it must work.
+    obsAt(s, g, "stone", kMaxNudge);
+    REQUIRE(s.fired.count("moss_thought") == 1);
+}
+
+TEST_CASE("the want is said EVERY time a thought is blocked, not once", "[observations]")
+{
+    // It belongs to the attempt, not the thought: the answer to "why did nothing
+    // land?" has to be there whenever the question occurs. Only a repeat within
+    // one surfacing is suppressed -- a cascade is one moment, not a wall of the
+    // same sentence.
+    State s = makeWorld();
+    s.carrying.clear();
+    s.notebook_want_text = "nothing to write it in";
+    const GrowthState g = self({{"perception", 20}});
+
+    const auto wantsIn = [&]
+    {
+        int n = 0;
+        for (const auto& line : s.pending)
+            if (line.text == s.notebook_want_text)
+                ++n;
+        return n;
+    };
+    obsAt(s, g, "stone", kMaxNudge);
+    REQUIRE(wantsIn() == 1);
+    s.pending.clear();
+
+    // Looking again, still with no notebook: it says so again.
+    obsAt(s, g, "stone", kMaxNudge);
+    REQUIRE(wantsIn() == 1);
+    s.pending.clear();
+
+    // And again, and again -- until he is carrying one.
+    obsAt(s, g, "stone", kMaxNudge);
+    REQUIRE(wantsIn() == 1);
+}
+
+TEST_CASE("a remark needs no notebook -- speech leaves through the mouth", "[observations]")
+{
+    State s = loadFromJson(R"({
+      "encounters": [
+        { "id": "bed", "x": 0, "y": 0, "tiers": [{ "text": "the morning" }] }
+      ],
+      "remarks": [
+        { "id": "grumble", "text": "Mmmmffhh.", "unlock_when": [{ "observed": "bed" }] }
+      ]
+    })");
+    s.carrying.clear(); // no notebook
+    s.notebook_want_text = "nothing to write with";
+    psyche::observeById(s, self({}), "bed", kMaxNudge);
+    REQUIRE(s.fired.count("grumble") == 1); // said anyway
+    for (const auto& line : s.pending)
+        REQUIRE(line.text != s.notebook_want_text); // and no want about it
+}
+
+TEST_CASE("the notebook rule is off when no item is authored", "[observations]")
+{
+    State s = makeWorld();
+    s.carrying.clear();
+    s.notebook_item.clear(); // rule disabled
+    psyche::observe(s, self({{"perception", 20}}), 100, 0, kMaxNudge);
+    REQUIRE(s.fired.count("moss_thought") == 1); // fires as it always did
+}
+
+TEST_CASE("the played sequence: look, no notebook, fetch one, come back", "[observations]")
+{
+    // Exactly what a player does, with no test-only shortcuts: look at a thing
+    // while carrying nothing, go pick up the notebook, walk back, look again.
+    // The thought must land THEN -- not on pickup, and not never.
+    State s = makeWorld();
+    s.carrying.clear();
+    s.notebook_want_text = "nothing to write it in";
+    const GrowthState g = self({{"perception", 20}});
+
+    obsAt(s, g, "stone", kMaxNudge); // 1. look: blocked, and it says so
+    REQUIRE(s.fired.count("moss_thought") == 0);
+    REQUIRE(s.unwritten.count("moss_thought") == 1);
+    s.pending.clear();
+
+    psyche::evaluateCarried(s, g, {"notebook"}, kMaxNudge); // 2. pick it up: nothing fires here
+    REQUIRE(s.fired.count("moss_thought") == 0);
+
+    obsAt(s, g, "stone", kMaxNudge); // 3. come back and look: it lands, where it belongs
+    REQUIRE(s.fired.count("moss_thought") == 1);
+    REQUIRE(s.unwritten.count("moss_thought") == 0); // no longer waiting
+    bool sawThought = false;
+    for (const auto& line : s.pending)
+        if (line.kind == LineKind::Thought && line.text == "water shaped it once")
+            sawThought = true;
+    REQUIRE(sawThought);
 }

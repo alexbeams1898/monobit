@@ -3,7 +3,9 @@
     "id": "herbal_draught",
     "name": "Herbal Draught",
     "description": "A steeped, bitter-green draught. It steadies you.",
-    "icon": "assets/sprites/items/herbal_draught.png",
+    "icon": "assets/tilesets/items.png",
+    "icon_cell": [ 0, 0 ],
+    "icon_size": 32,
     "category": "practical",
     "rarity": 2,
     "max_stack": 20

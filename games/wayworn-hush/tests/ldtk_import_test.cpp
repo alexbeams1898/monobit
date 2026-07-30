@@ -107,8 +107,7 @@ std::string writeFixture()
       {"__identifier": "Warp", "iid": "w1", "px": [16, 16], "width": 16, "height": 16,
        "__pivot": [0.5, 1],
        "fieldInstances": [{"__identifier": "id", "__value": "shore_door"},
-                          {"__identifier": "target_level", "__value": "Room"},
-                          {"__identifier": "target_spawn", "__value": "from_door"},
+                          {"__identifier": "target_id", "__value": "room_door"},
                           {"__identifier": "facing", "__value": "south"}]},
       {"__identifier": "Npc", "iid": "n1", "px": [24, 40], "width": 16, "height": 16,
        "fieldInstances": [{"__identifier": "npc", "__value": "mom"},
@@ -140,7 +139,9 @@ std::string writeFixture()
        "fieldInstances": [{"__identifier": "id", "__value": "from_door"},
                           {"__identifier": "facing", "__value": "north"}]},
       {"__identifier": "Warp", "iid": "w2", "px": [0, 0], "width": 16, "height": 16,
-       "fieldInstances": [{"__identifier": "target_level", "__value": ""}]}
+       "fieldInstances": [{"__identifier": "id", "__value": "room_door"},
+                          {"__identifier": "target_id", "__value": "shore_door"},
+                          {"__identifier": "facing", "__value": "north"}]}
     ]},
     {"__identifier": "Ground", "__type": "Tiles", "__gridSize": 16, "__cWid": 2, "__cHei": 2,
      "__tilesetDefUid": 2,
@@ -201,14 +202,15 @@ TEST_CASE("PlayerSpawn parses into spawns (id + facing), never into objects", "[
         REQUIRE(o.type != "PlayerSpawn");
 }
 
-TEST_CASE("A Warp parses as a centered box with its targets", "[ldtk]")
+TEST_CASE("A Warp parses as a centered box naming the door it arrives at", "[ldtk]")
 {
     const ldtk::Region shore = loadFixture({});
     REQUIRE(shore.warps.size() == 1);
     const auto& w = shore.warps[0];
-    REQUIRE(w.target_level == "Room");
+    // A door names a DOOR, not a level -- which level that is comes from
+    // ldtk::warpIndex, so the map never states it twice.
     REQUIRE(w.id == "shore_door");
-    REQUIRE(w.target == "from_door"); // read from the legacy target_spawn field name
+    REQUIRE(w.target_id == "room_door");
     REQUIRE(w.facing == "south");
     // px is the PIVOT point, here bottom-center (0.5,1): the box the author SEES
     // sits above-and-centered on px, and the import must agree with the editor.
@@ -274,10 +276,35 @@ TEST_CASE("A Blocker is a hand-placed solid box and nothing else", "[ldtk]")
     REQUIRE(b.col_h == Approx(16.0f));
 }
 
-TEST_CASE("A Warp with no target_level is dropped, not kept broken", "[ldtk]")
+TEST_CASE("A Warp with no target_id is dropped, not kept broken", "[ldtk]")
 {
-    const ldtk::Region room = loadFixture("Room");
-    REQUIRE(room.warps.empty());
+    // A door that names no door leads nowhere; keeping it would be a threshold the
+    // player can cross into nothing.
+    const auto path =
+        (std::filesystem::temp_directory_path() / "wayworn_ldtk_nowarp.ldtk").string();
+    std::ofstream(path) << R"JSON({
+ "defs": {"tilesets": [{"identifier": "Overworld", "uid": 1, "relPath": "Overworld.png",
+                        "__cWid": 40, "tileGridSize": 16, "enumTags": []}]},
+ "levels": [{"identifier": "Nowhere", "layerInstances": [
+   {"__identifier": "Entities", "__type": "Entities", "entityInstances": [
+     {"__identifier": "Warp", "iid": "w9", "px": [0, 0], "width": 16, "height": 16,
+      "fieldInstances": [{"__identifier": "id", "__value": "dangling"}]}]},
+   {"__identifier": "Ground", "__type": "Tiles", "__gridSize": 16, "__cWid": 2, "__cHei": 2,
+    "gridTiles": [{"px": [0, 0], "src": [16, 0]}]}]}]})JSON";
+    const surfaces::Config sc;
+    const structures::Config st;
+    const ldtk::Region r = ldtk::load(path, "missing_atlas.png", sc, st, "Nowhere");
+    REQUIRE(r.warps.empty());
+}
+
+TEST_CASE("warpIndex maps every warp id in the project to its level", "[ldtk]")
+{
+    // What turns "this door arrives at that door" into a level to load -- so the
+    // map states the destination ONCE, as a door name.
+    const auto index = ldtk::warpIndex(writeFixture());
+    REQUIRE(index.at("shore_door") == "Shore");
+    REQUIRE(index.at("room_door") == "Room");
+    REQUIRE(index.count("no_such_door") == 0);
 }
 
 TEST_CASE("A level painted with its own tileset resolves that tileset's atlas", "[ldtk]")
@@ -435,4 +462,65 @@ TEST_CASE("a cover prop's sort anchor is its own bottom edge, not over everyone"
     REQUIRE(found);
     // A real world-Y, never the old "beyond anything" constant.
     REQUIRE(bottomEdge < 10000.0f);
+}
+
+TEST_CASE("a non-walkable tile painted OVER walkable ground still blocks", "[ldtk]")
+{
+    // Trees painted on top of grass: the grass is the cell's base and the tree is
+    // a stacked tile, so reading walkability from the base alone would let the
+    // player stroll through a forest. A cell is walkable only if every tile in it
+    // is -- the surface tag travels with the art wherever it is painted.
+    const auto path =
+        (std::filesystem::temp_directory_path() / "wayworn_ldtk_stacked.ldtk").string();
+    std::ofstream(path) << R"JSON({
+ "defs": {"tilesets": [{"identifier": "Overworld", "uid": 1, "relPath": "Overworld.png",
+   "__cWid": 40, "tileGridSize": 16,
+   "enumTags": [{"enumValueId": "Trees", "tileIds": [41]}]}]},
+ "levels": [{"identifier": "Wood", "layerInstances": [
+   {"__identifier": "Ground", "__type": "Tiles", "__gridSize": 16, "__cWid": 2, "__cHei": 1,
+    "__tilesetDefUid": 1,
+    "gridTiles": [{"px": [0, 0], "src": [16, 0]},
+                  {"px": [0, 0], "src": [16, 16]},
+                  {"px": [16, 0], "src": [16, 0]}]}]}]})JSON";
+    surfaces::Config sc;
+    surfaces::load(sc, "config/surfaces.json"); // Trees is authored non-walkable there
+    const structures::Config st;
+    const ldtk::Region r = ldtk::load(path, "missing_atlas.png", sc, st, "Wood");
+    REQUIRE(r.ok);
+    // Cell (0,0): grass base + a Trees tile stacked on it -> blocked.
+    REQUIRE_FALSE(r.map.at(0, 0).walkable);
+    // Cell (1,0): plain grass -> still walkable.
+    REQUIRE(r.map.at(1, 0).walkable);
+}
+
+TEST_CASE("a Pickup lands where the author sees it, whatever its pivot", "[ldtk]")
+{
+    // LDtk's px is the entity's PIVOT point, not its top-left. A bottom-center
+    // pivot (the editor default for placed things here) put pickups half a box
+    // right and a box down when the position was computed by hand instead of
+    // through boxCenter -- the item drew on the wrong tile.
+    const auto path =
+        (std::filesystem::temp_directory_path() / "wayworn_ldtk_pickup.ldtk").string();
+    std::ofstream(path) << R"JSON({
+ "defs": {"tilesets": [{"identifier": "Overworld", "uid": 1, "relPath": "Overworld.png",
+   "__cWid": 40, "tileGridSize": 16, "enumTags": []}]},
+ "levels": [{"identifier": "Room", "layerInstances": [
+   {"__identifier": "Pickups", "__type": "Entities", "entityInstances": [
+     {"__identifier": "Pickup", "iid": "p1", "px": [32, 44], "width": 16, "height": 16,
+      "__pivot": [0.5, 1],
+      "fieldInstances": [{"__identifier": "item", "__value": "watch"},
+                         {"__identifier": "sort_offset", "__value": 9}]}]},
+   {"__identifier": "Ground", "__type": "Tiles", "__gridSize": 16, "__cWid": 4, "__cHei": 4,
+    "gridTiles": [{"px": [0, 0], "src": [16, 0]}]}]}]})JSON";
+    const surfaces::Config sc;
+    const structures::Config st;
+    const ldtk::Region r = ldtk::load(path, "missing_atlas.png", sc, st, "Room");
+    REQUIRE(r.pickups.size() == 1);
+    // px*2 = (64,88); a bottom-center pivot means that IS the box's bottom-center,
+    // so the center sits half a box (16 world px) above it, x unchanged.
+    REQUIRE(r.pickups[0].cx == Approx(64.0f));
+    REQUIRE(r.pickups[0].cy == Approx(72.0f));
+    // An item ON furniture sorts past what holds it (source px -> world x2), the
+    // same authored offset a prop uses -- Y-sort has no height axis.
+    REQUIRE(r.pickups[0].sort_offset == Approx(18.0f));
 }

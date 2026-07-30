@@ -288,54 +288,32 @@ struct Arrival
     float clear_h = 0.0f;
 };
 
-// Auto-pair: arriving with no name, but a known origin -- arrive at the warp that
-// points back there (a doorway is two warps aimed at each other, so the return address
-// identifies the arrival with no authored ids). Ambiguous only when several passages
-// connect the SAME two levels; then say so, take the first -- ids + targets exist for
-// exactly that case.
-Arrival pairReturnWarp(const ldtk::Region& region, const std::string& from_level)
+// WHERE YOU COME OUT. The rule: a warp names the warp it arrives at (`target`),
+// and you emerge there, stepping clear of its box along its facing. Naming it is
+// what makes a door provable -- with two doors between the same pair of levels,
+// anything else is a coin flip, and a door that lands you in the wrong room is
+// worse than one that says it is broken.
+//
+// A door that names nothing falls back to the return warp (see above), so a
+// single-door room needs no authoring; the linter errors the moment that becomes
+// ambiguous. `arrival_id` empty = nobody came through a
+// door: a fresh walk, which starts at the map's id-less PlayerSpawn.
+Arrival resolveArrival(const ldtk::Region& region, const std::string& arrival_id)
 {
-    Arrival a;
-    int matches = 0;
-    for (const auto& w : region.warps)
-        if (w.target_level == from_level)
-        {
-            if (++matches == 1)
-                a = {w.x, w.y, w.facing, "return->" + from_level, true, w.w * 0.5f, w.h * 0.5f};
-        }
-    if (matches > 1)
-        std::fprintf(stderr,
-                     "[region] %d warps in '%s' point back at '%s' -- ambiguous return, "
-                     "using the first; give them ids + targets to disambiguate\n",
-                     matches, region.level_id.c_str(), from_level.c_str());
-    return a;
-}
-
-Arrival resolveArrival(const ldtk::Region& region, const std::string& spawn_id,
-                       const std::string& from_level)
-{
-    // Named arrivals first: a Warp id, then a SpawnPoint id.
-    if (!spawn_id.empty())
+    if (!arrival_id.empty())
     {
         for (const auto& w : region.warps)
-            if (w.id == spawn_id)
+            if (w.id == arrival_id)
                 return {w.x, w.y, w.facing, w.id, true, w.w * 0.5f, w.h * 0.5f};
-        for (const auto& s : region.spawns)
-            if (s.id == spawn_id)
+        for (const auto& s : region.spawns) // a named spawn still works as a target
+            if (s.id == arrival_id)
                 return {s.wx, s.wy, s.facing, s.id, true};
-        std::fprintf(stderr, "[region] no warp/spawn '%s' in '%s' -- falling through\n",
-                     spawn_id.c_str(), region.level_id.c_str());
+        std::fprintf(stderr,
+                     "[region] warp targets '%s', which is not a warp or spawn in '%s' -- "
+                     "arriving at the level's spawn instead\n",
+                     arrival_id.c_str(), region.level_id.c_str());
     }
-    // Unnamed with a known origin: the paired return warp. This must beat the default
-    // spawn -- most doors carry no target at all, and the default spawn is where a NEW
-    // walk begins, not where a doorway comes out.
-    if (!from_level.empty())
-    {
-        const Arrival a = pairReturnWarp(region, from_level);
-        if (a.found)
-            return a;
-    }
-    // The level's default (id-less) spawn, then any spawn at all.
+    // The level's default (id-less) spawn -- where a NEW walk begins.
     for (const auto& s : region.spawns)
         if (s.id.empty())
             return {s.wx, s.wy, s.facing, s.id, true};
@@ -348,7 +326,7 @@ Arrival resolveArrival(const ldtk::Region& region, const std::string& spawn_id,
 }
 
 void applyRegion(Engine& engine, EntityManager& em, GameState& gs, const ldtk::Region& region,
-                 const std::string& spawn_id, const std::string& from_level)
+                 const std::string& arrival_id)
 {
     const world_config::Config& wc = gs.world_config;
     em.tile_map = region.map;
@@ -373,7 +351,7 @@ void applyRegion(Engine& engine, EntityManager& em, GameState& gs, const ldtk::R
     ambience::stopAll(gs.ambience_state, gs.ambience_config);
 
     gs.player = world_init::spawnPlayer(em, gs.player_config);
-    Arrival at = resolveArrival(region, spawn_id, from_level);
+    Arrival at = resolveArrival(region, arrival_id);
     if (at.found)
     {
         // Step out along the arrival's facing: FIRST clear the arrival's own box (a door
@@ -482,7 +460,7 @@ bool setupRegion(Engine& engine, EntityManager& em, GameState& gs, const std::st
         std::fprintf(stderr, "[region] FATAL: could not load the region; aborting.\n");
         return false;
     }
-    applyRegion(engine, em, gs, region, spawn_id, /*from_level=*/{});
+    applyRegion(engine, em, gs, region, spawn_id);
     return true;
 }
 
@@ -501,10 +479,9 @@ bool switchRegion(Engine& engine, EntityManager& em, GameState& gs, const std::s
     if (!region.ok)
         return false;
 
-    const std::string from_level = gs.region; // where we are leaving, for auto-pairing
     em.registry().clear();
     gs.player = entt::null;
-    applyRegion(engine, em, gs, region, spawn_id, from_level);
+    applyRegion(engine, em, gs, region, spawn_id);
     head_marker::spawn(em, gs.head_marker_config);
     // Everything above spawned mid-tick; anchor it before a frame renders it.
     anchorInterpolation(em);
@@ -586,17 +563,12 @@ bool enterWorld(Engine& engine, EntityManager& em, GameState& gs, const std::str
     if (!pilgrim->place.walked)
     {
         // They have never set out: leave them at the map's spawn (NOT the saved place,
-        // which is meaningless before a first step) and give them the notebook -- a key
-        // item; carrying it is what lets thoughts be written down (docs/design/INVENTORY.md).
-        // The clock opens at the authored moment (config start_time): a specific
-        // late morning, not midnight -- he overslept before the first frame.
+        // which is meaningless before a first step). He starts with NOTHING -- the
+        // notebook and the watch are lying in his room to be picked up, and what
+        // they buy (writing a thought down, reading the hour) is missing until he
+        // does. The clock opens at the authored moment (config start_time): a
+        // specific late morning, not midnight -- he overslept before the first frame.
         gs.clock.seconds = gs.clock.start_seconds;
-        inventory::add(gs.satchel, gs.items, inventory::ItemInstance{"notebook"});
-        // BANDAID(approved): the watch is meant to be FOUND, not started with -- telling the
-        // time is an earned capability (docs/design/INVENTORY.md, NOTEBOOK.md). Granted here
-        // so the time-reading surfaces can be exercised before its world placement is
-        // authored; remove the moment it exists as a pickup on the map.
-        inventory::add(gs.satchel, gs.items, inventory::ItemInstance{"watch"});
     }
     else if ((pilgrim->place.region.empty() || pilgrim->place.region == gs.region) &&
              player_movement::canStand(em, gs.player, pilgrim->place.x, pilgrim->place.y))
@@ -792,6 +764,10 @@ int main(int argc, char* argv[])
     // points the HUD systems at them.
     hud::loadRegions(gs.hud, "config/hud.json");
     tutorial::load(gs.tutorial_config, "config/tutorial.json");
+    // Every warp id -> its level, so a door that names a door resolves to a level
+    // without the map repeating it (ldtk::warpIndex). Once at boot: the map is
+    // authored, not generated.
+    gs.warp_levels = ldtk::warpIndex(gs.world_config.ldtk);
     // How the player likes the HUD. Config authors the DEFAULT; a save then carries what
     // they actually chose. Read in that order and merged field-by-field (decodeSettings
     // falls back to what it is handed), so a setting the player has never touched keeps the

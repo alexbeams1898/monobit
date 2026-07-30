@@ -154,7 +154,11 @@ struct GameState
     // destination's own warp -- the doormat you step out of -- never bounces back.
     std::string region;                            // current LDtk level identifier
     std::vector<ldtk::WarpPlacement> region_warps; // this level's exits
-    std::vector<ldtk::SpawnPoint> region_spawns;   // named points (arrivals + scene marks)
+    // Every warp id in the map -> the level holding it (ldtk::warpIndex, built once
+    // at boot). A door names the door it arrives at; this is what turns that name
+    // into a level, so the map never states the level a second time.
+    std::unordered_map<std::string, std::string> warp_levels;
+    std::vector<ldtk::SpawnPoint> region_spawns; // named points (arrivals + scene marks)
     // The level's PLACED characters by npc id, so a scene can steer someone who is
     // already standing there (no `enter` needed) -- scene-spawned bodies shadow these.
     std::unordered_map<std::string, entt::entity> region_npcs;

@@ -13,6 +13,11 @@
     },
     "_interact_reach_comment": "World px from an encounter's box edge: get within this WHILE FACING IT and it lights and can be observed. A world tile is 32px, so 72 is a bit over two tiles -- you notice a thing from across a small room, not only nose-to-nose. Facing is what keeps the wider reach unambiguous. One knob for the whole game.",
     "interact_reach": 72,
+    "_notebook_comment": "A THOUGHT IS THE NOTEBOOK -- it is where he articulates what he never says aloud, so without one nothing finishes becoming a thought: it stays unfired (and lands the moment he is carrying one) while `want_text` surfaces instead, once per stretch of not having it. A delay, never a loss. Remarks are exempt: speech needs no page. `item` empty turns the rule off.",
+    "notebook": {
+        "item": "notebook",
+        "want_text": "Something worth keeping -- and nothing to keep it in."
+    },
     "encounters": [
         {
             "_comment": "the wake-up moment, fired by the wake scene (never placed). No speaker: the tier is HIS half-asleep read of the room, and the menu is the game's first decision -- a must_choose menu, so it repeats until a deed CONSUMES it. The turn-offs are the room's chores (each one_shot, each raising the flag its sound dies on); doing BOTH unlocks get_up. Hiding is always available -- and if he hides, Mom silences the room herself (mom_enters). This beat is the first stroke of who this Will is.",

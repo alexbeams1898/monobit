@@ -34,7 +34,33 @@ struct ItemDef
     std::string id;          // "river_stone", "notebook", "wild_thyme"
     std::string name;        // display name
     std::string description; // flavor / what it is
-    std::string icon;        // sprite path (placeholder ok)
+    // WHERE the art is. Items live on one packed sheet like every other art in
+    // the game (assets/tilesets/items.png, built by tools/tileset/repack.py), so
+    // item art is browsable and paletted rather than a folder of loose files:
+    // `icon` is that sheet and `icon_col/row` the cell. A per-item sheet path
+    // still works (author `icon` alone), which is what a one-off or a placeholder
+    // uses. `icon_size` is the cell edge in px.
+    std::string icon;
+    int icon_col = -1; // <0 = the whole `icon` image is the art (no sheet cell)
+    int icon_row = -1;
+    int icon_size = 32;
+
+    // The art's UV rect within `icon`, given that image's pixel size -- the ONE
+    // place a cell becomes texture coordinates, so the floor sprite, the satchel
+    // chip and anything later can't disagree. Whole-image art returns {0,0,1,1}.
+    struct Uv
+    {
+        float x, y, w, h;
+    };
+    Uv iconUv(int image_w, int image_h) const
+    {
+        if (icon_col < 0 || icon_row < 0 || image_w <= 0 || image_h <= 0)
+            return {0.0f, 0.0f, 1.0f, 1.0f};
+        const float s = static_cast<float>(icon_size);
+        return {static_cast<float>(icon_col) * s / static_cast<float>(image_w),
+                static_cast<float>(icon_row) * s / static_cast<float>(image_h),
+                s / static_cast<float>(image_w), s / static_cast<float>(image_h)};
+    }
     Category category = Category::Keepsake;
     // Per-TYPE rarity on the SAME 1..5 scale as reading difficulty (reuse
     // reading_color::rarityWord/rarityColor). 0 = no rarity label.

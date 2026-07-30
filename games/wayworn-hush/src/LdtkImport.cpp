@@ -428,13 +428,15 @@ void collectPickup(const json& e, Region& r)
     }
     else
         return; // neither field -> not a pickup/gather entity
-    const auto px = e.find("px");
-    if (px == e.end() || !px->is_array())
+    // Through boxCenter like every other placed thing: LDtk's px is the entity's
+    // PIVOT, so assuming a top-left one puts a bottom-center entity half a box
+    // right and a box down from where the author sees it.
+    float w = 0.0f;
+    float h = 0.0f;
+    if (!boxCenter(e, p.cx, p.cy, w, h))
         return;
-    const float halfW = static_cast<float>(e.value("width", 16));  // authoring px, pre-x2
-    const float halfH = static_cast<float>(e.value("height", 16)); // (center offset = half)
-    p.cx = static_cast<float>((*px)[0].get<int>() * 2) + halfW; // px*2 + (cell*2)/2 = px*2 + cell
-    p.cy = static_cast<float>((*px)[1].get<int>() * 2) + halfH;
+    p.sort_offset =
+        static_cast<float>(entityFieldInt(e, "sort_offset", 0) * 2); // source px -> world
     r.pickups.push_back(std::move(p));
 }
 
@@ -541,16 +543,12 @@ void collectWarp(const json& e, Region& r)
 {
     WarpPlacement w;
     w.id = entityField(e, "id");
-    w.target_level = entityField(e, "target_level");
-    w.target = entityField(e, "target");
-    if (w.target.empty())
-        w.target = entityField(e, "target_spawn"); // legacy field name
+    w.target_id = entityField(e, "target_id");
     w.facing = entityField(e, "facing");
-    if (boxCenter(e, w.x, w.y, w.w, w.h) && !w.target_level.empty())
+    if (boxCenter(e, w.x, w.y, w.w, w.h) && !w.target_id.empty())
         r.warps.push_back(std::move(w));
     else
-        std::fprintf(stderr,
-                     "[ldtk] a Warp in '%s' has no position or no target_level -- dropped\n",
+        std::fprintf(stderr, "[ldtk] a Warp in '%s' has no position or no target_id -- dropped\n",
                      r.level_id.c_str());
 }
 
@@ -844,6 +842,12 @@ parseGround(const json& ground, const Atlas& atlas, const surfaces::Config& surf
             // composites the stack exactly as the editor shows it -- every layer,
             // not just the topmost.
             r.map.decoration.push_back({idx, TileMap::Tile{id, true}});
+            // A cell is walkable only if EVERY tile in it is: painting trees over
+            // grass must block, and the tree is the stacked tile, not the base. A
+            // stack blocks if any of its layers does -- the surface tag travels
+            // with the art wherever it is painted.
+            if (!walkableFor(id))
+                r.map.tiles[idx].walkable = false;
         }
     }
     return uvById;
@@ -980,6 +984,45 @@ Region loadImpl(const std::string& ldtk_path, const std::string& tileset_path,
 
     r.ok = true;
     return r;
+}
+
+std::unordered_map<std::string, std::string> warpIndex(const std::string& ldtk_path)
+{
+    std::unordered_map<std::string, std::string> out;
+    std::ifstream f(ldtk_path);
+    if (!f)
+        return out;
+    const json j = json::parse(f, nullptr, /*allow_exceptions=*/false);
+    if (j.is_discarded())
+        return out;
+    const auto levels = j.find("levels");
+    if (levels == j.end() || !levels->is_array())
+        return out;
+    for (const auto& level : *levels)
+    {
+        const std::string levelId = level.value("identifier", std::string{});
+        const json* ents = findLayer(level, "Entities");
+        if (!ents)
+            continue;
+        const auto ei = ents->find("entityInstances");
+        if (ei == ents->end() || !ei->is_array())
+            continue;
+        for (const auto& e : *ei)
+        {
+            if (e.value("__identifier", std::string{}) != "Warp")
+                continue;
+            const std::string id = entityField(e, "id");
+            if (id.empty())
+                continue;
+            // A duplicate id makes "which level" ambiguous -- say so; first wins.
+            if (const auto [it, fresh] = out.emplace(id, levelId); !fresh)
+                std::fprintf(stderr,
+                             "[ldtk] warp id '%s' appears in both '%s' and '%s' -- ids must be "
+                             "unique; using '%s'\n",
+                             id.c_str(), it->second.c_str(), levelId.c_str(), it->second.c_str());
+        }
+    }
+    return out;
 }
 
 Region load(const std::string& ldtk_path, const std::string& tileset_path,

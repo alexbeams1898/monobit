@@ -270,9 +270,13 @@ void drawListRow(const inventory::ItemDef* def, const GridItem& gi, const IconRe
     const float chip = rowH * 0.78f;
     const float chipY = y + (rowH - chip) * 0.5f;
     const float chipX = x + rowH * 0.14f;
-    const std::uint32_t tex = def ? icon(def->icon) : 0u;
-    if (tex != 0u)
-        UIRenderer::drawTexturedRect({chipX, chipY, chip, chip}, tex);
+    const IconImage img = def ? icon(def->icon) : IconImage{};
+    if (img.tex != 0u)
+    {
+        // The item's CELL on the shared items sheet (whole-image art gives 0,0,1,1).
+        const auto uv = def->iconUv(img.w, img.h);
+        UIRenderer::drawTexturedRect({chipX, chipY, chip, chip}, img.tex, {uv.x, uv.y, uv.w, uv.h});
+    }
     else if (def) // no texture -> a soft rarity swatch stands in
         UIRenderer::drawRect(chipX, chipY, chip, chip,
                              reading_color::rarityColor(def->rarity, 0.7f));

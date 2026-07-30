@@ -157,3 +157,66 @@ TEST_CASE("Null knowledge sets read as empty (no crash, nothing held)", "[unlock
     REQUIRE_FALSE(unlock::clauseHolds(needsStat, k));
     REQUIRE(unlock::clauseHolds(Clause{}, k)); // empty clause still trivially true
 }
+
+TEST_CASE("carrying requires the item; without requires its ABSENCE", "[unlock]")
+{
+    // Instruments gate content, never truth: a thought forms regardless, but
+    // writing it down needs the notebook -- which is authored as clauses, so the
+    // "if only I had something to write with" ache is content, not code.
+    World w;
+    std::unordered_set<std::string> held = {"watch"};
+    Knowledge k = w.view();
+    k.carrying = &held;
+
+    Clause needsWatch;
+    needsWatch.carrying = {"watch"};
+    REQUIRE(unlock::clauseHolds(needsWatch, k));
+
+    Clause needsNotebook;
+    needsNotebook.carrying = {"notebook"};
+    REQUIRE_FALSE(unlock::clauseHolds(needsNotebook, k));
+
+    // `without` is the mirror: it holds only while the thing is NOT held.
+    Clause lacksNotebook;
+    lacksNotebook.without = {"item:notebook"};
+    REQUIRE(unlock::clauseHolds(lacksNotebook, k));
+    Clause lacksWatch;
+    lacksWatch.without = {"item:watch"};
+    REQUIRE_FALSE(unlock::clauseHolds(lacksWatch, k));
+}
+
+TEST_CASE("without reads flags, observations and items by prefix", "[unlock]")
+{
+    World w;
+    w.flags.insert("got_up");
+    w.observed.insert("bed");
+    std::unordered_set<std::string> held = {"notebook"};
+    Knowledge k = w.view();
+    k.carrying = &held;
+
+    const auto lacks = [&](std::string id)
+    {
+        Clause c;
+        c.without = {std::move(id)};
+        return unlock::clauseHolds(c, k);
+    };
+    REQUIRE_FALSE(lacks("got_up"));      // unprefixed = a flag, and it is set
+    REQUIRE_FALSE(lacks("flag:got_up")); // same thing said explicitly
+    REQUIRE(lacks("flag:never_happened"));
+    REQUIRE_FALSE(lacks("obs:bed")); // he has seen it
+    REQUIRE(lacks("obs:river"));
+    REQUIRE_FALSE(lacks("item:notebook")); // carried
+    REQUIRE(lacks("item:watch"));
+}
+
+TEST_CASE("carrying and without parse from JSON, string or array", "[unlock]")
+{
+    const auto j = nlohmann::json::parse(R"([
+        { "carrying": "notebook" },
+        { "carrying": ["watch", "notebook"], "without": ["item:lantern", "hid_from_morning"] }
+    ])");
+    const Condition cond = unlock::parseCondition(j);
+    REQUIRE(cond.any[0].carrying == std::vector<std::string>{"notebook"});
+    REQUIRE(cond.any[1].carrying == std::vector<std::string>{"watch", "notebook"});
+    REQUIRE(cond.any[1].without == std::vector<std::string>{"item:lantern", "hid_from_morning"});
+}

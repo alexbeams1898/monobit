@@ -34,6 +34,11 @@ struct Knowledge
     const std::unordered_set<std::string>* observed = nullptr;
     const std::unordered_set<std::string>* flags = nullptr;      // quest/event flags set
     const std::unordered_map<std::string, int>* stats = nullptr; // stat name -> level
+    // Item ids in the satchel. Instruments gate CONTENT, never truth: the world
+    // keeps its own time and a thought forms on its own, but reading the hour off
+    // a note needs the watch and writing a thought down needs the notebook. That
+    // asymmetry is authored as clauses, not compiled in.
+    const std::unordered_set<std::string>* carrying = nullptr;
 
     bool has(const std::unordered_set<std::string>* set, const std::string& id) const;
     int stat(const std::string& name) const;
@@ -48,6 +53,12 @@ struct Clause
     std::vector<std::string> observed;         // require ALL these memories observed
     std::vector<std::string> flags;            // require ALL these flags set
     std::unordered_map<std::string, int> stat; // require each stat >= its level
+    std::vector<std::string> carrying;         // require ALL these items in the satchel
+    // The NEGATIVE half: each entry must NOT be held. Same name space as the
+    // positive fields ("flag:x", "obs:x", "item:x"), so one clause can say "he
+    // has seen the thing but is not carrying the notebook" -- which is how a
+    // thought aches instead of landing, and how someone notices empty hands.
+    std::vector<std::string> without;
 };
 
 // A full unlock gate: OR of clauses. Empty (no clauses) = always available (an

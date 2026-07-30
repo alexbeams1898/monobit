@@ -67,6 +67,10 @@ std::string keyStat(const std::string& s)
 {
     return "stat:" + s;
 }
+std::string keyItem(const std::string& s)
+{
+    return "item:" + s;
+}
 
 // Every key a condition references (for indexing): the observed memories, flag,
 // and stat names of each clause.
@@ -80,6 +84,17 @@ void collectKeys(const unlock::Condition& cond, std::vector<std::string>& out)
             out.push_back(keyFlag(f));
         for (const auto& [name, level] : c.stat)
             out.push_back(keyStat(name));
+        for (const auto& item : c.carrying)
+            out.push_back(keyItem(item));
+        // A negative clause is re-checked when what it names CHANGES -- picking the
+        // notebook up is exactly when an aching thought should get its second look.
+        for (const auto& id : c.without)
+        {
+            if (id.rfind("item:", 0) == 0 || id.rfind("obs:", 0) == 0 || id.rfind("flag:", 0) == 0)
+                out.push_back(id); // already a key
+            else
+                out.push_back(keyFlag(id));
+        }
     }
 }
 
@@ -110,6 +125,7 @@ unlock::Knowledge makeKnowledge(const State& s, const growth::GrowthState& g,
     k.observed = &observedIds;
     k.flags = &s.flags;
     k.stats = &statLevels;
+    k.carrying = &s.carrying;
     return k;
 }
 
@@ -577,6 +593,17 @@ Trigger triggerFromString(const std::string& s)
     return Trigger::Observe; // default + explicit "Observe"
 }
 
+// The notebook rule's authored half (see State::notebook_item): which item is the
+// notebook, and the words for wanting one.
+void parseNotebookRule(const nlohmann::json& j, State& state)
+{
+    const auto nb = j.find("notebook");
+    if (nb == j.end() || !nb->is_object())
+        return;
+    state.notebook_item = nb->value("item", state.notebook_item);
+    state.notebook_want_text = nb->value("want_text", state.notebook_want_text);
+}
+
 void load(State& state, const std::string& path, const std::string& actions_path)
 {
     state = State{};
@@ -587,6 +614,7 @@ void load(State& state, const std::string& path, const std::string& actions_path
 
     parseRollConfig(j, state.roll);
     state.interact_reach = j.value("interact_reach", state.interact_reach);
+    parseNotebookRule(j, state);
 
     const ActionKinds kinds = loadActionKinds(actions_path);
     for (const auto& e : j.value("encounters", nlohmann::json::array()))
@@ -699,6 +727,23 @@ void pushLandedLine(State& state, const Thought& r)
         PendingLine{LineKind::Remark, r.text, {}, 0, /*is_new=*/false, r.spirit_exp, who});
 }
 
+// The want that stands in for an unwritten thought. It belongs to the ATTEMPT,
+// not to the thought: every look at something he cannot write down says so again,
+// because the answer to "why did nothing land?" has to be available the moment
+// the question occurs -- not only the first time. The only thing suppressed is a
+// repeat within one surfacing (a cascade of eligible thoughts is one moment, not
+// a wall of the same sentence). Authored (notebook_want_text); silent if not.
+void wantNotebook(State& state)
+{
+    if (state.notebook_want_text.empty())
+        return;
+    for (const auto& line : state.pending)
+        if (line.text == state.notebook_want_text)
+            return; // already saying it in this same breath
+    state.pending.push_back(
+        PendingLine{LineKind::Impression, state.notebook_want_text, {}, 0, false, 0});
+}
+
 // Fire a thought/remark NOW: record it, surface its line, collect its rewards,
 // and append the keys its firing changes (for the cascade). The one fire block,
 // shared by the ambient engine and a scene's forced remark.
@@ -707,6 +752,7 @@ int fireThought(State& state, const Thought& r, std::vector<std::string>& landed
                 std::vector<std::string>& changedKeys)
 {
     state.fired.insert(r.id);
+    state.unwritten.erase(r.id); // written down at last (a no-op if it never waited)
     pushLandedLine(state, r);
     landed.push_back(r.id);
     if (!r.faculty.empty() && r.stat_exp > 0)
@@ -754,6 +800,20 @@ int runEngine(State& state, const growth::GrowthState& growth, std::vector<std::
                 continue;
             if (!unlock::satisfied(r.unlock_when, k))
                 continue; // not yet eligible -- nothing to surface
+            // A THOUGHT is the notebook: it is where he articulates what he cannot
+            // say aloud, so without one nothing finishes becoming a thought. It
+            // stays unfired (the trigger index brings it back the moment he is
+            // carrying one) and the want surfaces instead -- a delay, never a loss.
+            // A remark needs no notebook: speech leaves through the mouth.
+            if (!r.isRemark() && !state.notebook_item.empty() &&
+                state.carrying.count(state.notebook_item) == 0)
+            {
+                // Remember it: its input has already happened, and re-observing a
+                // spot pushes no new key on its own, so this is the thread back.
+                state.unwritten.insert(r.id);
+                wantNotebook(state);
+                continue;
+            }
             if (!rollLands(state, growth, r, rng))
             {
                 // Eligible but the roll missed: surface the faint "something here
@@ -825,6 +885,15 @@ ObserveResult observeEncounter(State& state, const growth::GrowthState& growth, 
         state.observed_tier[o.id] = best;
         earned += bestTier->spirit_exp;
         changedKeys.push_back(keyObserved(o.id)); // now a held memory
+    }
+    else
+    {
+        // Looking again at something already seen pushes no new memory -- but a
+        // thought that went unwritten for want of a notebook is waiting on exactly
+        // this: coming back to the thing with something to write in. Re-offer that
+        // spot's key so the moment can complete where it started.
+        if (!state.unwritten.empty())
+            changedKeys.push_back(keyObserved(o.id));
     }
 
     std::vector<std::string> landed;
@@ -978,6 +1047,36 @@ void bindPlayerName(State& state, const std::string& name)
         sub(t.text);
         sub(t.miss_text);
     }
+}
+
+ObserveResult evaluateCarried(State& state, const growth::GrowthState& growth,
+                              const std::unordered_set<std::string>& held, const RollRng& rng)
+{
+    if (state.carrying == held)
+        return {Outcome::None, 0}; // nothing changed hands
+    // Every id that came OR went is a changed key: gaining the notebook opens what
+    // needed it, losing it closes them again.
+    std::vector<std::string> changed;
+    for (const auto& id : held)
+        if (state.carrying.count(id) == 0)
+            changed.push_back(keyItem(id));
+    for (const auto& id : state.carrying)
+        if (held.count(id) == 0)
+            changed.push_back(keyItem(id));
+    state.carrying = held;
+    // Deliberately NOT re-offering every trigger key here. A thought belongs to the
+    // moment that occasions it: finding a notebook in your bedroom must not fire
+    // everything you failed to write down all morning, in a heap, away from the
+    // things that prompted them. Each waiting thought comes back when its own
+    // input recurs -- you return to the spot and look again.
+
+    std::vector<std::string> landed;
+    std::vector<std::pair<std::string, int>> stat_gains;
+    const int earned = runEngine(state, growth, std::move(changed), rng, landed, stat_gains);
+    ObserveResult r{landed.empty() ? Outcome::None : Outcome::Thought, earned};
+    r.landed = std::move(landed);
+    r.stat_gains = std::move(stat_gains);
+    return r;
 }
 
 ObserveResult setFlag(State& state, const growth::GrowthState& growth, const std::string& flag,

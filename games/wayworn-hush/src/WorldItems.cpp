@@ -18,6 +18,11 @@ struct FloorItem
     std::string placement_id; // which placed thing (so taking it can be remembered)
     std::string icon;
     int size = 32;
+    // The art's cell on `icon` when it is a sheet (items share one, like every
+    // other art in the game); <0 = the whole image is the art.
+    int col = -1;
+    int row = -1;
+    float sort_offset = 0.0f; // depth base past the furniture it rests on
     interaction::ActionKind action = interaction::ActionKind::None;
     std::string target; // item id (Pickup) or loot table id (Gather)
     float cx = 0.0f;
@@ -41,9 +46,16 @@ void spawnFloorItem(EntityManager& em, const FloorItem& item, const Config& cfg)
     spr.texture_path = item.icon;
     spr.src_w = item.size;
     spr.src_h = item.size;
+    if (item.col >= 0 && item.row >= 0) // a cell on the shared items sheet
+    {
+        spr.src_x = item.col * item.size;
+        spr.src_y = item.row * item.size;
+    }
     spr.layer = 2; // character/prop layer -- Y-sorted against the player
     spr.use_sort_anchor = true;
-    spr.sort_anchor = item.cy; // base = its world-Y (it sits on the ground at its center)
+    // Base = its world-Y, plus any authored offset: a thing lying on the ground
+    // sorts where it lies; a thing ON furniture sorts just past what holds it.
+    spr.sort_anchor = item.cy + item.sort_offset;
     reg.emplace<Sprite>(e, spr);
 
     interaction::Interactable inter{};
@@ -111,10 +123,11 @@ void spawn(EntityManager& em, const std::vector<ldtk::PickupPlacement>& pickups,
                 continue;
             }
             // The item's own icon IS its world cue -- one source of truth (the satchel shows
-            // the same icon). Assume the icon is square at gather_size unless overridden.
+            // the same art). Its own cell size wins over the gather default.
             spawnFloorItem(em,
-                           FloorItem{p.placement_id, def->icon, cfg.gather_size,
-                                     interaction::ActionKind::Pickup, p.target, p.cx, p.cy},
+                           FloorItem{p.placement_id, def->icon, def->icon_size, def->icon_col,
+                                     def->icon_row, p.sort_offset, interaction::ActionKind::Pickup,
+                                     p.target, p.cx, p.cy},
                            cfg);
         }
         else // gather node: a stand-in sprite until node art is authored per spot
@@ -128,6 +141,7 @@ void spawn(EntityManager& em, const std::vector<ldtk::PickupPlacement>& pickups,
             }
             spawnFloorItem(em,
                            FloorItem{p.placement_id, cfg.gather_sprite, cfg.gather_size,
+                                     /*col=*/-1, /*row=*/-1, p.sort_offset,
                                      interaction::ActionKind::Gather, p.target, p.cx, p.cy},
                            cfg);
         }

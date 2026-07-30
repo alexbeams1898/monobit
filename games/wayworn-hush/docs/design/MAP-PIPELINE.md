@@ -148,28 +148,32 @@ things are named so they stay legible at fifty levels.
 |---|---|---|
 | Tileset files | source sheet -> lowercase atlas twin: `X.png` -> `assets/tilesets/x.png` (×2 nearest). **Enforced**: the importer resolves each level's atlas this way from the tileset its Ground layer was painted with. | `Inner.png` -> `inner.png` |
 | Levels | PascalCase, named for the PLACE; an interior is named for whose inside it is. Never `Level_0`-style defaults. | `Yard`, `Town`, `PlayerHouse`, `RichardsTrail` |
-| Spawn ids | `from_<where you came from>`, lower_snake. The one spawn with NO id is the new-game start — exactly one in the project, and the game starts in whatever level holds it (the spawn IS the start; no config twin). Spawns are for arrivals that are NOT a doorway (a cutscene drop, a first entrance); doorways need none — see warp hygiene below. | `from_yard`, `from_upstairs` |
+| Spawn ids | The one spawn with NO id is the new-game start — exactly one in the project, and the game starts in whatever level holds it (the spawn IS the start; no config twin). Doorways need no spawn at all: a warp arrives at a warp. | (the start spawn is id-less) |
 | Entity defs | PascalCase singular. | `House`, `Warp`, `Pickup` |
-| Entity/level fields | lower_snake. | `target_level`, `music`, `collider_height` |
+| Entity/level fields | lower_snake. | `target_id`, `music`, `collider_height` |
 | Flags / content ids | lower_snake (as everywhere in config). | `rock_moss_cleared` |
 
 Warp hygiene (the shipped model — a warp is a thin directional threshold strip):
 
-- A doorway is TWO warps, one per side, whose `target_level`s point at each other.
-  That is ALL a simple door needs: arrival auto-pairs by return address (the warp in
-  the destination whose `target_level` names the level you came from), and the game
-  steps the player clear of the arrival strip automatically.
+- **A door names the door it arrives at.** Each warp carries `id` (this side's
+  name), `target_id` (the warp it comes out at), and `facing`. That is the whole
+  model: the destination LEVEL is looked up from the target's id
+  (`ldtk::warpIndex`), so the map never states a destination twice and the two
+  halves can never disagree. A doorway is two warps naming each other.
+- Ids are unique across the PROJECT and describe the place, not the direction:
+  `richardshouse_out_front` / `richardshouse_in_front`. A direction-named id lies
+  the moment a building moves; a place-named one doesn't.
+- No PlayerSpawn is needed for a doorway — you emerge at the target warp and step
+  clear of its box along its `facing`. Spawns exist for the new-game start (the
+  id-less one) and any named arrival that is not a door.
 - Place the strip STRADDLING the threshold line itself (the door's face, the mat's
   outer edge) — thin along the crossing axis, as wide as the passage. It fires when
-  the player's intended path crosses it while pushing against its `facing`, so a
-  strip buried where feet can never reach still works, but the honest placement is
-  on the line being crossed.
+  the player's intended path crosses it while pushing against its `facing`.
 - `facing` = the way you step OUT when arriving here (a house door's exterior strip
   faces south; the interior mat faces north). Entering is always the opposite push.
-- `id` + `target` exist ONLY for disambiguation: several passages joining the same
-  two levels (the game logs the ambiguity when it guesses). Don't author them
-  otherwise.
-- The importer drops a Warp with no position or no `target_level` and logs it.
+- The importer drops a Warp with no position or no `target_id` and logs it; the map
+  linter errors on an unknown target, a non-mutual pair, a duplicate id, or a target
+  in the warp's own level.
 
 ## Cross-references
 

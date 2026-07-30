@@ -6,14 +6,15 @@ actually live by (docs/design/MAP-PIPELINE.md), so authoring slips surface here
 instead of as silent in-game weirdness:
 
   errors (exit 1):
-    - a Warp with no target_level, or one naming a level that does not exist
+    - a Warp with no id or no target_id, a target that names no warp/spawn, a
+      duplicate warp id, a target in the warp's OWN level, or a pair that does
+      not name each other (a passage is mutual)
     - fully-opaque tiles buried under other fully-opaque tiles (invisible
       garbage from painting over; --fix-stacks deletes them)
   warnings:
     - a Warp with no facing (defaults to south -- fine for south doors, a trap
       for stairs)
-    - a one-way passage (no warp in the target level points back) and
-      ambiguous return-pairs (several point back, none disambiguated by ids)
+    - a target that names no way back (a one-way passage)
     - fill_tile referencing a different tileset than the level's ground
     - a level painted with an interior tileset but interior != true
     - a ground tileset with no tag-source enum (nothing can be tagged Wall)
@@ -62,30 +63,50 @@ def collect(j):
     return levels, warps, spawns
 
 
-def check_warps(levels, warps):
+def check_warps(levels, warps, spawns):
+    """A door names the DOOR it arrives at (`target_id`), and nothing else -- the
+    level falls out of the lookup, so the map never states a destination twice and
+    the two halves can never disagree. Every door must therefore: have an id, name
+    a target that exists, be named back by it (a passage is mutual), sit in a
+    different level than its target, and carry a facing (the way you step out)."""
+    by_id = {}
     for lvl_id, f, _e in warps:
-        target = f.get("target_level")
-        if not target:
-            errors.append(f"{lvl_id}: Warp with no target_level (importer drops it)")
-        elif target not in levels:
-            errors.append(f"{lvl_id}: Warp targets '{target}' which does not exist")
-        if not f.get("facing"):
-            warnings.append(f"{lvl_id}: Warp to '{target}' has no facing (defaults to south)")
+        wid = f.get("id")
+        if not wid:
+            errors.append(f"{lvl_id}: a Warp has no id (nothing can target it)")
+            continue
+        if wid in by_id:
+            errors.append(f"warp id '{wid}' is used in both '{by_id[wid][0]}' and "
+                          f"'{lvl_id}' -- ids must be unique")
+            continue
+        by_id[wid] = (lvl_id, f)
+    # A named spawn is a legal arrival too (the map's start is the id-less one).
+    for lvl_id, f in spawns:
+        if f.get("id"):
+            by_id.setdefault(f["id"], (lvl_id, f))
 
-    # Return-pairing per (level -> target): a passage should have a way back, and an
-    # unambiguous one unless ids disambiguate.
-    back = defaultdict(list)
     for lvl_id, f, _e in warps:
-        if f.get("target_level") in levels:
-            back[(lvl_id, f["target_level"])].append(f)
-    for (src, dst), fs in back.items():
-        if (dst, src) not in back:
-            warnings.append(f"{src} -> {dst}: no warp back (arrival falls to default spawn)")
-        returns = back.get((dst, src), [])
-        if len(returns) > 1 and not all(f.get("target") for f in fs):
-            warnings.append(
-                f"{src} -> {dst}: {len(returns)} return warps in '{dst}' but not every "
-                f"'{src}' warp names a target -- auto-pair will guess")
+        wid, target = f.get("id"), f.get("target_id")
+        if not wid:
+            continue
+        if not target:
+            errors.append(f"{lvl_id}/{wid}: no target_id (the importer drops it)")
+            continue
+        if target not in by_id:
+            errors.append(f"{lvl_id}/{wid}: targets '{target}', which is no warp or spawn "
+                          f"anywhere in the map")
+            continue
+        dst_level, dst = by_id[target]
+        if dst_level == lvl_id:
+            errors.append(f"{lvl_id}/{wid}: targets '{target}' in its OWN level")
+        back = dst.get("target_id")
+        if back and back != wid:
+            errors.append(f"{lvl_id}/{wid}: targets '{target}', but '{target}' targets "
+                          f"'{back}' -- a passage names itself on both sides")
+        elif not back:
+            warnings.append(f"{lvl_id}/{wid}: targets '{target}', which names no way back")
+        if not f.get("facing"):
+            warnings.append(f"{lvl_id}/{wid}: no facing (defaults to south)")
 
 
 def check_levels(j, levels):
@@ -198,7 +219,7 @@ def main():
     j = json.loads(ldtk_path.read_text(encoding="utf-8"))
 
     levels, warps, spawns = collect(j)
-    check_warps(levels, warps)
+    check_warps(levels, warps, spawns)
     check_levels(j, levels)
     check_spawns(spawns)
     check_stacks(j, levels, args.fix_stacks, ldtk_path)

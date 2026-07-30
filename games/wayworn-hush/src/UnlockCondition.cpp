@@ -26,9 +26,23 @@ bool clauseHolds(const Clause& c, const Knowledge& k)
     for (const auto& f : c.flags)
         if (!k.has(k.flags, f))
             return false;
+    for (const auto& item : c.carrying)
+        if (!k.has(k.carrying, item))
+            return false;
     for (const auto& [name, level] : c.stat)
         if (k.stat(name) < level)
             return false;
+    // The negative half, LAST: a prefixed name that must not be held. Unprefixed
+    // reads as a flag (the common case).
+    for (const auto& id : c.without)
+    {
+        const bool held = id.rfind("item:", 0) == 0   ? k.has(k.carrying, id.substr(5))
+                          : id.rfind("obs:", 0) == 0  ? k.has(k.observed, id.substr(4))
+                          : id.rfind("flag:", 0) == 0 ? k.has(k.flags, id.substr(5))
+                                                      : k.has(k.flags, id);
+        if (held)
+            return false;
+    }
     return true;
 }
 
@@ -65,6 +79,8 @@ Condition parseCondition(const nlohmann::json& j)
         Clause c;
         stringList(cj, "flag", c.flags);
         stringList(cj, "observed", c.observed);
+        stringList(cj, "carrying", c.carrying);
+        stringList(cj, "without", c.without);
         if (const auto it = cj.find("stat"); it != cj.end() && it->is_object())
             for (const auto& [name, lvl] : it->items())
                 c.stat[name] = lvl.get<int>();

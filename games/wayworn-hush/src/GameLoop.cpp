@@ -342,7 +342,16 @@ void detectWarpCrossing(EntityManager& em, GameState& gs, float px, float py, fl
         const bool fires = warpFires(w, probe, touching);
         if (fires && gs.warp_armed && !gs.pending_warp.active)
         {
-            gs.pending_warp = {true, w.target_level, w.target};
+            // A door names the door it arrives at; which LEVEL that is comes from
+            // the project-wide warp index, so the map never says it twice.
+            const auto it = gs.warp_levels.find(w.target_id);
+            if (it == gs.warp_levels.end())
+            {
+                std::fprintf(stderr, "[warp] '%s' targets '%s', which is no warp in the map\n",
+                             w.id.c_str(), w.target_id.c_str());
+                break;
+            }
+            gs.pending_warp = {true, it->second, w.target_id};
             break;
         }
     }
@@ -1772,6 +1781,19 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // observations/actions (the pull-back to a spot).
     pumpStatChangeThoughts(gs);
 
+    // What he carries, mirrored onto psyche so `carrying` / `without` clauses can
+    // read it, re-running the engine over whatever changed hands (picking up the
+    // notebook is when a thought that ached for one gets its second look). Done
+    // HERE rather than at each satchel mutation -- there are several, and one
+    // forgotten site is a gate that silently lies.
+    {
+        std::unordered_set<std::string> held;
+        held.reserve(gs.satchel.items.size());
+        for (const auto& e : gs.satchel.items)
+            held.insert(e.id);
+        applyGains(gs, psyche::evaluateCarried(gs.psyche, gs.growth, held, observeNudge));
+    }
+
     // Cheap + idempotent (diffs against announced_unlocks), so once/frame.
     pumpUnlockNotifications(gs);
 
@@ -2106,9 +2128,17 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     const pause_page::Content content{gs.psyche, gs.satchel, gs.items,         gs.notebook,
                                       gs.clock,  gs.recipes, gs.crafting_state};
     // Resolve item-icon paths to textures through the engine's cache (the page stays engine-
-    // type-free). Empty path -> 0 (a swatch fallback in the grid).
-    const pause_page::IconResolver icon = [&engine](const std::string& path) -> std::uint32_t
-    { return path.empty() ? 0u : engine.textureManager().load(path); };
+    // type-free). The image SIZE comes back too, so the page can draw an item's cell on the
+    // shared items sheet. Empty path -> 0 (a swatch fallback in the grid).
+    const pause_page::IconResolver icon = [&engine](const std::string& path)
+    {
+        pause_page::IconImage img{};
+        if (path.empty())
+            return img;
+        img.tex = engine.textureManager().load(path);
+        engine.textureManager().getDimensions(path, img.w, img.h);
+        return img;
+    };
     // The mouse action path funnels through the SAME enactPageAction as the keyboard, so a
     // Combine click enacts the craft exactly like Space does (no per-action wiring to forget).
     enactPageAction(engine, em, gs,

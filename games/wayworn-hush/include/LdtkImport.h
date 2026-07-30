@@ -49,17 +49,22 @@ struct SpawnPoint
 // levels. Standing on a strip never re-fires it (the latch re-arms off-strip).
 struct WarpPlacement
 {
-    std::string id; // this side's name -- what the other side's `target` names
+    std::string id; // this side's name -- what the other side's `target_id` names
     float x = 0.0f; // box center, world px
     float y = 0.0f;
     float w = 32.0f; // box size, world px
     float h = 32.0f;
-    std::string target_level; // LDtk level identifier to load
-    // Where to arrive: a Warp id in the target level first, else a SpawnPoint id,
-    // else auto-pair by return address, else the level's default spawn.
-    std::string target;
+    // The warp this one arrives at, by id. THE only link: a door names a door, and
+    // which level that is falls out of the lookup (warpIndex) -- naming the level
+    // too would be a second source of truth free to disagree with the first.
+    std::string target_id;
     std::string facing; // the cardinal you step out with when arriving HERE (empty = south)
 };
+
+// Every warp in the PROJECT: id -> the level holding it. Built by scanning all
+// levels (a cheap parse of the .ldtk, no region build), so a warp's `target_id`
+// resolves to a level without the author repeating it. Empty on a missing file.
+std::unordered_map<std::string, std::string> warpIndex(const std::string& ldtk_path);
 
 // Where a character stands, read from an Npc entity: `npc` names the authored
 // character (config/npcs/<npc>.json -- WHO), (wx,wy) is the spot they stand on
@@ -114,6 +119,12 @@ struct PickupPlacement
     std::string target; // item id (Item) or loot table id (Loot)
     float cx = 0.0f;    // center, world px
     float cy = 0.0f;
+    // An item RESTING on furniture (a watch on a desk) sorts by where it SITS, not
+    // where its own pixels are: `sort_offset` (authored source px, +down) pushes
+    // its depth base past the thing holding it. Same field, same meaning as a
+    // prop's -- Y-sort has no height axis, so being on top of something is
+    // authored. 0 = sorts by its own position, like anything lying on the ground.
+    float sort_offset = 0.0f;
 };
 
 // A prop: an LDtk ENTITY that carries a tileset region (a tree, a rock -- placed,

@@ -28,6 +28,14 @@ ItemDef parseDef(const nlohmann::json& j, const std::string& stem)
     d.name = j.value("name", d.id);
     d.description = j.value("description", std::string{});
     d.icon = j.value("icon", std::string{});
+    d.icon_size = j.value("icon_size", d.icon_size);
+    // A cell on the shared items sheet: {"icon_cell": [col, row]}. Absent -> the
+    // whole image is the art (a loose per-item PNG).
+    if (const auto it = j.find("icon_cell"); it != j.end() && it->is_array() && it->size() == 2)
+    {
+        d.icon_col = (*it)[0].get<int>();
+        d.icon_row = (*it)[1].get<int>();
+    }
     d.category = categoryFrom(j.value("category", std::string{"keepsake"}));
     d.rarity = j.value("rarity", 1);
     d.max_stack = std::max(1, j.value("max_stack", 99));

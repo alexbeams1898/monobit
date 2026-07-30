@@ -92,7 +92,16 @@ struct Content
 // Resolve an item's icon path to a GL texture id (the caller wraps the engine's
 // TextureManager, so the page stays free of engine types). Returns 0 if unavailable -> the
 // icon cell falls back to a plain rarity-tinted swatch.
-using IconResolver = std::function<std::uint32_t(const std::string&)>;
+// An icon image, resolved: the texture and its pixel size. The size is what lets
+// a shared sheet's CELL be drawn (items live on one sheet like the rest of the
+// game's art -- see ItemDef::iconUv); 0 = unavailable, draw the rarity swatch.
+struct IconImage
+{
+    std::uint32_t tex = 0;
+    int w = 0;
+    int h = 0;
+};
+using IconResolver = std::function<IconImage(const std::string&)>;
 
 // Draw the page (overlay + tab strip + content) and handle the mouse against the
 // geometry it draws: hovering a tab brightens it, clicking a tab switches to it,
