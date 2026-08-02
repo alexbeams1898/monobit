@@ -271,6 +271,33 @@ void Engine::processEvents()
             if (on_resize)
                 on_resize(*this, window_w, window_h);
         }
+        // A desktop-fullscreen window dragged to / activated on a DIFFERENT display
+        // (e.g. unplugging an external monitor, switching to the laptop panel) keeps
+        // the OLD display's resolution — SDL does not re-fit it, and often no
+        // SIZE_CHANGED follows. Re-fit it to the new display's desktop mode by
+        // re-applying the fullscreen-desktop flag; the resulting resize is picked up
+        // by SIZE_CHANGED above (or we sync here if the size is already current).
+        else if (event.type == SDL_WINDOWEVENT &&
+                 event.window.event == SDL_WINDOWEVENT_DISPLAY_CHANGED &&
+                 window_mode == WindowMode::BorderlessFullscreen)
+        {
+            const int display = event.window.data1;
+            SDL_DisplayMode mode;
+            if (SDL_GetDesktopDisplayMode(display, &mode) == 0)
+            {
+                // Toggle fullscreen off/on so SDL re-fits the window to `display`'s
+                // current desktop resolution rather than keeping the prior one.
+                SDL_SetWindowFullscreen(window, 0);
+                SDL_SetWindowDisplayMode(window, &mode);
+                SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+                SDL_GL_GetDrawableSize(window, &window_w, &window_h);
+                UIRenderer::resize(window_w, window_h);
+                if (on_resize)
+                    on_resize(*this, window_w, window_h);
+                std::fprintf(stderr, "[engine] display changed -> %d (%dx%d), refit to %dx%d\n",
+                             display, mode.w, mode.h, window_w, window_h);
+            }
+        }
 
         // Buffer one-shot input events so they survive across fixed-step ticks.
         // Without this, a brief key tap between two ticks is lost because

@@ -1,0 +1,14 @@
+{
+    "_comment": "A pocket watch -- a KEY ITEM. Carrying it lets the pilgrim READ the hour off a notebook entry; the moment itself is always recorded, because the world's time runs whether or not he can tell it (has(satchel,'watch') gates the hour on the dateline, never the record; see docs/design/NOTEBOOK.md + WorldClock.h). Found, not started with -- until then a note shows only which day of the walk it came on.",
+    "id": "watch",
+    "name": "Pocket Watch",
+    "description": "A small brass watch, still ticking. It tells you when.",
+    "icon": "assets/tilesets/items.png",
+    "icon_cell": [
+        5,
+        0
+    ],
+    "icon_size": 32,
+    "category": "key_item",
+    "rarity": 4
+}

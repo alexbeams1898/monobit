@@ -1,0 +1,4 @@
+#pragma once
+// Auto-generated from CMakeLists.txt at configure time. Do not edit directly.
+// To bump the version, edit the project(... VERSION ...) line in root CMakeLists.txt.
+#define GAME_VERSION "@PROJECT_VERSION@"

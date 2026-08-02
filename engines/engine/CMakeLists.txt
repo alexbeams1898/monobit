@@ -31,7 +31,9 @@ target_sources(engine PRIVATE
     src/systems/SteeringSystem.cpp
     src/systems/CameraPanSystem.cpp
     src/utils/DirectionUtils.cpp
+    src/utils/SaveFile.cpp
     src/gl/ShaderUtils.cpp
+    src/gl/PixelRenderTarget.cpp
 )
 
 target_include_directories(engine
@@ -74,11 +76,14 @@ target_include_directories(engine SYSTEM PRIVATE ${CMAKE_SOURCE_DIR}/vendor/stb)
 add_executable(engine-tests
     tests/ecs_test.cpp
     tests/collision_test.cpp
+    tests/tilemap_test.cpp
     tests/animation_test.cpp
     tests/inventory_ops_test.cpp
     tests/crafting_ops_test.cpp
     tests/evolution_ops_test.cpp
     tests/discovery_test.cpp
+    tests/blit_rect_test.cpp
+    tests/save_file_test.cpp
 )
 target_link_libraries(engine-tests PRIVATE engine Catch2::Catch2WithMain)
 

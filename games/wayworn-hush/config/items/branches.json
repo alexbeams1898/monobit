@@ -1,0 +1,15 @@
+{
+    "_comment": "A PRACTICAL item -- what the storm left on Mr. Richards' path, and the first material the pilgrim ever gathers. Dry wood: the crafting loop's fuel-and-frame stock.",
+    "id": "branches",
+    "name": "Fallen Branches",
+    "description": "An armful of storm-broken wood, still smelling of green sap. Dry it and it burns; bind it and it holds.",
+    "icon": "assets/tilesets/items.png",
+    "icon_cell": [
+        0,
+        0
+    ],
+    "icon_size": 32,
+    "category": "practical",
+    "rarity": 1,
+    "max_stack": 99
+}

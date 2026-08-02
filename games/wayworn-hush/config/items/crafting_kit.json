@@ -1,0 +1,15 @@
+{
+    "_comment": "MAKING IS THE KIT -- the instrument that opens the Craft page, the way the notebook opens writing a thought down. Mr Richards' own, lent rather than given: it is the first thing anyone trusts the boy with. A key item, so it can never be thrown into the pot it makes possible.",
+    "id": "crafting_kit",
+    "name": "Mr Richards' Kit",
+    "description": "A canvas roll of tools worn smooth at the handles. Someone has used these for forty years and kept them sharp.",
+    "icon": "assets/tilesets/items.png",
+    "icon_cell": [
+        1,
+        0
+    ],
+    "icon_size": 32,
+    "category": "key_item",
+    "rarity": 3,
+    "max_stack": 1
+}

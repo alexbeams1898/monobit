@@ -1,0 +1,8 @@
+{
+    "_comment": "UI font roles on a 1.25 (Major-Third) scale, anchored on the reading body size. Sizes are FRACTIONS of the HUD canvas width (hud::scale = the 16:9 safe-area width), so text scales with the window like the HUD regions do -- pixel size = fraction * hud::scale(window). Multiply by ref_width to read them as px on that reference canvas: body 0.01875*2560 = 48, heading 38, label 31. Best-practice role-based ratio scale, not scattered magic numbers: bump body and the rest scale with it. Kept above the readable floor at the target resolution.",
+    "face": "assets/fonts/placeholder.ttf",
+    "ref_width": 2560,
+    "body": 0.01875,
+    "heading": 0.01484,
+    "label": 0.01211
+}

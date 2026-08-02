@@ -1,0 +1,8 @@
+{
+    "_comment": "The pocket watch's HUD readout (see include/WatchHud.h). Shown only while the watch is carried -- the world's time runs regardless; this is the pilgrim reading it. Holds still while the pause page is open, because the world's clock does. Sits just above the stance badge so the two read as one corner. x/y are window fractions (top-left origin); pad is a canvas fraction. Colors are RGBA 0..1. Tunable -- edit + relaunch (dev reads assets from source).",
+    "x": 0.02,
+    "y": 0.86,
+    "pad": 0.008,
+    "text": [0.86, 0.84, 0.72, 1.0],
+    "panel": [0.10, 0.11, 0.13, 0.72]
+}

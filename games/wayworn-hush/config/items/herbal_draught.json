@@ -1,0 +1,15 @@
+{
+    "_comment": "A PRACTICAL consumable -- the first craftable, a placeholder for the craft loop. Made from gathered thyme once you understand it (see config/recipes/herbal_draught.json). Used up; its per-copy strength comes from the craft outcome. Placeholder; effect/buff wiring lands with the consumption system.",
+    "id": "herbal_draught",
+    "name": "Herbal Draught",
+    "description": "A steeped, bitter-green draught. It steadies you.",
+    "icon": "assets/tilesets/items.png",
+    "icon_cell": [
+        2,
+        0
+    ],
+    "icon_size": 32,
+    "category": "practical",
+    "rarity": 2,
+    "max_stack": 20
+}

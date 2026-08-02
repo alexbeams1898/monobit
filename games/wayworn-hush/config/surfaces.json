@@ -1,0 +1,27 @@
+{
+    "_comment": "Terrain surfaces (see include/Surfaces.h). Each ground tile is tagged with a surface in the LDtk tileset editor -- the Overworld tileset via the 'Surface' enum, interior tilesets via 'InnerSurface' (Wall/Floor); the importer reads whatever tags the level's own tileset carries and looks the NAMES up here, so the enums can differ per tileset but the names share this one table. 'walkable' drives terrain collision -- water and walls block like Pokemon edges, no separate collision layer. The surface name is also the join key for per-surface footsteps (config/footsteps.json). 'default' applies to any tile with no surface tag (bare grass fill) -- which is WALKABLE, so interior void must be tagged Wall, not left bare.",
+    "default": "Grass",
+    "surfaces": {
+        "Grass": {
+            "walkable": true
+        },
+        "Sand": {
+            "walkable": true
+        },
+        "Stone": {
+            "walkable": true
+        },
+        "Water": {
+            "walkable": false
+        },
+        "Trees": {
+            "walkable": false
+        },
+        "Wall": {
+            "walkable": false
+        },
+        "Floor": {
+            "walkable": true
+        }
+    }
+}

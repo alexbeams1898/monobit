@@ -1,0 +1,18 @@
+{
+    "_comment": "Walk-on structures that aren't native terrain -- bridges, docks, wooden platforms, stone floors (see include/Structures.h). Each is placed as ONE resizable LDtk entity whose identifier is the key here; the importer tiles this 9-slice art across the entity's rect and tags it surface=<surface> (so visuals, collision, footsteps fall out of the one placed box -- no per-tile painting). Cells are [col,row] in the 16px SOURCE tileset (importer x2's to the 32px world atlas). Positions: nw/n/ne = top edge, w/c/e = middle, sw/s/se = bottom edge; a thin structure uses only the relevant caps/column (linear bridge = the 1-wide sub-case). 'walkable' is per-slice: a slice's art always renders, but only walkable=true slices become footing (walkable + surface); walkable=false slices are cosmetic OVERHANG (e.g. a bridge's side rails hang over water -- rendered, but you don't walk there, and the underlying terrain's walkability is left untouched). Default true if omitted. 'surface' is the LDtk Surface enum value. Add a type (Dock, etc.) by adding an entry + a matching LDtk entity.",
+    "structures": {
+        "Bridge": {
+            "surface": "Bridge",
+            "tiles": {
+                "nw": [5, 6], "n": [6, 6], "ne": [7, 6],
+                "w":  [5, 7], "c": [6, 7], "e":  [7, 7],
+                "sw": [5, 8], "s": [6, 8], "se": [7, 8]
+            },
+            "walkable": {
+                "nw": false, "n": true, "ne": false,
+                "w":  false, "c": true, "e":  false,
+                "sw": false, "s": true, "se": false
+            }
+        }
+    }
+}

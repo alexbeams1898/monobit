@@ -1,0 +1,15 @@
+{
+    "_comment": "The opening: the screen and the room's sounds fade in together -- literally waking up to them. Ends at the first decision (the `waking` must_choose menu): silence the alarm and TV yourself and get_up unlocks, or hide under the covers and leave the morning to Mom. The score holds until this scene's flag lands (world.json ambient_gate_flag). What happens NEXT branches -- see mom_enters (covers pulled) and mom_calls (you got up) -- which share a completion flag and are therefore mutually exclusive.",
+    "id": "wake",
+    "level": "PlayerRoom",
+    "set_flag": "first_wake_done",
+    "steps": [
+        { "sound": "birds" },
+        { "sound": "alarm" },
+        { "sound": "tv" },
+        { "fade_in": 4.0 },
+        { "wait": 0.6 },
+        { "observe": "waking" },
+        { "menu": "waking", "must_choose": true }
+    ]
+}

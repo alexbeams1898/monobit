@@ -1,0 +1,19 @@
+{
+    "_comment": "WHO Mr. Richards is: art + name + footprint. WHERE he stands is an Npc entity in the map naming this id; WHAT he says is speaker-flagged psyche content. The neighbour whose trail the player promised to clear -- the errand the first morning hands out.",
+    "id": "mr_richards",
+    "name": "Mr. Richards",
+    "texture": "assets/sprites/richards_walk.png",
+    "frame_width": 64,
+    "frame_height": 64,
+    "direction_count": 4,
+    "max_frames_per_state": 9,
+    "idle": {
+        "row": 1,
+        "frames": 1,
+        "duration": 0.0
+    },
+    "collider": {
+        "w": 22.0,
+        "h": 12.0
+    }
+}

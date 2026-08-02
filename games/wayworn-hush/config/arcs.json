@@ -1,0 +1,59 @@
+{
+    "_comment": "Story arcs -- a thread. An arc is one goal_flag reached by any of several ROUTES, so a looker, a reasoner and a maker arrive at the same understanding by different means. A route's unlock_when uses the same clause grammar as everything else (OR of ANDs). The ROUTES are authoring apparatus: nothing in play reads them, they are checked at boot and findings go to wayworn-hush.log, so a renamed flag or a deleted encounter that strands a route is caught here rather than in play. An arc with fewer than two routes is reported UNLESS it has a `line` -- an errand someone asked of him may honestly have one way to discharge it. `line` is what he writes in his agenda (omit it and the arc stays invisible scaffolding); `known_when` is when he learns it; `window` is the hours and days the world will receive it, in the same clause grammar (`between`, `day_min`, `day_max`). A shut window never FAILS a thread -- it only says 'not now'. See docs/design/MAP-ARCHITECTURE.md section 6.",
+    "_example_not_loaded": {
+        "id": "the_shore",
+        "goal_flag": "shore_understood",
+        "routes": [
+            {
+                "label": "by looking",
+                "unlock_when": [
+                    {
+                        "observed": [
+                            "tide_line",
+                            "whelk_case"
+                        ],
+                        "stat": {
+                            "perception": 3
+                        }
+                    }
+                ]
+            },
+            {
+                "label": "by doing",
+                "unlock_when": [
+                    {
+                        "flag": "cleared_the_reeds"
+                    }
+                ]
+            }
+        ]
+    },
+    "arcs": [
+        {
+            "id": "richards_debris",
+            "goal_flag": "richards_debris_cleared",
+            "line": "Clear the storm debris from Mr. Richards' trail.",
+            "known_when": [
+                {
+                    "flag": "mom_mentioned_trail"
+                }
+            ],
+            "window": {
+                "between": [
+                    "08:00",
+                    "20:00"
+                ]
+            },
+            "routes": [
+                {
+                    "label": "by clearing it",
+                    "unlock_when": [
+                        {
+                            "flag": "mom_mentioned_trail"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

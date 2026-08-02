@@ -79,6 +79,10 @@ struct Sprite
     // Geometry-level horizontal mirror. Unlike flip_x (UV-only), this composes
     // correctly with rotation — the mirror happens before the rotation.
     bool geo_mirror_x = false;
+    // Game-writable opacity multiplier (0 = invisible, 1 = opaque). Multiplied
+    // into the final draw alpha so games can animate sprite fades directly.
+    // Default 1.0 leaves existing sprites unchanged.
+    float alpha = 1.0f;
 };
 
 struct Collider
@@ -181,6 +185,20 @@ struct Glow
 {
     float scale = 2.5f;
     float alpha = 0.25f;
+};
+
+// Outline -- a lit rim drawn around the sprite's opaque silhouette (a selection /
+// "active target" cue). Emplaced by a game system on the entity to highlight; RenderSystem
+// draws the rim in a pass just before the sprite. `width` is the rim thickness in TEXELS of
+// the source texture (so it scales with the sprite's own resolution, not the zoom). `alpha`
+// fades the rim. Distinct from Glow (a soft scaled-up halo) -- this hugs the shape's edge.
+struct Outline
+{
+    float r = 1.0f;
+    float g = 0.9f;
+    float b = 0.5f;
+    float width = 1.5f; // rim thickness, in source texels
+    float alpha = 1.0f;
 };
 
 // Dead -- emplaced when Health reaches zero. Universal lifecycle marker.

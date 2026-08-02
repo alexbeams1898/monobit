@@ -1,0 +1,10 @@
+{
+    "_comment": "Feel + SFX for the animated reading box (drop-in, typewriter reveal, manual dismiss). observe.ogg paths are placeholders until the OST pass; swap here, no code change. notebook_sound is the pen-on-paper cue for a NEW thought (notebook entry) -- plays instead of appear_sound for that case. drop_in_secs = entrance slide/fade; chars_per_sec = typewriter speed; fade_out_secs = fade on dismiss; blip_every = play a tick every N characters. Body wraps to its fixed HUD region width (config/hud.json), not a config value.",
+    "blip_sound": "assets/audio/observe.ogg",
+    "appear_sound": "assets/audio/observe.ogg",
+    "notebook_sound": "assets/audio/notebook_entry.ogg",
+    "drop_in_secs": 0.22,
+    "chars_per_sec": 42.0,
+    "fade_out_secs": 0.7,
+    "blip_every": 2
+}

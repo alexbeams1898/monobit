@@ -127,7 +127,7 @@ TEST_CASE("TileMapRenderer culling: correct tile range for camera at map centre"
     constexpr float cam_y = 480.0f;
     constexpr int win_w = 1280;
     constexpr int win_h = 720;
-    constexpr float ts = static_cast<float>(TileMap::TILE_SIZE);
+    constexpr float ts = 32.0f; // this game's world grid
     constexpr int map_w = 80;
     constexpr int map_h = 60;
     const float half_w = static_cast<float>(win_w) * 0.5f;
@@ -151,7 +151,7 @@ TEST_CASE("TileMapRenderer culling: range clamps to map bounds at edges", "[tile
     constexpr float cam_y = 0.0f;
     constexpr int win_w = 1280;
     constexpr int win_h = 720;
-    constexpr float ts = static_cast<float>(TileMap::TILE_SIZE);
+    constexpr float ts = 32.0f; // this game's world grid
     constexpr int map_w = 80;
     constexpr int map_h = 60;
     const float half_w = static_cast<float>(win_w) * 0.5f;
@@ -270,8 +270,8 @@ TEST_CASE("TileMapLoader::generate builds TileMap with valid layout", "[tilemap]
     REQUIRE(em.registry().view<Collider>().size() == 0u);
 
     // Player spawn must be inside the map world bounds.
-    const float map_world_w = static_cast<float>(em.tile_map.width * TileMap::TILE_SIZE);
-    const float map_world_h = static_cast<float>(em.tile_map.height * TileMap::TILE_SIZE);
+    const float map_world_w = static_cast<float>(em.tile_map.width * em.tile_map.tile_size);
+    const float map_world_h = static_cast<float>(em.tile_map.height * em.tile_map.tile_size);
     REQUIRE(px >= 0.0f);
     REQUIRE(px <= map_world_w);
     REQUIRE(py >= 0.0f);

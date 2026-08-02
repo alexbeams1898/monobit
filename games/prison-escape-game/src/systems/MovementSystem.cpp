@@ -246,7 +246,7 @@ bool touchesWall(const EntityManager& em, bool use_tile_map,
     const float hh = mh * 0.5f;
     if (use_tile_map)
     {
-        const float ts = static_cast<float>(TileMap::TILE_SIZE);
+        const float ts = static_cast<float>(em.tile_map.tile_size);
         const int cmin = static_cast<int>(std::floor((cx - hw) / ts));
         const int cmax = static_cast<int>(std::floor((cx + hw) / ts));
         const int rmin = static_cast<int>(std::floor((cy - hh) / ts));

@@ -25,15 +25,14 @@ struct BfsItem
     int parent_row;
 };
 
-// Mark all 4 flow-field cells covered by one tilemap tile as wall.
-// Tiles are 32px and cells are 16px, so each tile maps to a 2×2
-// cell footprint.
-void markWallTile(WallGrid walls, int col, int row)
+// Mark the flow-field cells covered by one tilemap tile as wall.
+// Calibrated for a tile that spans a 2x2 cell footprint (tile_size == 2 *
+// CELL_SIZE, e.g. a 32px tile over 16px cells); games using this navigation
+// field size their tiles to that convention.
+void markWallTile(WallGrid walls, int col, int row, int tile_size)
 {
-    const int c0 =
-        static_cast<int>(static_cast<float>(col * TileMap::TILE_SIZE) / FlowField::CELL_SIZE);
-    const int r0 =
-        static_cast<int>(static_cast<float>(row * TileMap::TILE_SIZE) / FlowField::CELL_SIZE);
+    const int c0 = static_cast<int>(static_cast<float>(col * tile_size) / FlowField::CELL_SIZE);
+    const int r0 = static_cast<int>(static_cast<float>(row * tile_size) / FlowField::CELL_SIZE);
     const int c1 = c0 + 1;
     const int r1 = r0 + 1;
     if (r0 < FlowField::ROWS && c0 < FlowField::COLS)
@@ -52,7 +51,7 @@ void buildWallsFromTileMap(WallGrid walls, const TileMap& tile_map)
     for (int row = 0; row < tile_map.height; ++row)
         for (int col = 0; col < tile_map.width; ++col)
             if (!tile_map.at(col, row).walkable)
-                markWallTile(walls, col, row);
+                markWallTile(walls, col, row, tile_map.tile_size);
 }
 
 // Mark walls from solid Collider entities (no Velocity = static).

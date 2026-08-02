@@ -1,0 +1,14 @@
+{
+    "_comment": "PLACEHOLDER recipe. Always makeable: 3 wild_thyme in the pot -> a draught, no gate. Making it the first time without already knowing it RECORDS it (learnRecipe -- toast + reward + a recipe book later). Certain events also hand it over early (the rock's moss deed teaches it via grant_recipe -- see psyche.json), but that's a shortcut to the record, never a requirement. Output: a consumable whose quality scales on the doing-layer stat + a roll. Making it feeds that stat XP (inverse to mastery). Tune/replace when real content lands.",
+    "id": "herbal_draught",
+    "inputs": [
+        { "item": "wild_thyme", "qty": 3 }
+    ],
+    "output_item": "herbal_draught",
+    "output_qty": 1,
+    "kind": "consumable",
+    "scaling": { "stat": "survival", "base": 1.0 },
+    "xp_stats": { "survival": 7, "craftsmanship": 3 },
+    "xp_base": 8,
+    "reveals_flag": "brewed_first_draught"
+}

@@ -1,0 +1,15 @@
+{
+    "_comment": "Crafting outcome + XP tuning (see include/Crafting.h). Consumable outcome quality = scaling.base + quality_per_stat*craftStat + a luck roll in [0, quality_luck], clamped to quality_max. XP feeds the recipe's stat INVERSE to mastery: factor = clamp(xp_reach_gain*quality - xp_mastery_falloff*craftStat + 1, xp_floor, xp_ceiling), so reaching above your level pays more and routine work pays little. learn_* is the one-time reward for DISCOVERING a recipe (its first successful craft): learn_faculty_exp EXP into learn_faculty + learn_spirit_exp Spirit EXP. The craft's own XP goes to the recipe's xp_stat, so making things grows the doing layer the way observing grows a faculty. Coefficients only; the math lives in code. Tunable -- edit + relaunch (dev reads assets from source). kit_item is the INSTRUMENT that opens making at all: without it carried there is no Craft page (the notebook rule, applied to the hands) -- ingredients remain the only requirement for any given recipe. Empty turns the rule off.",
+    "quality_per_stat": 0.05,
+    "quality_luck": 0.3,
+    "quality_max": 2.0,
+    "xp_reach_gain": 0.6,
+    "xp_mastery_falloff": 0.1,
+    "xp_floor": 0.15,
+    "xp_ceiling": 2.0,
+    "default_xp_stat": "craftsmanship",
+    "learn_faculty": "perception",
+    "learn_faculty_exp": 25,
+    "learn_spirit_exp": 10,
+    "kit_item": "crafting_kit"
+}

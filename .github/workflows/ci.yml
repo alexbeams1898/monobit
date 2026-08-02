@@ -297,6 +297,7 @@ jobs:
             --file-filter='engines/engine/*' \
             --file-filter='games/prison-escape-game/*' \
             --file-filter='games/selva-oscura/*' \
+            --file-filter='games/wayworn-hush/*' \
             --error-exitcode=1 \
             --quiet
 
@@ -325,6 +326,7 @@ jobs:
           lizard \
             engines/engine/ \
             games/selva-oscura/src/ \
+            games/wayworn-hush/src/ \
             -C 15 -L 250 -a 8 -w
 
   # -----------------------------------------------------------------------

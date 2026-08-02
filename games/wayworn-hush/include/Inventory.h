@@ -1,0 +1,149 @@
+#pragma once
+
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+// The pilgrim's satchel -- "things carried." Deliberately light (DESIGN.md: no
+// weight, no slot-Tetris): an unbounded, unordered bag, plus the ONE thing he has
+// taken up in his hands. Two layers, like the
+// engine's other authored data -- an immutable ItemDef (blueprint, one JSON per
+// item) resolved from an ItemRegistry, and a lightweight ItemInstance (a copy in
+// the bag). Key items (notebook, watch, gating gear) are queried by has(); their
+// "carried effect" is the caller checking has() and acting. See docs/design/
+// INVENTORY.md.
+namespace inventory
+{
+
+// The roles the fiction names (DESIGN.md "Gathering / inventory"):
+//   Practical -- ingredients / crafting materials. Stackable, consumed.
+//   Keepsake  -- collection / attention-reward. Kept for itself, no mechanical use.
+//   KeyItem   -- something the world grants you access THROUGH (the notebook opens
+//                writing, the kit opens making). Works from inside the bag, queried
+//                by has(); never consumed, never thrown in the pot.
+//   Tool      -- something you take UP and use on a thing. The ONLY category that can
+//                be held (Satchel::held), which is what keeps materials out of his
+//                hands, and holding one is what unlocks deeds on what he faces.
+enum class Category
+{
+    Practical,
+    Keepsake,
+    KeyItem,
+    Tool
+};
+
+// Immutable blueprint, authored one-JSON-per-item, keyed by a short stable id.
+// Small by design -- no category-specific kitchen sink; add a sub-struct if a
+// category ever needs its own data.
+struct ItemDef
+{
+    std::string id;          // "river_stone", "notebook", "wild_thyme"
+    std::string name;        // display name
+    std::string description; // flavor / what it is
+    // WHERE the art is. Items live on one packed sheet like every other art in
+    // the game (assets/tilesets/items.png, built by tools/tileset/repack.py), so
+    // item art is browsable and paletted rather than a folder of loose files:
+    // `icon` is that sheet and `icon_col/row` the cell. A per-item sheet path
+    // still works (author `icon` alone), which is what a one-off or a placeholder
+    // uses. `icon_size` is the cell edge in px.
+    std::string icon;
+    int icon_col = -1; // <0 = the whole `icon` image is the art (no sheet cell)
+    int icon_row = -1;
+    int icon_size = 32;
+
+    // The art's UV rect within `icon`, given that image's pixel size -- the ONE
+    // place a cell becomes texture coordinates, so the floor sprite, the satchel
+    // chip and anything later can't disagree. Whole-image art returns {0,0,1,1}.
+    struct Uv
+    {
+        float x, y, w, h;
+    };
+    Uv iconUv(int image_w, int image_h) const
+    {
+        if (icon_col < 0 || icon_row < 0 || image_w <= 0 || image_h <= 0)
+            return {0.0f, 0.0f, 1.0f, 1.0f};
+        const float s = static_cast<float>(icon_size);
+        return {static_cast<float>(icon_col) * s / static_cast<float>(image_w),
+                static_cast<float>(icon_row) * s / static_cast<float>(image_h),
+                s / static_cast<float>(image_w), s / static_cast<float>(image_h)};
+    }
+    Category category = Category::Keepsake;
+    // Per-TYPE rarity on the SAME 1..5 scale as reading difficulty (reuse
+    // reading_color::rarityWord/rarityColor). 0 = no rarity label.
+    int rarity = 1;
+    // Every item stacks -- the satchel collapses identical ids into one row with a count. A high
+    // default so a config rarely needs to set it; an authored cap (e.g. a consumable) spills into
+    // fresh stacks past the cap. (There is no "unstackable" item; a singleton like the notebook
+    // just never reaches a count > 1.)
+    int max_stack = 99;
+};
+
+// A concrete copy in the satchel.
+struct ItemInstance
+{
+    std::string id;     // -> ItemDef
+    int quantity = 1;   // for stackables
+    bool is_new = true; // "newly found" badge for the UI (mirrors reading is_new)
+};
+
+// The player's bag: a plain vector, no cap.
+struct Satchel
+{
+    std::vector<ItemInstance> items;
+    // What he has taken up: one item id, or empty for empty hands. Only a Tool can be here --
+    // a material is not something you hold, it is something you carry. Holding gates DEEDS
+    // (unlock::Clause::holding), so what is in his hands decides what he can do to the thing
+    // in front of him. Saved with the walk.
+    std::string held;
+};
+
+// The loaded blueprints, keyed by id.
+struct Registry
+{
+    std::unordered_map<std::string, ItemDef> defs;
+
+    const ItemDef* find(const std::string& id) const
+    {
+        const auto it = defs.find(id);
+        return it != defs.end() ? &it->second : nullptr;
+    }
+};
+
+// Load all item blueprints from a directory of JSON files (one per item). The id
+// is the JSON's "id" field, or the filename stem if absent. Silent no-op if the
+// directory is missing. Call once at startup.
+void load(Registry& out, const std::string& dir);
+
+// Add an instance to the satchel. If its def is stackable, merges into an existing
+// stack up to max_stack (spilling into new stacks past the cap); otherwise appends
+// a distinct entry. Needs the registry to know stackability + max_stack.
+void add(Satchel& satchel, const Registry& registry, ItemInstance item);
+
+// Remove up to `qty` of an item (across stacks). Returns false and removes nothing
+// if fewer than `qty` are present (callers gate on the return, e.g. crafting cost).
+bool remove(Satchel& satchel, const std::string& id, int qty = 1);
+
+// Total quantity of an item across all its stacks.
+int count(const Satchel& satchel, const std::string& id);
+
+// Clear the "newly found" flag on every carried item (they've been seen). Called when the
+// player leaves the satchel view.
+void markAllSeen(Satchel& satchel);
+
+// Whether the pilgrim carries at least one. The gating query -- item-gating and
+// key-item carried-effects read this everywhere (has(satchel, "notebook")).
+bool has(const Satchel& satchel, const std::string& id);
+
+// Is this a thing he can take up? Only a Tool -- an unknown id is not.
+bool equippable(const Registry& registry, const std::string& id);
+
+// Take `id` up (or put it away when it is already held -- the same gesture both ways). Refuses
+// anything that is not a carried Tool, so the caller can offer the gesture on every row and
+// let the item decide. Returns what is held afterwards changed.
+bool toggleHeld(Satchel& satchel, const Registry& registry, const std::string& id);
+
+// Drop the held item if it is no longer in the bag (spent, given away, consumed). The hands
+// and the bag are two records of one fact; this is what keeps them from disagreeing.
+void reconcileHeld(Satchel& satchel);
+
+} // namespace inventory

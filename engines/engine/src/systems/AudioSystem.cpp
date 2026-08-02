@@ -186,7 +186,8 @@ void AudioSystem::playSfx(const std::string& path, float volume, float pitch)
     slot->active = true;
 }
 
-int AudioSystem::playSfxTracked(const std::string& path, float volume, float pitch, bool loop)
+int AudioSystem::playSfxTracked(const std::string& path, float volume, float pitch, bool loop,
+                                int fade_in_ms)
 {
     if (!sInitialized)
         return -1;
@@ -213,6 +214,11 @@ int AudioSystem::playSfxTracked(const std::string& path, float volume, float pit
             ma_sound_set_pitch(&sSfxVoices[i].sound, pitch);
         ma_sound_set_looping(&sSfxVoices[i].sound, loop ? MA_TRUE : MA_FALSE);
         ma_sound_start(&sSfxVoices[i].sound);
+        // Fade applied after start so the sound is already running when the fade
+        // begins (same ordering as playMusic).
+        if (fade_in_ms > 0)
+            ma_sound_set_fade_in_milliseconds(&sSfxVoices[i].sound, 0.0f, volume,
+                                              static_cast<ma_uint64>(fade_in_ms));
         sSfxVoices[i].active = true;
         return i;
     }

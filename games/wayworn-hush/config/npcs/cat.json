@@ -1,0 +1,38 @@
+{
+    "_comment": "WHO the cat is: art + name + footprint. Same npc shape as any person -- WHERE it sits is an Npc entity in the map naming this id; WHAT it 'says' is speaker-flagged psyche content (its readings are the player's perception; a voiced remark is its voice). It never speaks words, which is just an npc with no speaker lines. Idle row is the sitting poses (a cat at rest sits); walking uses the two-frame pads.",
+    "id": "cat",
+    "name": "the cat",
+    "texture": "assets/sprites/cat_walk.png",
+    "frame_width": 32,
+    "frame_height": 32,
+    "direction_count": 4,
+    "max_frames_per_state": 2,
+    "walk": {
+        "row": 0,
+        "frames": 2,
+        "duration": 0.22,
+        "speed": 55.0
+    },
+    "idle": {
+        "row": 1,
+        "frames": 1,
+        "duration": 0.0
+    },
+    "collider": {
+        "w": 14.0,
+        "h": 8.0
+    },
+    "anims": {
+        "sit": { "row": 1, "frames": 1, "duration": 0.0 }
+    },
+    "routines": {
+        "laze": [
+            { "wander": 96 },
+            { "anim": "sit" },
+            { "wait": [ 3.0, 9.0 ] }
+        ]
+    },
+    "schedule": [
+        { "when": { "from": "00:00", "to": "24:00" }, "routine": "laze" }
+    ]
+}

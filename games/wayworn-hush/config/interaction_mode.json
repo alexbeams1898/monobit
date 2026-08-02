@@ -1,0 +1,14 @@
+{
+    "_comment": "Interaction-stance badge + transition SFX (see include/InteractionMode.h). Your MOVEMENT is the stance: walking = Observe (slow down to notice), running (Shift) = Act (move with intent to do). A persistent corner badge shows the current stance; a distinct sound plays entering Act vs returning to Observe. x/y are window fractions (bottom-left corner by default). Colors are RGBA 0..1. Sounds are placeholders (both point at observe.ogg, pitched apart) until final cues are authored. Tunable -- edit + relaunch (dev reads assets from source).",
+    "x": 0.02,
+    "y": 0.92,
+    "pad": 0.008,
+    "observe_label": "Observe",
+    "act_label": "Act",
+    "observe_color": [0.62, 0.80, 0.86, 1.0],
+    "act_color": [0.92, 0.74, 0.46, 1.0],
+    "panel": [0.10, 0.11, 0.13, 0.72],
+    "enter_act_sound": "assets/audio/observe.ogg",
+    "enter_observe_sound": "assets/audio/observe.ogg",
+    "sfx_volume": 0.6
+}

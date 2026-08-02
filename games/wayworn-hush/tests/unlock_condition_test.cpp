@@ -1,0 +1,357 @@
+#include "UnlockCondition.h"
+
+#include <nlohmann/json.hpp>
+
+#include <catch2/catch_test_macros.hpp>
+
+using unlock::Clause;
+using unlock::Condition;
+using unlock::Knowledge;
+
+namespace
+{
+// Assemble a Knowledge over some held sets/stats. The sets/map must outlive the
+// Knowledge (it holds pointers).
+struct World
+{
+    std::unordered_set<std::string> observed; // observed encounters + fired thoughts
+    std::unordered_set<std::string> flags;
+    std::unordered_map<std::string, int> stats;
+
+    Knowledge view() const
+    {
+        Knowledge k;
+        k.observed = &observed;
+        k.flags = &flags;
+        k.stats = &stats;
+        return k;
+    }
+};
+} // namespace
+
+TEST_CASE("An empty condition is unconditional (always satisfied)", "[unlock]")
+{
+    World w;
+    REQUIRE(unlock::satisfied(Condition{}, w.view()));
+}
+
+TEST_CASE("A clause with no fields set holds trivially", "[unlock]")
+{
+    World w;
+    REQUIRE(unlock::clauseHolds(Clause{}, w.view()));
+}
+
+TEST_CASE("observed requires ALL listed memories; flag requires the flag set", "[unlock]")
+{
+    World w;
+    w.observed.insert("water");
+    w.observed.insert("flood_plain"); // a fired thought is a memory too
+    w.flags.insert("met_hermit");
+
+    Clause one;
+    one.observed = {"water"};
+    REQUIRE(unlock::clauseHolds(one, w.view()));
+    one.observed = {"ridge"};
+    REQUIRE_FALSE(unlock::clauseHolds(one, w.view()));
+
+    Clause both; // a series: ALL must be held
+    both.observed = {"water", "flood_plain"};
+    REQUIRE(unlock::clauseHolds(both, w.view()));
+    both.observed = {"water", "ridge"}; // ridge missing -> fails
+    REQUIRE_FALSE(unlock::clauseHolds(both, w.view()));
+
+    Clause fl;
+    fl.flags = {"met_hermit"};
+    REQUIRE(unlock::clauseHolds(fl, w.view()));
+    fl.flags = {"unmet"};
+    REQUIRE_FALSE(unlock::clauseHolds(fl, w.view()));
+
+    w.flags.insert("bell_rang");
+    fl.flags = {"met_hermit", "bell_rang"}; // a flag series: ALL must be set
+    REQUIRE(unlock::clauseHolds(fl, w.view()));
+    fl.flags = {"met_hermit", "unmet"};
+    REQUIRE_FALSE(unlock::clauseHolds(fl, w.view()));
+}
+
+TEST_CASE("stat requires each named stat to be at least its level", "[unlock]")
+{
+    World w;
+    w.stats["perception"] = 3;
+    w.stats["body"] = 1;
+
+    Clause c;
+    c.stat["perception"] = 3;
+    REQUIRE(unlock::clauseHolds(c, w.view()));
+    c.stat["body"] = 2; // body is only 1
+    REQUIRE_FALSE(unlock::clauseHolds(c, w.view()));
+    c.stat["body"] = 1;
+    REQUIRE(unlock::clauseHolds(c, w.view()));
+    c.stat["missing"] = 1; // absent stat reads as 0
+    REQUIRE_FALSE(unlock::clauseHolds(c, w.view()));
+}
+
+TEST_CASE("Fields within a clause are AND-ed (all must hold)", "[unlock]")
+{
+    World w;
+    w.observed.insert("water");
+    w.flags.insert("met_hermit");
+    w.stats["perception"] = 3;
+
+    Clause c;
+    c.observed = {"water"};
+    c.flags = {"met_hermit"};
+    c.stat["perception"] = 3;
+    REQUIRE(unlock::clauseHolds(c, w.view())); // all three hold
+
+    c.stat["perception"] = 4; // now the stat is too low -> whole clause fails
+    REQUIRE_FALSE(unlock::clauseHolds(c, w.view()));
+}
+
+TEST_CASE("flag and observed each parse as a string or an array", "[unlock]")
+{
+    const auto j = nlohmann::json::parse(R"([
+        { "flag": "alone" },
+        { "flag": ["alarm_off", "tv_off"], "observed": "waking" }
+    ])");
+    const Condition cond = unlock::parseCondition(j);
+    REQUIRE(cond.any.size() == 2);
+    REQUIRE(cond.any[0].flags == std::vector<std::string>{"alone"});
+    REQUIRE(cond.any[1].flags == std::vector<std::string>{"alarm_off", "tv_off"});
+    REQUIRE(cond.any[1].observed == std::vector<std::string>{"waking"});
+
+    World w;
+    w.observed.insert("waking");
+    w.flags.insert("alarm_off");
+    REQUIRE_FALSE(unlock::clauseHolds(cond.any[1], w.view())); // tv_off missing
+    w.flags.insert("tv_off");
+    REQUIRE(unlock::clauseHolds(cond.any[1], w.view()));
+}
+
+TEST_CASE("Clauses are OR-ed (any satisfies the condition)", "[unlock]")
+{
+    World w;
+    w.observed.insert("flood_plain"); // a fired thought, held as a memory
+
+    Condition cond;
+    Clause a; // path A: needs a stat we don't have
+    a.stat["reason"] = 5;
+    Clause b; // path B: needs the thought we DO have
+    b.observed = {"flood_plain"};
+    cond.any = {a, b};
+
+    REQUIRE(unlock::satisfied(cond, w.view())); // B holds
+
+    // Remove it -> neither path holds.
+    w.observed.clear();
+    REQUIRE_FALSE(unlock::satisfied(cond, w.view()));
+}
+
+TEST_CASE("Null knowledge sets read as empty (no crash, nothing held)", "[unlock]")
+{
+    Knowledge k; // all pointers null
+    Clause needsObs;
+    needsObs.observed = {"anything"};
+    REQUIRE_FALSE(unlock::clauseHolds(needsObs, k));
+    Clause needsStat;
+    needsStat.stat["perception"] = 1;
+    REQUIRE_FALSE(unlock::clauseHolds(needsStat, k));
+    REQUIRE(unlock::clauseHolds(Clause{}, k)); // empty clause still trivially true
+}
+
+TEST_CASE("carrying requires the item; without requires its ABSENCE", "[unlock]")
+{
+    // Instruments gate content, never truth: a thought forms regardless, but
+    // writing it down needs the notebook -- which is authored as clauses, so the
+    // "if only I had something to write with" ache is content, not code.
+    World w;
+    std::unordered_set<std::string> held = {"watch"};
+    Knowledge k = w.view();
+    k.carrying = &held;
+
+    Clause needsWatch;
+    needsWatch.carrying = {"watch"};
+    REQUIRE(unlock::clauseHolds(needsWatch, k));
+
+    Clause needsNotebook;
+    needsNotebook.carrying = {"notebook"};
+    REQUIRE_FALSE(unlock::clauseHolds(needsNotebook, k));
+
+    // `without` is the mirror: it holds only while the thing is NOT held.
+    Clause lacksNotebook;
+    lacksNotebook.without = {"item:notebook"};
+    REQUIRE(unlock::clauseHolds(lacksNotebook, k));
+    Clause lacksWatch;
+    lacksWatch.without = {"item:watch"};
+    REQUIRE_FALSE(unlock::clauseHolds(lacksWatch, k));
+}
+
+TEST_CASE("without reads flags, observations and items by prefix", "[unlock]")
+{
+    World w;
+    w.flags.insert("got_up");
+    w.observed.insert("bed");
+    std::unordered_set<std::string> held = {"notebook"};
+    Knowledge k = w.view();
+    k.carrying = &held;
+
+    const auto lacks = [&](std::string id)
+    {
+        Clause c;
+        c.without = {std::move(id)};
+        return unlock::clauseHolds(c, k);
+    };
+    REQUIRE_FALSE(lacks("got_up"));      // unprefixed = a flag, and it is set
+    REQUIRE_FALSE(lacks("flag:got_up")); // same thing said explicitly
+    REQUIRE(lacks("flag:never_happened"));
+    REQUIRE_FALSE(lacks("obs:bed")); // he has seen it
+    REQUIRE(lacks("obs:river"));
+    REQUIRE_FALSE(lacks("item:notebook")); // carried
+    REQUIRE(lacks("item:watch"));
+}
+
+TEST_CASE("carrying and without parse from JSON, string or array", "[unlock]")
+{
+    const auto j = nlohmann::json::parse(R"([
+        { "carrying": "notebook" },
+        { "carrying": ["watch", "notebook"], "without": ["item:lantern", "hid_from_morning"] }
+    ])");
+    const Condition cond = unlock::parseCondition(j);
+    REQUIRE(cond.any[0].carrying == std::vector<std::string>{"notebook"});
+    REQUIRE(cond.any[1].carrying == std::vector<std::string>{"watch", "notebook"});
+    REQUIRE(cond.any[1].without == std::vector<std::string>{"item:lantern", "hid_from_morning"});
+}
+
+TEST_CASE("between gates a clause to a window of the day", "[unlock]")
+{
+    // A door that shuts at eight: the clause holds while the sun is up and
+    // stops holding the moment the hour passes, without anything else changing.
+    World w;
+    Knowledge k = w.view();
+
+    Clause daylight;
+    daylight.from = 8.0 / 24.0;
+    daylight.to = 20.0 / 24.0;
+
+    k.day_frac = 7.0 / 24.0;
+    REQUIRE_FALSE(unlock::clauseHolds(daylight, k));
+    k.day_frac = 8.0 / 24.0; // the open edge is inclusive
+    REQUIRE(unlock::clauseHolds(daylight, k));
+    k.day_frac = 14.5 / 24.0;
+    REQUIRE(unlock::clauseHolds(daylight, k));
+    k.day_frac = 20.5 / 24.0;
+    REQUIRE_FALSE(unlock::clauseHolds(daylight, k));
+}
+
+TEST_CASE("a window that crosses midnight wraps instead of emptying", "[unlock]")
+{
+    World w;
+    Knowledge k = w.view();
+
+    Clause night;
+    night.from = 22.0 / 24.0;
+    night.to = 4.0 / 24.0;
+
+    k.day_frac = 23.0 / 24.0;
+    REQUIRE(unlock::clauseHolds(night, k));
+    k.day_frac = 2.0 / 24.0;
+    REQUIRE(unlock::clauseHolds(night, k));
+    k.day_frac = 12.0 / 24.0;
+    REQUIRE_FALSE(unlock::clauseHolds(night, k));
+}
+
+TEST_CASE("day_min and day_max gate a clause to a stretch of days", "[unlock]")
+{
+    // The teasing line that only exists once you have already let someone down.
+    World w;
+    Knowledge k = w.view();
+
+    Clause laterDays;
+    laterDays.day_min = 2;
+    k.day = 1;
+    REQUIRE_FALSE(unlock::clauseHolds(laterDays, k));
+    k.day = 2;
+    REQUIRE(unlock::clauseHolds(laterDays, k));
+    k.day = 9;
+    REQUIRE(unlock::clauseHolds(laterDays, k));
+
+    Clause firstDayOnly;
+    firstDayOnly.day_max = 1;
+    k.day = 1;
+    REQUIRE(unlock::clauseHolds(firstDayOnly, k));
+    k.day = 2;
+    REQUIRE_FALSE(unlock::clauseHolds(firstDayOnly, k));
+}
+
+TEST_CASE("time fields combine with the rest of the clause as AND", "[unlock]")
+{
+    World w;
+    w.flags.insert("knows_the_trail");
+    Knowledge k = w.view();
+    k.day_frac = 10.0 / 24.0;
+    k.day = 1;
+
+    Clause c;
+    c.flags = {"knows_the_trail"};
+    c.from = 8.0 / 24.0;
+    c.to = 20.0 / 24.0;
+    REQUIRE(unlock::clauseHolds(c, k));
+
+    k.day_frac = 21.0 / 24.0; // right flag, wrong hour
+    REQUIRE_FALSE(unlock::clauseHolds(c, k));
+}
+
+TEST_CASE("between parses HH:MM, and day bounds parse as ints", "[unlock]")
+{
+    const auto j = nlohmann::json::parse(R"([
+        { "between": ["08:00", "20:00"] },
+        { "between": ["22:00", "04:30"], "day_min": 2, "day_max": 5 }
+    ])");
+    const Condition cond = unlock::parseCondition(j);
+    REQUIRE(cond.any[0].from == 8.0 / 24.0);
+    REQUIRE(cond.any[0].to == 20.0 / 24.0);
+    REQUIRE(cond.any[1].from == 22.0 / 24.0);
+    REQUIRE(cond.any[1].to == 4.5 / 24.0);
+    REQUIRE(cond.any[1].day_min == 2);
+    REQUIRE(cond.any[1].day_max == 5);
+}
+
+TEST_CASE("holding gates on what is in his HANDS, not what is in the bag", "[unlock]")
+{
+    // A spade in the satchel is not a spade in the hands: the two are separate questions, so
+    // a deed that needs the tool taken up cannot be satisfied by merely owning it.
+    World w;
+    std::unordered_set<std::string> carried = {"spade", "notebook"};
+    Knowledge k = w.view();
+    k.carrying = &carried;
+
+    Clause needsHeld;
+    needsHeld.holding = "spade";
+    REQUIRE_FALSE(unlock::clauseHolds(needsHeld, k)); // owned, not taken up
+
+    k.holding = "spade";
+    REQUIRE(unlock::clauseHolds(needsHeld, k));
+
+    k.holding = "notebook"; // holding the wrong thing is still not holding the spade
+    REQUIRE_FALSE(unlock::clauseHolds(needsHeld, k));
+
+    // And a clause that says nothing about hands does not care what is in them.
+    Clause justCarrying;
+    justCarrying.carrying = {"spade"};
+    REQUIRE(unlock::clauseHolds(justCarrying, k));
+}
+
+TEST_CASE("holding parses from JSON and ANDs with the rest of the clause", "[unlock]")
+{
+    const auto j = nlohmann::json::parse(R"([
+        { "holding": "spade", "observed": "storm_debris@1" }
+    ])");
+    const Condition cond = unlock::parseCondition(j);
+    REQUIRE(cond.any[0].holding == "spade");
+
+    World w;
+    w.observed.insert("storm_debris@1");
+    Knowledge k = w.view();
+    REQUIRE_FALSE(unlock::satisfied(cond, k)); // seen it, empty-handed
+    k.holding = "spade";
+    REQUIRE(unlock::satisfied(cond, k));
+}

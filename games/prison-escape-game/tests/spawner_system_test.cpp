@@ -111,7 +111,7 @@ TEST_CASE("SpawnUtils: spawn position lands inside the player's room", "[spawn]"
         REQUIRE(ok);
 
         // Spawn must be inside room bounds: tiles [5..14] -> world [160..480].
-        const float ts = static_cast<float>(TileMap::TILE_SIZE);
+        const float ts = static_cast<float>(tm.tile_size);
         REQUIRE(sx >= 5.0f * ts);
         REQUIRE(sx <= 15.0f * ts);
         REQUIRE(sy >= 5.0f * ts);

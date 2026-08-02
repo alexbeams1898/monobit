@@ -1,0 +1,28 @@
+{
+    "_comment": "The covers branch: he hid from the morning, so she comes -- knock, then her voice through the door (the first_morning_call remark; reading it is what brings her in), door, in, to the bedside. She silences the room herself (plain set_flag steps; the ambience bus does the rest -- already-off devices are no-ops), THEN says her piece at the bedside, takes the reply, and only after it is read does she turn for the door. Shares first_morning_done with mom_calls: whichever fires first silences the other.",
+    "id": "mom_enters",
+    "level": "PlayerRoom",
+    "start_when": [ { "flag": "hid_from_morning" } ],
+    "set_flag": "first_morning_done",
+    "steps": [
+        { "wait": 0.8 },
+        { "sound": "knock" },
+        { "wait": 0.6 },
+        { "remark": "first_morning_call" },
+        { "sound": "door" },
+        { "enter": "mom", "at": "door", "facing": "north" },
+        { "move": "mom", "to": "bedside" },
+        { "face": "mom", "dir": "east" },
+        { "wait": 0.3 },
+        { "set_flag": "alarm_off" },
+        { "wait": 0.5 },
+        { "set_flag": "tv_off" },
+        { "wait": 0.4 },
+        { "observe": "first_morning" },
+        { "menu": "first_morning" },
+        { "wait": 0.4 },
+        { "move": "mom", "to": "door" },
+        { "leave": "mom" },
+        { "sound": "door" }
+    ]
+}

@@ -1,0 +1,14 @@
+{
+    "_comment": "The in-world clock (see include/WorldClock.h). Time is PARTICIPATION: the hour advances from costs below, never the wall clock -- seconds_per_day only sets (a) the day<->24-hour-face mapping and (b) how fast the hour flows DURING SCENES, the one realtime path. 17280 = an in-world minute per 12 real scene-seconds. Tunable -- edit + relaunch (dev reads assets from source).",
+    "seconds_per_day": 17280.0,
+    "_start_time_comment": "Where a FRESH walk's clock starts, on the 24-hour face. He meant to be up at 8; it is nearly eleven -- the morning already got away from him before the first frame.",
+    "start_time": "10:47",
+    "_costs_comment": "TIME IS PARTICIPATION: the hour advances from what the pilgrim DOES (in-world minutes each), never the wall clock -- standing still, the day waits. Scenes are the one exception (they flow at the cadence while they hold the floor). walk_minutes_per_100px is the metronome: ground crossed is time spent. These are the SMALL defaults -- a look, a word, a door, all under a minute. Real work names its own time: a deed may author `minutes` in psyche.json (a kettle 4, clearing a trail 90), which overrides deed_minutes.",
+    "costs": {
+        "walk_minutes_per_100px": 0.15,
+        "observe_minutes": 0.5,
+        "deed_minutes": 0.5,
+        "craft_minutes": 10.0,
+        "warp_minutes": 0.5
+    }
+}

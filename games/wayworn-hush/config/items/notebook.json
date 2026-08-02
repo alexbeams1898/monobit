@@ -1,0 +1,14 @@
+{
+    "_comment": "The pilgrim's notebook -- a KEY ITEM, and the reason thoughts exist: it is where he articulates what he never says aloud, so without one a thought never finishes becoming one (it waits, and the want surfaces instead -- see the `notebook` rule in psyche.json). Found in his room at the start, not started with.",
+    "id": "notebook",
+    "name": "Worn Notebook",
+    "description": "A soft-cornered notebook, its pages half-filled. Where the things you come to understand get written down.",
+    "icon": "assets/tilesets/items.png",
+    "icon_cell": [
+        3,
+        0
+    ],
+    "icon_size": 32,
+    "category": "key_item",
+    "rarity": 3
+}

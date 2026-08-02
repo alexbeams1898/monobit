@@ -20,6 +20,14 @@ class TileMapRenderer
     static void init();
     static void upload(const TileMap& map, const TileConfig& config, TextureManager& tm);
     static void clear(); // zero vertex count so nothing renders
+    // Draws the GROUND layer (call BEFORE character sprites).
     static void render(float camX, float camY, int windowW, int windowH, float zoom = 1.0f);
+    // Draws the DECORATION layer (flowers/tufts the character walks ON). Call AFTER
+    // ground but BEFORE the character render pass. No-op if there's no such layer.
+    static void renderDecoration(float camX, float camY, int windowW, int windowH,
+                                 float zoom = 1.0f);
+    // Draws the OVERHANG layer (props above characters -> walk-behind). Call AFTER
+    // the character render pass. No-op if the map has no overhang layer.
+    static void renderOverhang(float camX, float camY, int windowW, int windowH, float zoom = 1.0f);
     static void shutdown();
 };

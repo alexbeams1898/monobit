@@ -1,0 +1,406 @@
+{
+    "_comment": "The authored world: what can be observed, and the thoughts that come of it. Empty on purpose -- the shore is being authored from scratch. `config/psyche.placeholder.json` holds the old test content and is a reference for the authoring format (encounter shape, tiers, deeds, unlock_when clauses); it is NOT loaded. An encounter must author both halves -- something to observe AND something to do -- or it is dropped at load with a warning. Any text field may carry {player} -- it binds to the pilgrim's chosen name at world-enter. Tunable -- edit + relaunch (dev reads assets from source).",
+    "roll": {
+        "_comment": "Tuning for the thought roll + reward scaling. Coefficients only; the math lives in C++ (see include/Psyche.h RollConfig). THE DENSITY RULE: a reading pays nothing of itself -- exp_discovery is paid ONCE for finding a spot at all, exp_per_value scales a THOUGHT (the largest reward -- understanding is the subject), and a flag pays by what it opened: exp_flag_read when something gates on it, exp_flag_goal when it closes an authored thread, nothing when it is incidental.",
+        "dice": 4,
+        "tightness": 0.75,
+        "stat_cap": 20,
+        "max_band": 5,
+        "value_weight": 0.15,
+        "value_nudge_cap": 1,
+        "exp_per_value": 5,
+        "stat_exp_per_value": 4,
+        "exp_discovery": 5,
+        "exp_flag_read": 5,
+        "exp_flag_goal": 25
+    },
+    "_interact_reach_comment": "World px from an encounter's box edge: get within this WHILE FACING IT and it lights and can be observed. A world tile is 32px, so 72 is a bit over two tiles -- you notice a thing from across a small room, not only nose-to-nose. Facing is what keeps the wider reach unambiguous. One knob for the whole game.",
+    "interact_reach": 72,
+    "_notebook_comment": "A THOUGHT IS THE NOTEBOOK -- it is where he articulates what he never says aloud, so without one nothing finishes becoming a thought: it stays unfired (and lands the moment he is carrying one) while `want_text` surfaces instead, once per stretch of not having it. A delay, never a loss. Remarks are exempt: speech needs no page. `item` empty turns the rule off.",
+    "notebook": {
+        "item": "notebook",
+        "want_text": "Something worth keeping -- and nothing to keep it in."
+    },
+    "encounters": [
+        {
+            "_comment": "the wake-up moment, fired by the wake scene (never placed). No speaker: the tier is HIS half-asleep read of the room, and the menu is the game's first decision -- a must_choose menu, so it repeats until a deed CONSUMES it. The turn-offs are the room's chores (each one_shot, each raising the flag its sound dies on); doing BOTH unlocks get_up. Hiding is always available -- and if he hides, Mom silences the room herself (mom_enters). This beat is the first stroke of who this Will is.",
+            "id": "waking",
+            "value": 1,
+            "tiers": [
+                {
+                    "text": "The alarm again. The TV downstairs, or maybe in the room. Morning has opinions."
+                }
+            ],
+            "actions": {
+                "add": [
+                    {
+                        "id": "turn_off_alarm",
+                        "label": "Turn off the alarm.",
+                        "result_text": "Quiet. Half of it, anyway.",
+                        "set_flag": "alarm_off",
+                        "one_shot": true
+                    },
+                    {
+                        "id": "turn_off_tv",
+                        "label": "Turn off the TV.",
+                        "result_text": "A reach, a button. The murmur stops mid-sentence.",
+                        "set_flag": "tv_off",
+                        "one_shot": true
+                    },
+                    {
+                        "id": "get_up",
+                        "label": "Get up.",
+                        "unlock_when": [
+                            {
+                                "flag": [
+                                    "alarm_off",
+                                    "tv_off"
+                                ]
+                            }
+                        ],
+                        "set_flag": "got_up",
+                        "consumes_spot": true,
+                        "one_shot": true,
+                        "minutes": 3
+                    },
+                    {
+                        "id": "pull_covers",
+                        "label": "Pull the covers over your head.",
+                        "result_text": "Warm. Dark. For a little while, no such thing as today.",
+                        "set_flag": "hid_from_morning",
+                        "consumes_spot": true,
+                        "one_shot": true,
+                        "_minutes_comment": "'for a little while' is the joke and the cost: the morning gets away from him again.",
+                        "minutes": 25
+                    }
+                ]
+            }
+        },
+        {
+            "_comment": "the alarm clock. Its loop rings until this deed sets alarm_off (leaving it on is a choice). Needs an Encounter placement on the clock in PlayerRoom.",
+            "id": "alarm_clock",
+            "value": 1,
+            "tiers": [
+                {
+                    "text": "The clock, mid-argument with the morning. It has been winning for a while."
+                }
+            ],
+            "actions": {
+                "add": [
+                    {
+                        "id": "hit_it",
+                        "label": "Hit it.",
+                        "result_text": "Quiet. The room exhales.",
+                        "set_flag": "alarm_off",
+                        "one_shot": true
+                    }
+                ]
+            }
+        },
+        {
+            "_comment": "the TV. Its murmur runs until turn_off sets tv_off (the shutdown clunk fires on the same flag). Needs an Encounter placement on the TV in PlayerRoom.",
+            "id": "tv",
+            "value": 1,
+            "tiers": [
+                {
+                    "text": "Static, mostly. It kept somebody company all night."
+                }
+            ],
+            "actions": {
+                "add": [
+                    {
+                        "id": "turn_off",
+                        "label": "Turn it off.",
+                        "result_text": "The picture folds into a point and is gone.",
+                        "set_flag": "tv_off",
+                        "one_shot": true
+                    }
+                ]
+            }
+        },
+        {
+            "_comment": "the covers branch's exchange at the bedside, fired by the mom_enters scene AFTER her call through the door (the first_morning_call remark). trigger Enter + speaker = her voice, unprompted. The tier carries the beat's one job: the promise to Mr. Richards (the trail). Deeds are the player's replies; result lines are hers -- and either reply sets mom_mentioned_trail, because however he answers, he has now been told, and the errand is on his agenda.",
+            "id": "first_morning",
+            "speaker": "mom",
+            "trigger": "Enter",
+            "value": 1,
+            "tiers": [
+                {
+                    "text": "You promised Mr. Richards you'd clear the trail in his backyard today. Up."
+                }
+            ],
+            "actions": {
+                "add": [
+                    {
+                        "id": "say_im_up",
+                        "label": "I'm up. I'm up.",
+                        "result_text": "Mm. The kettle's on. He's expecting you before it gets hot out.",
+                        "consumes_spot": true,
+                        "one_shot": true,
+                        "say": "I'm up. I'm up.",
+                        "set_flag": "mom_mentioned_trail"
+                    },
+                    {
+                        "id": "say_five_minutes",
+                        "label": "Five more minutes.",
+                        "result_text": "You said that yesterday, and the day still came. Boots by the door.",
+                        "consumes_spot": true,
+                        "one_shot": true,
+                        "say": "Five more minutes.",
+                        "set_flag": "mom_mentioned_trail"
+                    }
+                ]
+            }
+        },
+        {
+            "_comment": "the slipped-out branch: her voice from downstairs when your door goes. Enter + speaker = spoken. Her line carries the SAME errand mom_enters delivers at the bedside, so its reply sets mom_mentioned_trail too -- whichever way the morning went, he has been told, and the trail is on his agenda. The deed also satisfies the both-halves rule; it is unreachable outside the scene (no placement).",
+            "id": "mom_calls",
+            "speaker": "mom",
+            "trigger": "Enter",
+            "value": 1,
+            "tiers": [
+                {
+                    "text": "{player}…? That you? -- Don't forget Mr. Richards. The trail. You promised."
+                }
+            ],
+            "actions": {
+                "add": [
+                    {
+                        "id": "call_back",
+                        "label": "Yeah -- I'm up.",
+                        "result_text": "Breakfast's out. Don't let it sit.",
+                        "consumes_spot": true,
+                        "one_shot": true,
+                        "say": "Yeah -- I'm up.",
+                        "set_flag": "mom_mentioned_trail"
+                    }
+                ]
+            }
+        },
+        {
+            "_comment": "shape is final, words are a first draft to rewrite. One encounter = the whole person; tiers are what HE notices (his voice), deeds are his moves, result_text is HER voice (speaker). The chain demonstrated: observe her -> a thought lands -> the thought's id unlocks a deed -> her reply sets a flag -> a second thought builds on both.",
+            "id": "mom",
+            "speaker": "mom",
+            "value": 2,
+            "tiers": [
+                {
+                    "text": "She is at the counter, already dressed. The kettle has been on a while."
+                },
+                {
+                    "unlock_when": [
+                        {
+                            "observed": "mom_carries_morning"
+                        }
+                    ],
+                    "text": "She moves like the kitchen is a place she is holding still. Everything wiped twice."
+                }
+            ],
+            "actions": {
+                "add": [
+                    {
+                        "id": "greet",
+                        "label": "Say good morning",
+                        "result_text": "Morning. There's toast, if you'll actually eat this time.",
+                        "set_flag": "mom_greeted"
+                    },
+                    {
+                        "_comment": "Unlocked by NOTICING, not by menu-grinding: the thought below must land first.",
+                        "id": "ask_slept",
+                        "label": "Ask if she slept",
+                        "unlock_when": [
+                            {
+                                "observed": "mom_carries_morning"
+                            }
+                        ],
+                        "result_text": "I sleep fine. You're the one leaving with half a plan -- sit, eat something.",
+                        "set_flag": "mom_asked_slept",
+                        "one_shot": true
+                    }
+                ]
+            }
+        },
+        {
+            "_comment": "the errand made physical, at the mouth of the trail. Observing it is his own read of the storm's leavings. The WORK is not this menu -- it is the four piles themselves (placed takeable things on the map, drawing from the storm_debris yield table): hauling each one off is what opens the path and what puts the first materials in his satchel. This spot is the reading and the standing-back-to-look; richards_debris_cleared is raised by the last pile leaving, not by a deed here.",
+            "id": "storm_debris",
+            "kind": "inanimate",
+            "value": 2,
+            "tiers": [
+                {
+                    "text": "The storm put half a tree across the path. Branches, mostly -- the kind of mess that looks worse than it is."
+                },
+                {
+                    "text": "Not one fall but two: an old break, grey and dry, under this week's green wood. The path has been closing for longer than a week.",
+                    "unlock_when": [
+                        {
+                            "stat": {
+                                "perception": 2
+                            }
+                        }
+                    ]
+                }
+            ],
+            "actions": {
+                "add": [
+                    {
+                        "id": "size_up_debris",
+                        "label": "Size up the work.",
+                        "result_text": "Four piles, give or take. An hour of hauling if he doesn't stop to admire it.",
+                        "one_shot": true,
+                        "minutes": 2
+                    }
+                ]
+            }
+        },
+        {
+            "_comment": "Mr Richards himself. Shape follows mom's: one encounter = the whole person, tiers are what WILL notices (his voice), deeds are Will's moves, result_text is Richards'. The character note that drives everything: he is not a messy man, he is a man whose body stopped letting him do the things he used to. The unfinished jobs around his property ARE that, and noticing it is the tier-2 reading. He asks for the trail AGAIN -- this is routine between them, a favour years old, not a quest he is handing out.",
+            "id": "mr_richards",
+            "speaker": "mr_richards",
+            "value": 3,
+            "tiers": [
+                {
+                    "text": "Mr. Richards is out front, in the chair he keeps by the door. He lifts a hand before you are close enough to hear him."
+                },
+                {
+                    "unlock_when": [
+                        {
+                            "stat": {
+                                "perception": 2
+                            }
+                        }
+                    ],
+                    "text": "The rake has been against the fence long enough to mark it. A tin of nails on the step, opened, not used. Nothing here is untidy -- everything is simply where it was set down and never picked back up."
+                }
+            ],
+            "actions": {
+                "add": [
+                    {
+                        "id": "richards_greet",
+                        "label": "Say hello.",
+                        "say": "Morning, Mr. Richards.",
+                        "result_text": "Oh -- hello, Will. Thank you for coming out. That storm made a mess of my trail again, and my old bones could never clear it the way you do.",
+                        "set_flag": "richards_greeted",
+                        "one_shot": true,
+                        "minutes": 1
+                    },
+                    {
+                        "_comment": "Unlocked by NOTICING, not by menu-grinding -- the tier-2 reading of his property is what makes the question askable. He answers plainly; there is no self-pity in him.",
+                        "id": "richards_ask_help",
+                        "label": "Ask if there is anything else.",
+                        "unlock_when": [
+                            {
+                                "observed": "mr_richards@1",
+                                "flag": "richards_greeted"
+                            }
+                        ],
+                        "say": "Is there anything else that wants doing?",
+                        "result_text": "Ha. There is always something else. Get the trail open and we will call it square -- I have been looking at that rake for a fortnight and it has not moved yet.",
+                        "set_flag": "richards_knows_the_yard",
+                        "one_shot": true,
+                        "minutes": 2
+                    }
+                ]
+            }
+        }
+    ],
+    "thoughts": [
+        {
+            "_comment": "Perception: noticing her, from observing her. Its id becomes a memory that unlocks the ask.",
+            "id": "mom_carries_morning",
+            "unlock_when": [
+                {
+                    "observed": "mom"
+                }
+            ],
+            "faculty": "perception",
+            "text": "She was up before the kettle. The tired sits on her like it lives here.",
+            "miss_text": "Something about the way she stands. It slips away."
+        },
+        {
+            "_comment": "Reason: fusing the noticing with her deflection. emotional_weight carries it -- it opens nothing, it just matters.",
+            "id": "mom_wont_be_asked",
+            "unlock_when": [
+                {
+                    "observed": "mom_carries_morning",
+                    "flag": "mom_asked_slept"
+                }
+            ],
+            "faculty": "reason",
+            "emotional_weight": 3,
+            "text": "She answers questions about herself by feeding people. That is the whole answer.",
+            "miss_text": "Her answer wasn't an answer, but you can't say what it was instead."
+        },
+        {
+            "_comment": "what the work leaves him with -- reachable only after the clearing, so it is the errand's echo rather than a thing he could think about it beforehand.",
+            "id": "the_work_itself",
+            "faculty": "wonder",
+            "difficulty": 2,
+            "spirit_exp": 8,
+            "text": "Nobody watched him do it. The path is open anyway.",
+            "unlock_when": [
+                {
+                    "flag": "richards_debris_cleared"
+                }
+            ]
+        },
+        {
+            "_comment": "What the second look at his property adds up to. Not pity -- a recognition, and the thing that turns an errand into a kindness. Reachable only from the deeper reading, so it belongs to the player who looked twice.",
+            "id": "richards_cannot_anymore",
+            "faculty": "perception",
+            "emotional_weight": 2,
+            "text": "He did not stop caring about the place. His body stopped agreeing to it.",
+            "unlock_when": [
+                {
+                    "observed": "mr_richards@1"
+                }
+            ]
+        }
+    ],
+    "remarks": [
+        {
+            "_comment": "her call through the bedroom door, played by the mom_enters scene BEFORE she enters -- reading it is what brings her in. No unlock_when: scene-only (nothing triggers it ambiently).",
+            "id": "first_morning_call",
+            "voice": "mom",
+            "text": "{player}!"
+        },
+        {
+            "id": "first_grumble",
+            "unlock_when": [
+                {
+                    "observed": "waking"
+                }
+            ],
+            "text": "Mmmmffhh.",
+            "_comment": "the game's first words, said into the pillow. Faculty-less so it always lands; remarks never reach the notebook."
+        },
+        {
+            "_comment": "the cost of sleeping on it. Not a fail state -- the errand is still there to discharge -- just the house noticing. Reachable only from day 2 with the work still undone (`without` the goal flag), so doing it on day 1 means these words never exist.",
+            "id": "mom_on_the_unfinished_trail",
+            "voice": "mom",
+            "text": "Mr. Richards asked after you. I told him you'd been very busy.",
+            "unlock_when": [
+                {
+                    "flag": "mom_mentioned_trail",
+                    "without": [
+                        "flag:richards_debris_cleared"
+                    ],
+                    "day_min": 2
+                }
+            ]
+        },
+        {
+            "_comment": "his half of the same joke, in his own register: drier, and he does not pretend it was busyness.",
+            "id": "richards_on_the_unfinished_trail",
+            "voice": "mr_richards",
+            "text": "Path's still there. Storm hasn't moved it for me yet.",
+            "unlock_when": [
+                {
+                    "flag": "mom_mentioned_trail",
+                    "without": [
+                        "flag:richards_debris_cleared"
+                    ],
+                    "day_min": 2
+                }
+            ]
+        }
+    ]
+}
