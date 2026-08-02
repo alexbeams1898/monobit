@@ -6,6 +6,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 class EntityManager;
@@ -66,6 +67,11 @@ struct WarpPlacement
 // resolves to a level without the author repeating it. Empty on a missing file.
 std::unordered_map<std::string, std::string> warpIndex(const std::string& ldtk_path);
 
+// Every flag the PROJECT's map can raise -- the `clears_flag` of each clearing, from a scan of
+// all levels like warpIndex. What the map contributes to the world's producible flags, so the
+// arc linter can tell a goal the world CAN reach from one nothing can. Empty on a missing file.
+std::unordered_set<std::string> clearingFlags(const std::string& ldtk_path);
+
 // Where a character stands, read from an Npc entity: `npc` names the authored
 // character (config/npcs/<npc>.json -- WHO), (wx,wy) is the spot they stand on
 // (the entity's pivot point, world px), `facing` the way they face. An Npc entity
@@ -99,24 +105,25 @@ struct EncounterPlacement
     std::string trigger; // "Observe" | "Enter" (empty = Observe)
 };
 
-// Something collectible lying in the world, read from an entity on the Pickups layer.
-// Either a static drop (a Pickup entity with an `item` field -> one item id) or a gather
-// node (a Gather entity with a `loot` field -> a loot table id). (cx,cy) is its center in
-// world px -- a point, not a resizable area (an item/node sits at one spot). Neutral struct
-// (a target STRING + which kind) so the importer takes no dependency on inventory/loot; the
-// game binds `target` to the item or loot registry at load.
+// Something collectible lying in the world, read from an entity on the Pickups layer. ONE
+// kind of placed thing -- what it YIELDS is a field, not a type: `item` gives exactly that
+// item, `yields` draws from that table. Everything else (the floor sprite, the rim cue, being
+// remembered once taken, belonging to a clearing) is the same either way. (cx,cy) is its
+// center in world px -- a point, not a resizable area. Neutral struct (a target STRING + which
+// kind) so the importer takes no dependency on inventory/yields; the game binds `target` to
+// the item or yield registry at load.
 struct PickupPlacement
 {
     enum class Kind
     {
-        Item, // `target` is an item id (a static drop)
-        Loot  // `target` is a loot table id (a gather node)
+        Item, // `target` is an item id -- gives exactly this
+        Table // `target` is a yield-table id -- gives a draw from it
     };
     // WHICH placed thing this is -- see EncounterPlacement::placement_id. A pickup that's
     // been taken is remembered by this, so it doesn't come back on the next visit.
     std::string placement_id;
     Kind kind = Kind::Item;
-    std::string target; // item id (Item) or loot table id (Loot)
+    std::string target; // item id (Item) or yield-table id (Table)
     float cx = 0.0f;    // center, world px
     float cy = 0.0f;
     // An item RESTING on furniture (a watch on a desk) sorts by where it SITS, not
@@ -125,6 +132,21 @@ struct PickupPlacement
     // prop's -- Y-sort has no height axis, so being on top of something is
     // authored. 0 = sorts by its own position, like anything lying on the ground.
     float sort_offset = 0.0f;
+    // The CLEARING this placement belongs to, if any: several placed things that mean one
+    // change to the world (the piles across a path, the seals on a gate). When the last of a
+    // group is taken, `clears_flag` is raised -- so "the path is open" is one fact the world
+    // states once, rather than something each pile knows a piece of.
+    std::string group;
+    std::string clears_flag;
+    // The placement's OWN art, from the tileset region its entity carries in the editor
+    // (LDtk's __tile), in the 32px render atlas. A thing that looks like itself: a pile of
+    // storm wood rather than a stand-in for whatever it yields. Empty (sw==0) = draw what the
+    // yield implies -- an item's own icon, or the configured stand-in for a table.
+    // `texture_path` is the atlas that rect indexes, resolved from the tile's OWN tileset like
+    // a prop's (empty = the level's).
+    int sx = 0, sy = 0;
+    int sw = 0, sh = 0;
+    std::string texture_path;
 };
 
 // A prop: an LDtk ENTITY that carries a tileset region (a tree, a rock -- placed,

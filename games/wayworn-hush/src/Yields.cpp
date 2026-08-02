@@ -1,4 +1,4 @@
-#include "Loot.h"
+#include "Yields.h"
 
 #include <nlohmann/json.hpp>
 
@@ -6,7 +6,7 @@
 #include <filesystem>
 #include <fstream>
 
-namespace loot
+namespace yields
 {
 namespace
 {
@@ -104,4 +104,4 @@ std::vector<inventory::ItemInstance> roll(const Table& table, const psyche::Roll
     return out;
 }
 
-} // namespace loot
+} // namespace yields

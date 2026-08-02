@@ -54,23 +54,21 @@ What it means in practice:
 consolidate a system, it means: make it as minimal as it can possibly be while
 retaining its quality and its function — not merely tidy it.
 
-## Two stat layers
+## The stat model: three groups, plus competences
 
-The whole stat model is two tiers, and the second always feeds the first:
+**The self is three GROUPS of stats — FEELING · MIND · BODY** — plus **Spirit**
+(the derived readout of everything he has become). The group is what a build IS;
+the stats inside are its texture. Beside them sit **competences** (craftsmanship,
+survival, fishing), which grow by use and matter enormously to what you can *do*,
+but are **not part of the build**: being handy is a skill a person has, not a
+person they became. Full treatment in §1.
 
-- **The self** — three "reading" faculties (Wonder · Reason · Perception, §1),
-  plus **Spirit** (their derived depth-readout). *The point.* They gate how
-  deeply you can read the world; growing them is finding your way.
-- **The doing layer** — **Body** and the survival stats (camping, fishing,
-  crafting). They exist **solely to feed the main loop**, and every gain routes
-  up into the self *logically*: fishing patiently → Perception; enduring the long
-  road → Body → Perception/Spirit feed; a felt/embodied reading → Perception. You
-  never grind the doing layer for its own sake — you grow it, and the *self*
-  grows with it. (Body sits at the top of this layer, not among the faculties:
-  it's physical capacity, kin to the survival stats, not a way of *reading*.)
+Body is one of the three, not a lesser layer beneath them. A person's physical
+capacity is part of who they are — how much of a day they can spend, what they
+can shift, how far they walk before the light goes.
 
-The doing layer gives the player concrete *reasons to act* (a quest needs a rod,
-a pass needs gear); the payoff is always a deeper self.
+Competences give the player concrete *reasons to act* (a quest needs a rod, a
+pass needs gear); the payoff is always a deeper self.
 
 ## The core loop (bread-and-butter)
 
@@ -130,27 +128,55 @@ precisely, keep working consumables/fishing (§4).*
 
 ---
 
-## 1. The growth economy — three self-faculties, Spirit EXP, buffs
+## 1. The growth economy — the self, Spirit EXP, the tree
 
 The machine, top to bottom. Deliberately minimal (a quiet game, not an RPG with
 a skill web). Four parts, each with one job.
 
-**What the numbers mean [FRAMING — load-bearing]:** stats and Spirit measure the
-**spiritual and emotional journey**, never competence. The faculties are the
-capacities of a soul's attention — a grown man can be fully capable and
+**What the numbers mean [FRAMING — load-bearing]:** the build stats and Spirit
+measure the **spiritual and emotional journey**, never competence (competence is
+its own tier — see below, and it is deliberately not part of the build). They are
+the capacities of a soul — a grown man can be fully capable and
 spiritually asleep, which is exactly where the game opens: **he starts the game
 in low spirits** (the pun is the thesis). Starting values need no other alibi;
 the walk is him coming back to his senses. The test for any future system:
 anything that grants Spirit must be defensible as soul-tending, and anything
 that raises a faculty must be defensible as waking up.
 
-### The three self-faculties — the "reading" voices
+### The shape of the self: GROUPS of stats, then the stats [WIP]
 
-Three faculties (Will loved philosophy — the RPG's soul is philosophical). Each
-is *an inner voice* with its own agenda; they can conflict. They are all ways of
-**knowing/reading the world** — that coherence is why Body is *not* one of them
-(Body is physical capacity, and lives in the survival layer, §4). Names
-refinable.
+An earlier draft had three faculties (all of them ways of *reading*) with Body
+banished to the survival layer. That is too flat to make two walks feel like two
+people: wonder, reason and perception are not three different selves, they are
+three settings on one person's attention. Nobody is "a perception person" the way
+someone is a feeling person or a physical person.
+
+So the self is **groups first, stats inside them** — the group is what a build
+IS, the stats inside are its texture:
+
+- **FEELING** — wonder, and its kin (creativity, and whatever else the content
+  earns). The open, associative, moved-by-things self.
+- **MIND** — reason, perception. The self that connects, notices, deduces.
+- **BODY** — endurance and its kin. Physical capacity, no longer exiled to a
+  "layer" beneath the soul: how much of the day a person can spend, what they can
+  shift, how far they can walk before the light goes.
+
+And a fourth tier that is **NOT part of the build at all**:
+
+- **Competences** — craftsmanship, survival, and the like. They grow by use like
+  everything else, and they matter enormously to what you can *do*, but being
+  handy is not a kind of soul. They are skills a person has, not a person they
+  became. Nothing in the tree biases them, and no ending reads them.
+
+The three groups are the build's axes; the competences ride along. Which exact
+stats live in each group stays open — a stat earns its place when content makes
+it wanted (same rule as nodes). **Names refinable; the grouping is the point.**
+
+### The reading voices
+
+Wonder, Reason and Perception are additionally *inner voices* with their own
+agendas, and they can conflict. This is a property of those particular stats, not
+of every stat — Body has no voice.
 
 - **Wonder** — awe, the strange, the beautiful, the magical-real; *begins
   inquiry.* The open/associative/what-if reading. *Moment:* a fog valley at dawn
@@ -179,17 +205,37 @@ by *The tree IS the soul*: structure is the identity mechanism, kept shallow.)
 - **Spirit EXP** (working name; rename TBD) — the currency. **Earned by major
   events, achievements, rare observations/unlocks** — not by grinding. You spend
   it to buy and upgrade buffs.
+
+  **WHAT PAYS [the density rule].** You are paid for the world opening, never for
+  looking at it. An ordinary reading pays nothing — most of the game's text is
+  free — and the counter climbing is therefore an *event*. Three things pay:
+
+  - **Discovery** — the first time an encounter is reached at all. Once, per
+    thing, flat. Re-reading a spot you have already seen pays nothing.
+  - **A flag landing**, worth what it OPENED — and that is derived, never
+    authored: a flag nothing gates on is incidental and pays nothing; a flag some
+    content depends on opened something; an **arc's goal flag** closed a thread
+    and pays most. `arcs::survey` already computes exactly these three sets for
+    the linter, so a flag's worth follows from what it actually does and cannot
+    drift from the content.
+  - **A thought** — the largest, and authored per thought. A thought is a
+    conclusion he reached; understanding is the game's whole subject, so it is
+    the thing most worth paying for.
+
+  The hierarchy is the point: *finding* a thing is worth something, *changing*
+  the world is worth more, *understanding* is worth most.
 - **Buffs** — each self-faculty has a small set of **named, upgradeable buffs**
   (buy Lv1, upgrade toward Lv3). Not abstract stat-nodes — concrete, legible
   effects. Two properties, both by design:
   - **Hidden / discovered** — buffs *reveal as you go*, not shopped from a menu.
     The self surprises you; fits the quiet register.
-  - **Effects are content-driven — TBD.** Buff effects are **not** invented in
-    the abstract. They're dictated by the actual quests/progression and must be
+  - **Effects are content-driven.** Buff effects are **not** invented in the
+    abstract. They're dictated by the actual quests/progression and must be
     *genuinely wanted* against real content (a buff earns its place because a
-    specific quest/lock/depth makes you want it). Likely "rarer/deeper readings
-    of the world," but this stays an **open slot** until the story/progression is
-    built out. Do not over-specify effects before the content they reward exists.
+    specific quest/lock/depth makes you want it). The KINDS an effect may take
+    are settled — see *What a node DOES* below — but WHICH nodes exist, and what
+    each one is worth, stays authored against real content. Do not invent a node
+    before the thing that makes you want it exists.
 - **Spirit** — **derived from the buffs: the sum of all buff levels owned.**
   Buy/upgrade a buff → Spirit rises; monotonic by construction. Spirit is never
   a voice and is never earned directly — it is the *readout of your invested
@@ -256,15 +302,66 @@ works.** Everything the pilgrim does converts into one place; everything he can
 see, do and endure reads back out of it. The ending reads the tree because there
 is nothing else to read.
 
+**What a node DOES: an open list of effects, never a fixed menu.** A node carries
+a *list* of authored effects and each system reads the kinds it cares about — so
+what a node can do is never bounded by the data model. Three kinds are known
+today; new ones are new authored strings, not schema changes:
+
+- **A scaling bias on use-growth — ADDITIVE ONLY.** The universal base is that you
+  get better at what you do (observing deepens Perception, making deepens
+  Craftsmanship — everyone, always). A node can make some of that growth come
+  *faster*. **It can never make anything grow slower.** Nothing in the tree is a
+  nerf: becoming someone does not cost you the capacity to be someone else, the
+  way getting genuinely good at a thing in life does not diminish you — it floods
+  you with confidence. Downward pressure on a stat comes from the WORLD (weather,
+  exhaustion, a bad night, hunger), never from who you chose to become.
+- **A key content gates on.** A node id is a thing `unlock::Condition` can
+  require, exactly like a flag or a stat. This is how the tree decides which
+  *solutions you can even see* — the same obstacle offering a different verb to
+  the maker, the looker and the one who simply grew strong enough.
+- **A tuning input.** Coefficients a formula reads (`formulas`), so a node can
+  change how the world *feels* rather than what it permits.
+
+**Every obstacle wants more than one answer [PILLAR].** No task in this game is
+"press the key, the thing disappears, done." An obstacle is solved by *curating
+your build* — what you noticed, what you carry, what you made, what you grew —
+and a puzzle with exactly one solution is the same failure one step later. This
+is what the routes in [`config/arcs.json`](../../config/arcs.json) express and
+why the arc linter warns on a single-route thread: the routes ARE the different
+selves arriving at the same opened path.
+
+**Depth, never deficit [LOAD-BEARING].** Two walks differ by how FAR each went in
+its own direction, never by what either one lost. Everyone can read the woman by
+the river; only the deep reader reaches the bottom of it — and the shallow
+reading was never *wrong*, only shallower. So:
+
+- The world opens **further in your direction**, rather than closing in others.
+- A build is a **portrait accumulating**, not a budget spent against itself.
+- Spreading thin is not punished. It simply never *compounds* into the deep
+  confidence commitment gives — you are never bad at anything, just less
+  particular.
+
+This is why the game is not Disco Elysium's model, whose columns are symptoms of
+a broken man and whose every strength is also a wound. Will begins *spiritually
+asleep* and the walk is him waking. Getting good at a thing does not cost him; it
+makes him more himself, and the **confidence is the point** — whichever thing he
+got good at.
+
+**Confidence IS Spirit.** There is no second number for it. Spirit is the readout
+of everything he has become, and what it buys is already written above: readings
+land deeper, the world's grade warms, his voice steadies. That is what growing
+confident looks like from inside a game with no combat and no failure — and it is
+why Spirit is displayed while what it *means* stays buried.
+
 **Replay engine:** a second run spends Spirit EXP on different buffs → a
 different class → different keys → a genuinely different reading of the same
 world.
 
 ### No fail-state
 
-Failure branches (a different voice/thought), never game-over. You can even beat
-the game leaning heavily on the survival layer — viable, just lower-priority;
-the faculties + Spirit are where the game lives.
+Failure branches (a different voice/thought), never game-over. A walk leaning
+heavily on Body and the competences is a real way to play it through — the three
+groups are peers, and no one of them is the "real" game.
 
 ## 2. Thoughts / Cabinet — the growth spine
 
@@ -277,7 +374,18 @@ the faculties + Spirit are where the game lives.
 
 ## 3. Quests — curiosity, not checklists (Outer Wilds model)
 
-- No quest log/markers. A quest is **a question the pilgrim wants answered.**
+- Two kinds of thread, and only one of them is a list. Most are **a question the
+  pilgrim wants answered** — those never get an entry; the knowledge-map below is
+  their only record. The rest are **errands somebody asked of him**, and those he
+  writes down, because a person who has been asked to do a thing writes it down.
+- **The agenda** is where the written kind live: the head of today's page in his
+  own notebook, above the day's thoughts, in the same hand. Not a HUD, not a
+  tracker — a page he chooses to open. Legible only while he carries the notebook,
+  and the hours on it legible only while he carries the watch.
+- **Windows, not deadlines.** A thread may only be receivable at certain hours or
+  from a certain day, but a shut window is never a failure — it says "not now,"
+  and the thread stays owed. Sleeping on an errand costs him the comedy of being
+  teased about it, not the errand.
 - **A knowledge-map** (Outer Wilds Ship Log): observations auto-log as facts;
   leads are *dangling connections* to unfound things; a self-clearing "more
   here" hint — never a nag.
@@ -289,16 +397,17 @@ the faculties + Spirit are where the game lives.
 ## 4. Survival — ritual, no fail-state, feeds the faculties
 
 - Camp, forage, fish, tend fire, craft. **You can't lose.** No starvation/death.
-- This is the **doing layer**, and **Body sits at the top of it** — physical
-  capacity (weather-sense, forage yield, endurance of harsh crossings), kin to
-  the survival stats, *not* a self-faculty (it's not a way of reading; it's a way
-  of enduring/doing). Body is deepened by surviving and by eating (below).
-- The layer exists to feed the main loop. Every act routes up into the self
-  *logically* — fishing patiently → Perception; a felt reading (sensing the
-  storm, the cold) → Perception; enduring a harsh crossing → Body, and Body's
-  exertions in turn feed Perception/Spirit. You never grind the doing layer for
-  its own sake; the self grows with it. There is **no Body route/class** — the
-  physical is support, never a build.
+- **Body is one of the three build groups** (§1), not a layer beneath them:
+  physical capacity (weather-sense, forage yield, endurance of harsh crossings)
+  is part of who a person is, and a Body-heavy walk is as legitimate a self as a
+  Feeling- or Mind-heavy one. It is deepened by surviving and by eating (below).
+  What lives *here*, in the survival layer, is the **competences** — the skills
+  the acts train (craftsmanship, foraging, fishing), which are not part of the
+  build.
+- Acts route into the self *logically* — fishing patiently → Perception; a felt
+  reading (sensing the storm, the cold) → Perception; enduring a harsh crossing →
+  Body. You never grind competences for their own sake; the self grows alongside
+  them.
 - Stakes come from **item-gating**, not threat: certain crafted items are
   *required* to progress (lantern for the dark pass, cloak for the cold) —
   Metroidvania gating dressed as survival prep. Others are **QOL/comfort**

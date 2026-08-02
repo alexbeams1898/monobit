@@ -109,12 +109,12 @@ void openDeedMenu(psyche::State& state, const growth::GrowthState& growth, const
 
 // What a confirm did that the game must enact: EXP to bank, plus any item effects a
 // taken deed declared (ids only -- the box, like observations, is inventory-ignorant; the
-// GAME owns the satchel/loot and does the grant). Empty grants for a plain reading confirm.
+// GAME owns the satchel and does the grant). Empty grants for a plain reading confirm.
 struct ConfirmResult
 {
     int earned = 0;                    // Spirit EXP from a thought the deed fired
     std::vector<std::string> granted;  // item ids a "pick up" deed granted
-    std::vector<std::string> gathered; // loot table ids a "gather" deed rolled
+    std::vector<std::string> gathered; // yield table ids a "gather" deed rolled
     std::vector<std::string> taught;   // recipe ids a deed taught (the game marks them known)
     std::vector<std::string> landed;   // thought ids that landed (the game writes them down)
     std::vector<std::pair<std::string, int>> stat_gains; // faculty EXP a landed thought earned

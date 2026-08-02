@@ -165,3 +165,70 @@ TEST_CASE("markAllSeen clears the newly-found flag on every item", "[inventory]"
     for (const auto& e : s.items)
         REQUIRE_FALSE(e.is_new);
 }
+
+// --- What he has taken up -------------------------------------------------------------
+
+TEST_CASE("only a tool can be held -- this is not a game about holding turnips", "[inventory]")
+{
+    Registry reg;
+    reg.defs["spade"] = ItemDef{"spade", "Spade"};
+    reg.defs["spade"].category = Category::Tool;
+    reg.defs["branches"] = ItemDef{"branches", "Fallen Branches"};
+    reg.defs["branches"].category = Category::Practical;
+    reg.defs["notebook"] = ItemDef{"notebook", "Notebook"};
+    reg.defs["notebook"].category = Category::KeyItem;
+
+    REQUIRE(equippable(reg, "spade"));
+    REQUIRE_FALSE(equippable(reg, "branches"));
+    REQUIRE_FALSE(equippable(reg, "notebook")); // an instrument works from the bag
+    REQUIRE_FALSE(equippable(reg, "no_such_thing"));
+
+    Satchel s;
+    add(s, reg, ItemInstance{"spade"});
+    add(s, reg, ItemInstance{"branches", 3});
+
+    REQUIRE(toggleHeld(s, reg, "spade"));
+    REQUIRE(s.held == "spade");
+    REQUIRE_FALSE(toggleHeld(s, reg, "branches")); // refused, and the hands are undisturbed
+    REQUIRE(s.held == "spade");
+}
+
+TEST_CASE("taking a thing up and putting it down are one gesture", "[inventory]")
+{
+    Registry reg;
+    reg.defs["spade"] = ItemDef{"spade", "Spade"};
+    reg.defs["spade"].category = Category::Tool;
+    Satchel s;
+    add(s, reg, ItemInstance{"spade"});
+
+    REQUIRE(toggleHeld(s, reg, "spade"));
+    REQUIRE(s.held == "spade");
+    REQUIRE(toggleHeld(s, reg, "spade"));
+    REQUIRE(s.held.empty());
+}
+
+TEST_CASE("a tool he does not carry cannot be held", "[inventory]")
+{
+    Registry reg;
+    reg.defs["spade"] = ItemDef{"spade", "Spade"};
+    reg.defs["spade"].category = Category::Tool;
+    Satchel s; // empty bag
+    REQUIRE_FALSE(toggleHeld(s, reg, "spade"));
+    REQUIRE(s.held.empty());
+}
+
+TEST_CASE("a tool that leaves the bag leaves his hands", "[inventory]")
+{
+    // The hands and the bag are two records of one fact. Spending, giving away or losing the
+    // held thing must not leave `held` naming something he no longer has.
+    Registry reg;
+    reg.defs["spade"] = ItemDef{"spade", "Spade"};
+    reg.defs["spade"].category = Category::Tool;
+    Satchel s;
+    add(s, reg, ItemInstance{"spade"});
+    REQUIRE(toggleHeld(s, reg, "spade"));
+
+    REQUIRE(remove(s, "spade"));
+    reconcileHeld(s);
+    REQUIRE(s.held.empty());
+}

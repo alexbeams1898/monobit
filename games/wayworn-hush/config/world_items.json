@@ -1,5 +1,5 @@
 {
-    "_comment": "World item floor sprites (see include/WorldItems.h). An item lying in the world renders its icon on the floor (Y-sorted), the item IS its own cue -- no glow. scale = draw scale of the icon; box = the interaction reach zone (world px). gather_sprite/gather_size = the stand-in a gather node shows until per-spot node art is authored. Tunable -- edit + relaunch (dev reads assets from source).",
+    "_comment": "World item floor sprites (see include/WorldItems.h). An item lying in the world renders its icon on the floor (Y-sorted), the item IS its own cue -- no glow. scale = draw scale of the icon; box = the interaction reach zone (world px). gather_sprite/gather_size = the stand-in a table-drawing pickup shows when it names no art of its own (a placement carrying its own tileset region draws that instead). Tunable -- edit + relaunch (dev reads assets from source).",
     "scale": 1.0,
     "box": 24.0,
     "gather_sprite": "assets/sprites/items/wild_thyme.png",

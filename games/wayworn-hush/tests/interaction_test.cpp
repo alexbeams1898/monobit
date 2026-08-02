@@ -1,6 +1,6 @@
 #include "Interaction.h"
 #include "Inventory.h"
-#include "Loot.h"
+#include "Yields.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 
@@ -32,7 +32,7 @@ Intent facing(float px, float py, float fx = 1.0f, float fy = 0.0f)
 }
 
 // A Context with empty observation/growth state -- enough to dispatch a direct action
-// (which only touches satchel + items + loot). rng is unused by a plain Pickup.
+// (which only touches satchel + items + yields). rng is unused by a plain Pickup.
 const psyche::RollRng kNoRng = [](int) { return 0; };
 
 // An actionable-only interactable (no observe_id) at the origin: a direct Pickup/Gather.
@@ -146,8 +146,8 @@ TEST_CASE("Firing an actionable-only Pickup deposits the item and despawns it di
     psyche::State obs;
     growth::GrowthState growth;
     inventory::Satchel satchel;
-    loot::Registry loot;
-    interaction::Context ctx{obs, growth, kNoRng, satchel, items, loot, 40.0f};
+    yields::Registry tables;
+    interaction::Context ctx{obs, growth, kNoRng, satchel, items, tables, 40.0f};
 
     Intent it;
     it.px = 0;
@@ -179,8 +179,8 @@ TEST_CASE("An item that is only targeted (not fired) stays in the world", "[inte
     psyche::State obs;
     growth::GrowthState growth;
     inventory::Satchel satchel;
-    loot::Registry loot;
-    interaction::Context ctx{obs, growth, kNoRng, satchel, items, loot, 40.0f};
+    yields::Registry tables;
+    interaction::Context ctx{obs, growth, kNoRng, satchel, items, tables, 40.0f};
 
     Intent it; // in reach, but no press/click
     it.px = 0;
@@ -216,8 +216,8 @@ TEST_CASE("An observable-AND-actionable spot observes (the take is a deed, not d
     psyche::State obs;
     growth::GrowthState growth;
     inventory::Satchel satchel;
-    loot::Registry loot;
-    interaction::Context ctx{obs, growth, kNoRng, satchel, items, loot, 40.0f};
+    yields::Registry tables;
+    interaction::Context ctx{obs, growth, kNoRng, satchel, items, tables, 40.0f};
 
     Intent it;
     it.px = 0;
@@ -242,13 +242,13 @@ TEST_CASE("Firing an actionable-only Gather rolls the table into the satchel and
     inventory::Registry items;
     items.defs["wild_thyme"] = inventory::ItemDef{"wild_thyme", "Wild Thyme"};
     items.defs["wild_thyme"].max_stack = 99;
-    loot::Registry loot;
-    loot::Table table;
+    yields::Registry tables;
+    yields::Table table;
     table.id = "herbs";
     table.rolls_min = 2;
     table.rolls_max = 2;
-    table.entries.push_back(loot::Entry{"wild_thyme", 1, 1, 1});
-    loot.tables["herbs"] = table;
+    table.entries.push_back(yields::Entry{"wild_thyme", 1, 1, 1});
+    tables.tables["herbs"] = table;
 
     const entt::entity node = reg.create();
     reg.emplace<Transform>(node, Transform{0.0f, 0.0f});
@@ -258,7 +258,7 @@ TEST_CASE("Firing an actionable-only Gather rolls the table into the satchel and
     psyche::State obs;
     growth::GrowthState growth;
     inventory::Satchel satchel;
-    interaction::Context ctx{obs, growth, kNoRng, satchel, items, loot, 40.0f};
+    interaction::Context ctx{obs, growth, kNoRng, satchel, items, tables, 40.0f};
 
     Intent it;
     it.px = 0;
@@ -278,7 +278,7 @@ TEST_CASE("A Gather naming an unknown table fires but deposits nothing", "[inter
     auto& reg = em.registry();
 
     const inventory::Registry items;
-    const loot::Registry loot; // empty -- "ghost" table id resolves to nothing
+    const yields::Registry tables; // empty -- "ghost" table id resolves to nothing
     const entt::entity node = reg.create();
     reg.emplace<Transform>(node, Transform{0.0f, 0.0f});
     reg.emplace<interaction::Interactable>(node,
@@ -287,7 +287,7 @@ TEST_CASE("A Gather naming an unknown table fires but deposits nothing", "[inter
     psyche::State obs;
     growth::GrowthState growth;
     inventory::Satchel satchel;
-    interaction::Context ctx{obs, growth, kNoRng, satchel, items, loot, 40.0f};
+    interaction::Context ctx{obs, growth, kNoRng, satchel, items, tables, 40.0f};
 
     Intent it;
     it.px = 0;

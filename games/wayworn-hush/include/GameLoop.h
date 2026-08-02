@@ -2,6 +2,7 @@
 
 #include "Ambience.h"
 #include "AppState.h"
+#include "Arcs.h"
 #include "Crafting.h"
 #include "Footsteps.h"
 #include "Formulas.h"
@@ -18,6 +19,7 @@
 #include "Psyche.h"
 #include "Scene.h"
 #include "Settings.h"
+#include "SpiritHud.h"
 #include "Structures.h"
 #include "Surfaces.h"
 #include "Tutorial.h"
@@ -38,8 +40,9 @@ class Engine;
 class EntityManager;
 
 // The pause page: the game's one on-demand screen, opened with F. It IS the
-// growth/observation record -- there is no persistent HUD (see
-// docs/design/GAME-SYSTEMS.md). While open the world update freezes and the
+// growth/observation record -- the DEEP record, as against the HUD, which carries
+// only what is always true at a glance (see docs/design/HUD.md and settings::Hud).
+// While open the world update freezes and the
 // soundtrack is muffled. Tabs: Self (Spirit + faculties), Satchel (carried items),
 // Craft, Notebook (the thoughts he's had), and System (a Controls sub-view + Quit;
 // later settings/save). Closing is F -- there is no "Resume" item.
@@ -120,26 +123,21 @@ struct GameState
     interaction_mode::Config int_mode_config; // Observe/Act stance badge + SFX feel
     interaction_mode::State int_mode_state;   // stance edge-detect for the transition SFX
     watch_hud::Config watch_hud_config;       // the carried watch's readout: placement + colors
+    spirit_hud::Config spirit_hud_config;     // the Spirit total + its "+N" feed
     world_config::Config world_config;        // region asset paths (map, atlas, ambient)
     worldclock::WorldClock clock;             // in-world time (notebook datelines, day/night later)
     inventory::Registry items;                // loaded item blueprints (config/items/*.json)
     npc::Registry npcs;                       // authored characters (config/npcs/*.json)
-    loot::Registry loot_tables;               // gather loot tables (config/loot/*.json)
+    yields::Registry yield_tables;            // gather yield tables (config/yields/*.json)
     crafting::Registry recipes;               // loaded recipes (config/recipes/*.json)
     crafting::Config crafting_config;         // crafting outcome/XP tuning (config/crafting.json)
     crafting::State crafting_state;           // realized-recipe discovery state
     inventory::Satchel satchel;               // what the pilgrim carries
     notebook::Record notebook; // dated record of readings (gated on carrying the notebook)
-    // Unlock ids (see psyche::availableUnlocks) already announced via a
-    // notification, so "1 new observation / action available" toasts fire exactly
-    // once per new unlock, not every frame.
-    std::unordered_set<std::string> announced_unlocks;
-    // Spots whose baseline deeds the unlock pump has already seeded as announced
-    // (a deed reachable the moment its spot is FIRST observed is what the menu
-    // shows, not news -- only unlocks appearing after that toast). Ephemeral:
-    // never saved, rebuilt from the observation record by the first pump.
-    std::unordered_set<std::string> seeded_spots;
-
+    // Authored threads (config/arcs.json). Their ROUTES are checked at boot and never read
+    // again; the arcs that carry a written line surface as the notebook's agenda. Named for
+    // the concept rather than the file so it cannot shadow the `arcs::` namespace here.
+    arcs::Registry threads;
     // Placed things this pilgrim has removed from the world for good -- a pickup taken,
     // a spot consumed -- keyed by placement id (the stable identity the map gives every
     // placement). The map is authored the same every run; this is what makes a walk's
@@ -159,6 +157,16 @@ struct GameState
     // into a level, so the map never states the level a second time.
     std::unordered_map<std::string, std::string> warp_levels;
     std::vector<ldtk::SpawnPoint> region_spawns; // named points (arrivals + scene marks)
+    // A CLEARING: several placed things that together mean one change to the world (the
+    // piles across a path). Group name -> every placement in it, and the flag its emptying
+    // raises. Rebuilt from the authored map on every region switch, so it counts what the
+    // map says exists; `gone` says which of them this pilgrim has already taken.
+    struct Clearing
+    {
+        std::vector<std::string> placements;
+        std::string flag;
+    };
+    std::unordered_map<std::string, Clearing> region_clearings;
     // The level's PLACED characters by npc id, so a scene can steer someone who is
     // already standing there (no `enter` needed) -- scene-spawned bodies shadow these.
     std::unordered_map<std::string, entt::entity> region_npcs;
@@ -223,11 +231,37 @@ struct GameState
     float clock_py = 0.0f;
     bool clock_pos_valid = false;
 
+    // --- EDGE DETECTORS ------------------------------------------------------------------
+    // Each field below is a "what it looked like last time" baseline, and each pump that reads
+    // one treats a difference as an EVENT. That makes them all share one failure: at world
+    // enter the baseline is default-constructed while the world is fully restored, so the
+    // entire walk reads as having just happened -- an hour crossing, every item arriving, a
+    // flag landing. The symptoms look unrelated (a TV clunk at boot, a want-line at the title,
+    // thoughts re-rolling) but they are one bug.
+    //
+    // THE RULE: an arrival is not an event. Every baseline here is seeded from the RESTORED
+    // world in the one block at world-enter (see main.cpp, "EVERY edge detector is seeded").
+    // A new pump adds its baseline here AND its seeding there, in the same change -- a
+    // baseline seeded nowhere is a bug that only shows up in play, on load, once.
+    //
     // The stat-change pump's fingerprint: growth::levelSum as of the last engine
-    // run over the stat keys. Lives HERE (per-walk, ephemeral, never saved) and is
-    // seeded from the restored stats at world-enter -- so resuming a save can never
-    // masquerade as growth and re-roll thoughts nobody earned. -1 = unseeded.
+    // run over the stat keys. Lives HERE (per-walk, ephemeral, never saved) so resuming a
+    // save can never masquerade as growth and re-roll thoughts nobody earned. -1 = unseeded.
     int stats_seen_sum = -1;
+    // The last whole hour the psyche engine was re-run for (see the clock mirror in
+    // gameUpdate): a crossed hour re-offers the stat keys, because content can be gated on the
+    // time of day. Seeded from the restored clock, or the first tick reads as an hour passing.
+    int clock_hour_seen = -1;
+    // Unlock ids (see psyche::availableUnlocks) already announced via a notification, so
+    // "1 new observation / action available" toasts fire exactly once per new unlock.
+    std::unordered_set<std::string> announced_unlocks;
+    // Spots whose baseline deeds the unlock pump has already seeded as announced (a deed
+    // reachable the moment its spot is FIRST observed is what the menu shows, not news).
+    // Rebuilt from the observation record by the first pump.
+    std::unordered_set<std::string> seeded_spots;
+    // What he carried and held as of the last mirror lives on psyche::State (carrying /
+    // holding) rather than here, because the engine itself diffs against them -- but they are
+    // edge-detector baselines all the same, and are seeded in the same block.
 
     // Autosave bookkeeping (ephemeral -- never saved). `progress_events` counts the
     // things worth keeping (a deed enacted, a craft made, a find granted, a reading

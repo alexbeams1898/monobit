@@ -97,4 +97,13 @@ double parseClockTime(const std::string& hhmm);
 // shift: 22:00-06:00).
 bool inWindow(double frac, double from, double to);
 
+// A day-fraction spoken as a clock reading ("8:00") -- the same face timeAt shows, for a
+// time that is a position in the day rather than a moment on the record (when a door opens).
+std::string clockOfDay(double frac);
+
+// The same fraction spoken the way someone without a watch would say it: "in the morning",
+// "this afternoon", "this evening", "tonight". The unwatched half of every time the game
+// tells him -- he always knows roughly where the sun is, never the hour.
+std::string partOfDay(double frac);
+
 } // namespace worldclock

@@ -75,7 +75,8 @@ void init(FontHandle body_font, FontHandle heading_font)
     sHeadingFont = heading_font;
 }
 
-void render(const Card& card, const hud::Regions& regions, int windowW, int windowH)
+void render(const Card& card, const hud::Regions& regions, const FocusRect& spirit, int windowW,
+            int windowH)
 {
     const float w = static_cast<float>(windowW);
     const float h = static_cast<float>(windowH);
@@ -89,7 +90,13 @@ void render(const Card& card, const hud::Regions& regions, int windowW, int wind
     else if (card.focus == "notification")
         focus = &regions.notification;
     hud::Rect hole{};
-    if (focus != nullptr)
+    if (card.focus == "spirit" && spirit.w > 0.0f)
+    {
+        // Already in window px -- the badge resolved its own box, so nothing re-derives it.
+        hole = hud::Rect{spirit.x, spirit.y, spirit.w, spirit.h};
+        dimAround(hole, w, h);
+    }
+    else if (focus != nullptr)
     {
         hole = hud::resolve(*focus, windowW, windowH);
         dimAround(hole, w, h);

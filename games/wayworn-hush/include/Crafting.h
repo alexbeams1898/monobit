@@ -110,6 +110,11 @@ struct Config
     std::string learn_faculty = "perception"; // which faculty a first craft deepens
     int learn_faculty_exp = 25;               // EXP into that faculty for the discovery
     int learn_spirit_exp = 10;                // Spirit EXP granted for the discovery
+    // MAKING IS THE KIT. Like a thought needing the notebook, making needs the tools to make
+    // with: without this item carried there is no Craft tab at all -- not a dimmed one, none.
+    // Ingredients stay the only requirement for a RECIPE (nothing here gates what combines);
+    // this gates whether the pilgrim can sit down to work at all. Empty = the rule is off.
+    std::string kit_item = "crafting_kit";
 };
 
 // Load the recipes from a directory of JSON files (one per recipe; id = the JSON's "id" or the

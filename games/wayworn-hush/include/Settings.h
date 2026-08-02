@@ -23,6 +23,9 @@ struct Hud
     // a clock in the corner is a thing to watch. The player who wants it turns it on.
     bool show_time = false;
     bool show_stance = true; // the Observe/Act badge -- it teaches the game's core verb
+    // The Spirit total in the corner. On by default: what he has to spend on becoming someone
+    // is the one number the game asks the player to carry in their head.
+    bool show_spirit = true;
 };
 
 struct Settings

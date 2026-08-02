@@ -254,7 +254,44 @@ void cognitionTab(const psyche::State& obs, const growth::GrowthState& g)
             drawThoughtNode(obs, g, r);
 }
 
-void render(PlayerConfig& pc, growth::GrowthState& growth, const psyche::State& obs)
+// The World tab: what TIME it is, editable. Content is gated on the hour (a door
+// that shuts at eight) and on which day it is (a line that only exists once you
+// have let someone down), and neither is testable by waiting -- so set them.
+void worldTab(worldclock::WorldClock& clock)
+{
+    ImGui::TextUnformatted(worldclock::stampAt(clock, clock.seconds).c_str());
+    ImGui::Separator();
+
+    const double perDay = clock.seconds_per_day > 0.0 ? clock.seconds_per_day : 1.0;
+    const auto setTo = [&](int day, double hour)
+    { clock.seconds = (day - 1) * perDay + (hour / 24.0) * perDay; };
+
+    int day = worldclock::day(clock);
+    float hour = static_cast<float>(worldclock::fractionOfDay(clock) * 24.0);
+    bool changed = ImGui::SliderFloat("hour", &hour, 0.0f, 23.99f, "%.2f");
+    changed = ImGui::InputInt("day", &day) || changed;
+    if (changed)
+        setTo(day < 1 ? 1 : day, static_cast<double>(hour));
+
+    // The jumps a tester actually wants, in the words the content uses.
+    const char* labels[] = {"06:00", "08:00", "12:00", "17:00", "20:00", "23:00"};
+    const double hours[] = {6.0, 8.0, 12.0, 17.0, 20.0, 23.0};
+    for (int i = 0; i < 6; ++i)
+    {
+        if (i > 0)
+            ImGui::SameLine();
+        if (ImGui::SmallButton(labels[i]))
+            setTo(worldclock::day(clock), hours[i]);
+    }
+    if (ImGui::Button("+1 hour"))
+        clock.seconds += perDay / 24.0;
+    ImGui::SameLine();
+    if (ImGui::Button("+1 day"))
+        clock.seconds += perDay;
+}
+
+void render(PlayerConfig& pc, growth::GrowthState& growth, const psyche::State& obs,
+            worldclock::WorldClock& clock)
 {
     if (!sVisible)
         return;
@@ -279,6 +316,11 @@ void render(PlayerConfig& pc, growth::GrowthState& growth, const psyche::State& 
         if (ImGui::BeginTabItem("Stats"))
         {
             statsTab(growth);
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("World"))
+        {
+            worldTab(clock);
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Cognition"))

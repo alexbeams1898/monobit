@@ -11,6 +11,7 @@
 #include "PlayerMovement.h"
 #include "SaveGame.h"
 #include "ScreenStyle.h"
+#include "SpiritHud.h"
 #include "ThoughtBox.h"
 #include "TitleScreen.h"
 #include "Version.h"
@@ -118,6 +119,7 @@ void reloadHudFonts(GameState& gs, int windowW, int windowH)
     notify::init(label, gs.hud.notification);
     interaction_mode::init(label); // the stance badge uses the small label font
     watch_hud::init(label);        // the watch readout sits beside it, same font
+    spirit_hud::init(label);       // and the Spirit total, opposite corner, same font
 }
 
 // Engine resize callback: keep the pixel target + HUD fonts in step with the new
@@ -196,6 +198,16 @@ void anchorInterpolation(EntityManager& em)
 void resetAuthoredState(GameState& gs)
 {
     psyche::load(gs.psyche, "config/psyche.json", "config/actions.json");
+    // What a flag landing is WORTH, derived from what it OPENS rather than authored: one
+    // something gates on opened a way; a thread's goal closed the thread (see
+    // RollConfig::exp_flag_read). Derived HERE, because the load above rebuilds State from
+    // scratch -- deriving it once at boot would leave every actual walk with empty sets and
+    // every flag silently worthless.
+    gs.psyche.read_flags = arcs::survey(gs.psyche).read_flags;
+    gs.psyche.goal_flags.clear();
+    for (const auto& a : gs.threads.arcs)
+        if (!a.goal_flag.empty())
+            gs.psyche.goal_flags.insert(a.goal_flag);
     // Bind speakers: content authors WHO talks as an npc id; the display name is
     // authored once, in that character's config. Unknown speakers read under their
     // raw id -- visible in play, loud in the log, never silently mute.
@@ -237,6 +249,37 @@ void resetAuthoredState(GameState& gs)
     // Only the CADENCE is authored -- the loader leaves `seconds` alone, which is the walk's
     // own elapsed time and comes from the save (applied after this).
     worldclock::load(gs.clock, "config/world_clock.json");
+}
+
+// Seed EVERY edge detector from the RESTORED world, in one place, because they all answer the
+// same question and get it wrong the same way: a pump that compares against a
+// default-constructed baseline reads the whole restored walk as having just happened. The
+// symptoms look unrelated -- a TV clunking at boot, a notebook-want line at the title screen,
+// thoughts re-rolling on load -- but they are one bug, and this is its one fix.
+//
+// AN ARRIVAL IS NOT AN EVENT. A new pump adds its baseline to GameState and its seeding here,
+// in the same change.
+void seedEdgeDetectors(GameState& gs)
+{
+    // The stat-change fingerprint: the pump must see only growth that happens in this walk,
+    // never the restore itself (which would re-roll eligible thoughts and surface miss lines
+    // nobody earned).
+    gs.stats_seen_sum = growth::levelSum(gs.growth);
+    // The unlock pump's baseline: fresh per walk, rebuilt from this pilgrim's restored
+    // observation record by the first pump.
+    gs.seeded_spots.clear();
+    // The hour the clock was last re-checked for -- unseeded, the first tick reads as an hour
+    // having just passed, and re-offers every stat-keyed thought.
+    gs.clock_hour_seen = static_cast<int>(worldclock::fractionOfDay(gs.clock) * 24.0);
+    // What he carries and holds. Unseeded, the first mirror reads as everything he owns having
+    // just arrived in his hands.
+    gs.psyche.carrying.clear();
+    for (const auto& e : gs.satchel.items)
+        gs.psyche.carrying.insert(e.id);
+    gs.psyche.holding = gs.satchel.held;
+    // The Spirit counter opens at his real total rather than climbing to it from whatever the
+    // last walk left on screen -- the same rule, for the same reason.
+    spirit_hud::reset(gs.growth.spirit_exp);
 }
 
 // Bring a world into being and step into it -- the ONE path from the title into play,
@@ -414,9 +457,23 @@ void applyRegion(Engine& engine, EntityManager& em, GameState& gs, const ldtk::R
                          id.c_str());
     }
 
-    world_items::spawn(em, region.pickups, gs.items, gs.loot_tables, gs.world_items_config,
+    world_items::spawn(em, region.pickups, gs.items, gs.yield_tables, gs.world_items_config,
                        gs.gone);
     ldtk::spawnProps(em, region);
+
+    // What the AUTHORED map says each clearing is made of -- counted from the placements, not
+    // from what happens to be spawned, so a pilgrim resuming mid-work still knows how many
+    // piles there were. `gone` supplies the other half: which of them are already hauled off.
+    gs.region_clearings.clear();
+    for (const auto& p : region.pickups)
+    {
+        if (p.group.empty())
+            continue;
+        GameState::Clearing& c = gs.region_clearings[p.group];
+        c.placements.push_back(p.placement_id);
+        if (!p.clears_flag.empty())
+            c.flag = p.clears_flag;
+    }
 
     // The people standing in this level. A placement naming an unknown character is
     // an authoring slip -- loud, not silent, or the kitchen is just mysteriously empty.
@@ -532,13 +589,7 @@ bool enterWorld(Engine& engine, EntityManager& em, GameState& gs, const std::str
     gs.ambience_state = {};
     ambience::arm(gs.ambience_state, gs.ambience_config, gs.psyche.flags);
 
-    // Seed the stat-change fingerprint from the RESTORED stats: the pump must see
-    // only growth that happens in this walk, never the restore itself (which would
-    // re-roll eligible thoughts at boot and surface miss lines nobody earned).
-    gs.stats_seen_sum = growth::levelSum(gs.growth);
-    // Same rule for the unlock pump's baseline seeding: fresh per walk, rebuilt
-    // from this pilgrim's restored observation record on the first pump.
-    gs.seeded_spots.clear();
+    seedEdgeDetectors(gs);
 
     // Terrain + player + props, filtered by the walk above. The region IS the map -- a
     // failed load is fatal. A walk resumes in the level it left; a fresh one starts
@@ -710,6 +761,7 @@ int main(int argc, char* argv[])
     world_items::load(gs.world_items_config, "config/world_items.json");        // floor item feel
     interaction_mode::load(gs.int_mode_config, "config/interaction_mode.json"); // stance badge
     watch_hud::load(gs.watch_hud_config, "config/watch_hud.json");              // watch readout
+    spirit_hud::load(gs.spirit_hud_config, "config/spirit_hud.json");           // Spirit total
     world_config::load(gs.world_config, "config/world.json"); // region asset paths
 
     inventory::load(gs.items, "config/items");
@@ -717,20 +769,24 @@ int main(int argc, char* argv[])
               "config/npcs"); // authored characters (bodies; speech is observation content)
     scene::load(gs.scenes, "config/scenes");                    // choreography that plays the graph
     ambience::load(gs.ambience_config, "config/ambience.json"); // named world-sound channels
-    loot::load(gs.loot_tables, "config/loot");    // gather tables (rolled by ActionKind::Gather)
-    crafting::load(gs.recipes, "config/recipes"); // recipes (combine -> made thing)
+    yields::load(gs.yield_tables, "config/yields");             // what placed things give up
+    crafting::load(gs.recipes, "config/recipes");               // recipes (combine -> made thing)
     crafting::loadConfig(gs.crafting_config, "config/crafting.json"); // outcome/XP tuning
 
     head_marker::load(gs.head_marker_config, "config/head_marker.json");
 
-    // Story arcs are authoring apparatus, not a runtime system: nothing below reads them.
-    // Loading them here checks the authored threads against what the content can actually
-    // produce, so a renamed flag that strands a route is reported at boot rather than found
-    // in play. Warnings only -- a broken arc never blocks the game.
+    // Authored threads. Their ROUTES are authoring apparatus -- checked here against what the
+    // content can actually produce, so a renamed flag that strands a route is reported at boot
+    // rather than found in play (warnings only; a broken arc never blocks the game). The arcs
+    // that carry a written line stay loaded, because those are the agenda.
+    arcs::load(gs.threads, "config/arcs.json");
     {
-        arcs::Registry authored;
-        arcs::load(authored, "config/arcs.json");
-        for (const auto& p : arcs::validate(authored, arcs::survey(gs.psyche)))
+        // The map raises flags too (a clearing's last piece hauled off), so the survey takes
+        // both halves -- otherwise a goal the WORLD can reach reads as one nothing can.
+        arcs::Producible world = arcs::survey(gs.psyche);
+        for (const auto& flag : ldtk::clearingFlags(gs.world_config.ldtk))
+            world.flags.insert(flag);
+        for (const auto& p : arcs::validate(gs.threads, world))
             std::fprintf(stderr, "[arc] '%s' %s\n", p.arc.c_str(), p.detail.c_str());
     }
 

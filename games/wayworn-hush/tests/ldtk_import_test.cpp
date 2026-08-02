@@ -524,3 +524,72 @@ TEST_CASE("a Pickup lands where the author sees it, whatever its pivot", "[ldtk]
     // same authored offset a prop uses -- Y-sort has no height axis.
     REQUIRE(r.pickups[0].sort_offset == Approx(18.0f));
 }
+
+TEST_CASE("what a pickup yields is a field, not a type", "[ldtk]")
+{
+    // ONE placed thing: `item` gives exactly that, `yields` draws from a table, and the entity's
+    // NAME is never read -- so an author can call it whatever they like and only the fields
+    // decide. A placement may also carry its OWN art (the tileset region its entity shows in
+    // the editor), which is how a pile of storm wood looks like itself rather than like a
+    // stand-in for whatever it happens to give up.
+    const auto path = (std::filesystem::temp_directory_path() / "wayworn_ldtk_yield.ldtk").string();
+    std::ofstream(path) << R"JSON({
+ "defs": {"tilesets": [{"identifier": "Overworld", "uid": 1, "relPath": "Overworld.png",
+   "__cWid": 40, "tileGridSize": 16, "enumTags": []}]},
+ "levels": [{"identifier": "Room", "layerInstances": [
+   {"__identifier": "Pickups", "__type": "Entities", "entityInstances": [
+     {"__identifier": "Pickup", "iid": "a", "px": [32, 16], "width": 16, "height": 16,
+      "__pivot": [0.5, 1],
+      "fieldInstances": [{"__identifier": "item", "__value": "watch"}]},
+     {"__identifier": "AnythingAtAll", "iid": "b", "px": [64, 16], "width": 32, "height": 16,
+      "__pivot": [0.5, 1],
+      "__tile": {"tilesetUid": 1, "x": 592, "y": 16, "w": 32, "h": 16},
+      "fieldInstances": [{"__identifier": "yields", "__value": "storm_debris"},
+                         {"__identifier": "group", "__value": "richards_trail"},
+                         {"__identifier": "clears_flag", "__value": "path_open"}]}]},
+   {"__identifier": "Ground", "__type": "Tiles", "__gridSize": 16, "__cWid": 4, "__cHei": 4,
+    "gridTiles": [{"px": [0, 0], "src": [16, 0]}]}]}]})JSON";
+    const surfaces::Config sc;
+    const structures::Config st;
+    const ldtk::Region r = ldtk::load(path, "missing_atlas.png", sc, st, "Room");
+    REQUIRE(r.pickups.size() == 2);
+
+    // `item` -> yields exactly that, and names no art of its own (its icon speaks for it).
+    REQUIRE(r.pickups[0].kind == ldtk::PickupPlacement::Kind::Item);
+    REQUIRE(r.pickups[0].target == "watch");
+    REQUIRE(r.pickups[0].sw == 0);
+
+    // `yields` -> draws from that table, whatever the entity is CALLED.
+    REQUIRE(r.pickups[1].kind == ldtk::PickupPlacement::Kind::Table);
+    REQUIRE(r.pickups[1].target == "storm_debris");
+    // Its own art: source px x2 into the render atlas, like a prop's.
+    REQUIRE(r.pickups[1].sx == 1184);
+    REQUIRE(r.pickups[1].sw == 64);
+    REQUIRE(r.pickups[1].sh == 32);
+    // And the clearing it belongs to.
+    REQUIRE(r.pickups[1].group == "richards_trail");
+    REQUIRE(r.pickups[1].clears_flag == "path_open");
+}
+
+TEST_CASE("clearingFlags finds every flag the map can raise", "[ldtk]")
+{
+    const auto path =
+        (std::filesystem::temp_directory_path() / "wayworn_ldtk_clearing.ldtk").string();
+    std::ofstream(path) << R"JSON({
+ "defs": {"tilesets": []},
+ "levels": [
+  {"identifier": "Yard", "layerInstances": [
+   {"__identifier": "Pickups", "__type": "Entities", "entityInstances": [
+     {"__identifier": "Pickup", "iid": "a", "px": [0, 0], "width": 16, "height": 16,
+      "fieldInstances": [{"__identifier": "yields", "__value": "t"},
+                         {"__identifier": "clears_flag", "__value": "path_open"}]}]}]},
+  {"identifier": "Cave", "layerInstances": [
+   {"__identifier": "Entities", "__type": "Entities", "entityInstances": [
+     {"__identifier": "Pickup", "iid": "b", "px": [0, 0], "width": 16, "height": 16,
+      "fieldInstances": [{"__identifier": "item", "__value": "seal"},
+                         {"__identifier": "clears_flag", "__value": "gate_open"}]}]}]}]})JSON";
+    const auto flags = ldtk::clearingFlags(path);
+    REQUIRE(flags.count("path_open") == 1); // the Pickups layer
+    REQUIRE(flags.count("gate_open") == 1); // and the Entities layer
+    REQUIRE(flags.size() == 2);
+}

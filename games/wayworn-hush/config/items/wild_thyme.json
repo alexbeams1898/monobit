@@ -4,7 +4,10 @@
     "name": "Wild Thyme",
     "description": "A sprig of hillside thyme, sharp and green. Good in a pot.",
     "icon": "assets/tilesets/items.png",
-    "icon_cell": [ 4, 0 ],
+    "icon_cell": [
+        6,
+        0
+    ],
     "icon_size": 32,
     "category": "practical",
     "rarity": 1,

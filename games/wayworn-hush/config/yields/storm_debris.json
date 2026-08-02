@@ -1,0 +1,9 @@
+{
+    "_comment": "What one pile of the storm's leavings gives up. Branches always; the odd stone the water pushed along with them. Deliberately small per pile -- the errand is four piles, and the satchel filling as the path opens is the point.",
+    "id": "storm_debris",
+    "rolls": { "min": 1, "max": 2 },
+    "entries": [
+        { "item": "branches", "weight": 85, "qty": { "min": 1, "max": 2 } },
+        { "item": "river_stone", "weight": 15, "qty": { "min": 1, "max": 1 } }
+    ]
+}

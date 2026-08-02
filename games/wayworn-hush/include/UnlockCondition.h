@@ -39,6 +39,16 @@ struct Knowledge
     // a note needs the watch and writing a thought down needs the notebook. That
     // asymmetry is authored as clauses, not compiled in.
     const std::unordered_set<std::string>* carrying = nullptr;
+    // What he has taken UP, as opposed to what he carries: one item id, or empty for empty
+    // hands. Distinct from `carrying` because a spade in the bag is not a spade in the hands.
+    std::string holding;
+    // WHEN it is, for clauses that only hold at certain times: the fraction of the
+    // day (0..1, worldclock::fractionOfDay) and which day of the walk it is (1-based).
+    // A window is a clause like any other, so "only while his door is open", "only
+    // before the storm", and "or later, once he gave you a key" all AND/OR together
+    // with knowledge instead of needing a schedule concept of their own.
+    double day_frac = 0.0;
+    int day = 1;
 
     bool has(const std::unordered_set<std::string>* set, const std::string& id) const;
     int stat(const std::string& name) const;
@@ -54,6 +64,20 @@ struct Clause
     std::vector<std::string> flags;            // require ALL these flags set
     std::unordered_map<std::string, int> stat; // require each stat >= its level
     std::vector<std::string> carrying;         // require ALL these items in the satchel
+    // Require this item to be HELD (see Satchel::held). What is in his hands is what decides
+    // which deeds the thing in front of him offers.
+    std::string holding;
+    // A TIME WINDOW, as fractions of the day: hold only between `from` and `to`
+    // (authored "HH:MM"; from > to wraps midnight). Both -1 = no window. A window
+    // is what makes a door shut at eight and an errand wait for tomorrow -- and
+    // because it is only a clause, a later OR-clause (a key earned in act two) can
+    // reopen the same thread without a special case.
+    double from = -1.0;
+    double to = -1.0;
+    // Which DAY of the walk, 1-based: `day_min` is "not before" (a line that only
+    // exists once you have let him down once), `day_max` "not after". 0 = unset.
+    int day_min = 0;
+    int day_max = 0;
     // The NEGATIVE half: each entry must NOT be held. Same name space as the
     // positive fields ("flag:x", "obs:x", "item:x"), so one clause can say "he
     // has seen the thing but is not carrying the notebook" -- which is how a

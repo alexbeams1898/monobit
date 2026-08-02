@@ -1,0 +1,14 @@
+{
+    "_comment": "The Spirit readout (see include/SpiritHud.h) -- the corner total, and the '+N' a gain announces itself with before feeding into it. x/y are window fractions (top-left origin); pad is a canvas fraction. catch_up is the FRACTION of the remaining gap the shown number closes each frame (higher = snappier), min_step stops the last few units crawling. gain_hold/gain_fade are seconds the '+N' stays lit / takes to fade, gain_rise how far it drifts up as it goes (canvas fraction). Tunable -- edit + relaunch (dev reads assets from source).",
+    "x": 0.90,
+    "y": 0.90,
+    "pad": 0.008,
+    "catch_up": 0.08,
+    "min_step": 1,
+    "gain_hold": 1.1,
+    "gain_fade": 0.5,
+    "gain_rise": 0.02,
+    "text": [ 0.92, 0.88, 0.70, 1.0 ],
+    "gain": [ 0.98, 0.90, 0.55, 1.0 ],
+    "panel": [ 0.10, 0.11, 0.13, 0.72 ]
+}

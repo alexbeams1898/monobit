@@ -29,7 +29,7 @@ add_library(wayworn-systems STATIC
     src/HeadMarker.cpp
     src/WorldClock.cpp
     src/Inventory.cpp
-    src/Loot.cpp
+    src/Yields.cpp
     src/Formulas.cpp
     src/Crafting.cpp
     src/WorldItems.cpp
@@ -37,6 +37,7 @@ add_library(wayworn-systems STATIC
     src/Settings.cpp
     src/SettingsScreen.cpp
     src/WatchHud.cpp
+    src/SpiritHud.cpp
     src/Notebook.cpp
     src/LdtkImport.cpp
     src/PausePage.cpp
@@ -96,6 +97,7 @@ add_executable(wayworn-tests
     tests/ambience_test.cpp
     tests/tutorial_test.cpp
     tests/arcs_test.cpp
+    tests/arcs_chain_test.cpp
     tests/psyche_test.cpp
     tests/growth_test.cpp
     tests/pause_page_test.cpp
@@ -109,11 +111,12 @@ add_executable(wayworn-tests
     tests/head_marker_test.cpp
     tests/world_clock_test.cpp
     tests/inventory_test.cpp
-    tests/loot_test.cpp
+    tests/yields_test.cpp
     tests/formulas_test.cpp
     tests/savegame_test.cpp
     tests/player_movement_test.cpp
     tests/settings_screen_test.cpp
+    tests/spirit_hud_test.cpp
     tests/title_screen_test.cpp
     tests/text_field_test.cpp
     tests/world_items_test.cpp

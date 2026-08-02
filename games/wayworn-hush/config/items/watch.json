@@ -4,7 +4,10 @@
     "name": "Pocket Watch",
     "description": "A small brass watch, still ticking. It tells you when.",
     "icon": "assets/tilesets/items.png",
-    "icon_cell": [ 3, 0 ],
+    "icon_cell": [
+        5,
+        0
+    ],
     "icon_size": 32,
     "category": "key_item",
     "rarity": 4

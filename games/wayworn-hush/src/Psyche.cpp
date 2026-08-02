@@ -126,6 +126,9 @@ unlock::Knowledge makeKnowledge(const State& s, const growth::GrowthState& g,
     k.flags = &s.flags;
     k.stats = &statLevels;
     k.carrying = &s.carrying;
+    k.holding = s.holding;
+    k.day_frac = s.day_frac;
+    k.day = s.day;
     return k;
 }
 
@@ -386,15 +389,21 @@ void deriveValues(State& state)
                           state.roll.opening_weight * static_cast<float>(t.opening);
         t.value = static_cast<int>(std::lround(val));
         t.difficulty = difficultyFor(state, t); // structure + quiet value nudge
-        t.spirit_exp = t.value * state.roll.exp_per_value;
+        // Spirit is for UNDERSTANDING, and speech is not understanding. A remark is a thing he
+        // said, not a thing he worked out -- the same reason it never reaches the notebook --
+        // so it pays nothing however central the graph says it is. (A grumble into a pillow is
+        // a noise a person makes.)
+        t.spirit_exp = t.isRemark() ? 0 : t.value * state.roll.exp_per_value;
         t.stat_exp = t.value * state.roll.stat_exp_per_value;
     }
 
-    // Observation tier EXP = the encounter's value (scaled), earned once per tier.
+    // A READING pays nothing of itself -- the density rule (see RollConfig::exp_discovery).
+    // Spirit for a spot is paid once, for FINDING it, and observeEncounter hands that out on
+    // the first reach; a tier is text, and text is free.
     for (auto& o : state.encounters)
         for (auto& t : o.tiers)
         {
-            t.spirit_exp = o.value * state.roll.exp_per_value;
+            t.spirit_exp = 0;
             t.stat_exp = o.value * state.roll.stat_exp_per_value;
         }
 }
@@ -864,9 +873,16 @@ ObserveResult observeEncounter(State& state, const growth::GrowthState& growth, 
     int earned = 0;
     Outcome outcome = Outcome::Surfaced; // a reading surfaced; upgraded if a thought fires
 
-    // Surface the objective reading; EXP is earned (and carried on the line, so its toast
-    // lands on display) only when a newly-reached tier.
+    // Surface the objective reading. A reading pays nothing of itself; DISCOVERY does -- the
+    // first time this spot is reached at all (prevTier 0), once, ever. Carried on the line so
+    // the "+N" lands with the words that earned it rather than seconds earlier.
     const bool newTier = best > prevTier;
+    // Discovery is FINDING something -- a thing standing in the world that he walked up to.
+    // A scene handing him a moment (the wake-up, someone speaking as they enter) is not a
+    // find, however new it is: he did not go and look. Placed content has a placement_id;
+    // scene-only content never does.
+    const bool discovered = prevTier == 0 && !o.placement_id.empty();
+    const int reward = discovered ? state.roll.exp_discovery : 0;
     // Tier readings are the PLAYER'S perception -- observing a person notices things
     // about them, in Will's own voice -- EXCEPT an Enter trigger on a speaker: that
     // is the person speaking up unprompted (a greeting as you come near), quoted.
@@ -877,13 +893,13 @@ ObserveResult observeEncounter(State& state, const growth::GrowthState& growth, 
                                         {},
                                         0,
                                         /*is_new=*/newTier,
-                                        newTier ? bestTier->spirit_exp : 0,
+                                        reward,
                                         spoken ? o.speaker_name : std::string{}});
     std::vector<std::string> changedKeys;
     if (newTier)
     {
         state.observed_tier[o.id] = best;
-        earned += bestTier->spirit_exp;
+        earned += reward;
         changedKeys.push_back(keyObserved(o.id)); // now a held memory
     }
     else
@@ -1050,9 +1066,10 @@ void bindPlayerName(State& state, const std::string& name)
 }
 
 ObserveResult evaluateCarried(State& state, const growth::GrowthState& growth,
-                              const std::unordered_set<std::string>& held, const RollRng& rng)
+                              const std::unordered_set<std::string>& held, const RollRng& rng,
+                              const std::string& in_hand)
 {
-    if (state.carrying == held)
+    if (state.carrying == held && state.holding == in_hand)
         return {Outcome::None, 0}; // nothing changed hands
     // Every id that came OR went is a changed key: gaining the notebook opens what
     // needed it, losing it closes them again.
@@ -1063,6 +1080,17 @@ ObserveResult evaluateCarried(State& state, const growth::GrowthState& growth,
     for (const auto& id : state.carrying)
         if (held.count(id) == 0)
             changed.push_back(keyItem(id));
+    // Taking a thing UP changes what he can do with it, though the bag is unchanged: both the
+    // tool laid down and the one picked up are changed keys, or a deed gated on `holding`
+    // would wait for some unrelated event to shake it loose.
+    if (state.holding != in_hand)
+    {
+        if (!state.holding.empty())
+            changed.push_back(keyItem(state.holding));
+        if (!in_hand.empty())
+            changed.push_back(keyItem(in_hand));
+        state.holding = in_hand;
+    }
     state.carrying = held;
     // Deliberately NOT re-offering every trigger key here. A thought belongs to the
     // moment that occasions it: finding a notebook in your bedroom must not fire
@@ -1084,9 +1112,15 @@ ObserveResult setFlag(State& state, const growth::GrowthState& growth, const std
 {
     if (!state.flags.insert(flag).second)
         return {Outcome::None, 0}; // already set
+    // What the world just opened. An incidental flag (nothing reads it) pays nothing; one
+    // something gates on opened a way; a thread's goal closed the thread. Derived from what
+    // the flag DOES, so it cannot drift from the content.
+    const int worth = state.goal_flags.count(flag) != 0   ? state.roll.exp_flag_goal
+                      : state.read_flags.count(flag) != 0 ? state.roll.exp_flag_read
+                                                          : 0;
     std::vector<std::string> landed;
     std::vector<std::pair<std::string, int>> stat_gains;
-    const int earned = runEngine(state, growth, {keyFlag(flag)}, rng, landed, stat_gains);
+    const int earned = worth + runEngine(state, growth, {keyFlag(flag)}, rng, landed, stat_gains);
     ObserveResult r{landed.empty() ? Outcome::None : Outcome::Thought, earned};
     r.landed = std::move(landed);
     r.stat_gains = std::move(stat_gains);

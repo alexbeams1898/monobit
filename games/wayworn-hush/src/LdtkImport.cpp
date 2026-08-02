@@ -406,52 +406,6 @@ void collectEncountersInLayer(const json& level, const char* layerName, Region& 
             collectEncounter(e, r);
 }
 
-// Append a world pickup for entity `e`: a static drop if it carries an `item` field, a
-// gather node if it carries a `loot` field (a table id). px is the entity's top-left
-// (authoring px); a point entity, so its center is px + half its authored cell (x2 to world
-// px). `target` binds to the item or loot registry at load.
-void collectPickup(const json& e, Region& r)
-{
-    PickupPlacement p;
-    p.placement_id = placementIdOf(e);
-    if (p.placement_id.empty())
-        return; // no identity -> taking it could never be remembered
-    if (const std::string item = entityField(e, "item"); !item.empty())
-    {
-        p.kind = PickupPlacement::Kind::Item;
-        p.target = item;
-    }
-    else if (const std::string table = entityField(e, "loot"); !table.empty())
-    {
-        p.kind = PickupPlacement::Kind::Loot;
-        p.target = table;
-    }
-    else
-        return; // neither field -> not a pickup/gather entity
-    // Through boxCenter like every other placed thing: LDtk's px is the entity's
-    // PIVOT, so assuming a top-left one puts a bottom-center entity half a box
-    // right and a box down from where the author sees it.
-    float w = 0.0f;
-    float h = 0.0f;
-    if (!boxCenter(e, p.cx, p.cy, w, h))
-        return;
-    p.sort_offset =
-        static_cast<float>(entityFieldInt(e, "sort_offset", 0) * 2); // source px -> world
-    r.pickups.push_back(std::move(p));
-}
-
-// Scan the Pickups layer for pickups + gather nodes (entities carrying `item` or `loot`).
-void collectPickupsInLayer(const json& level, const char* layerName, Region& r)
-{
-    const json* lay = findLayer(level, layerName);
-    if (!lay)
-        return;
-    if (const auto ei = lay->find("entityInstances"); ei != lay->end() && ei->is_array())
-        for (const auto& e : *ei)
-            collectPickup(e, r);
-}
-
-// Entities layer -> props (tile-carrying) + objects (typed, e.g. PlayerSpawn). LDtk px
 // is authoring-grid px, x2 to the 32px world. `atlas` decodes prop footprint colliders.
 // Structure-type entities (bridges, docks) are handled by parseStructures (stamped into
 // the map), so they're skipped here rather than becoming stray objects.
@@ -578,6 +532,66 @@ void collectPoint(const json& e, float wx, float wy, Region& r)
     s.wy = wy;
     r.spawns.push_back(std::move(s));
 }
+
+// Append a world pickup for entity `e`. ONE kind of placed thing: `item` names the one thing
+// it gives, `yields` names a TABLE of what it might give -- the entity's NAME is never read,
+// so what a placement gives is a field rather than a type. px is the entity's top-left (authoring
+// px); a point entity, so its center is px + half its authored cell (x2 to world px). `target`
+// binds to the item or yield registry at load.
+void collectPickup(AtlasCache& atlases, const json& e, Region& r)
+{
+    PickupPlacement p;
+    p.placement_id = placementIdOf(e);
+    if (p.placement_id.empty())
+        return; // no identity -> taking it could never be remembered
+    if (const std::string item = entityField(e, "item"); !item.empty())
+    {
+        p.kind = PickupPlacement::Kind::Item;
+        p.target = item;
+    }
+    else if (const std::string table = entityField(e, "yields"); !table.empty())
+    {
+        p.kind = PickupPlacement::Kind::Table;
+        p.target = table;
+    }
+    else
+        return; // neither field -> not a pickup/gather entity
+    // Through boxCenter like every other placed thing: LDtk's px is the entity's
+    // PIVOT, so assuming a top-left one puts a bottom-center entity half a box
+    // right and a box down from where the author sees it.
+    float w = 0.0f;
+    float h = 0.0f;
+    if (!boxCenter(e, p.cx, p.cy, w, h))
+        return;
+    p.sort_offset =
+        static_cast<float>(entityFieldInt(e, "sort_offset", 0) * 2); // source px -> world
+    p.group = entityField(e, "group");
+    p.clears_flag = entityField(e, "clears_flag");
+    // Its own art, if the entity carries a tileset region: source px x2 for the render atlas,
+    // exactly like a prop's. Absent -> the yield decides what it looks like.
+    if (const auto tile = e.find("__tile"); tile != e.end() && tile->is_object())
+    {
+        p.sx = tile->value("x", 0) * 2;
+        p.sy = tile->value("y", 0) * 2;
+        p.sw = tile->value("w", 0) * 2;
+        p.sh = tile->value("h", 0) * 2;
+        p.texture_path = atlases.get(tile->value("tilesetUid", -1)).second;
+    }
+    r.pickups.push_back(std::move(p));
+}
+
+// Scan the Pickups layer for placed takeable things (entities carrying `item` or `yields`).
+void collectPickupsInLayer(AtlasCache& atlases, const json& level, const char* layerName, Region& r)
+{
+    const json* lay = findLayer(level, layerName);
+    if (!lay)
+        return;
+    if (const auto ei = lay->find("entityInstances"); ei != lay->end() && ei->is_array())
+        for (const auto& e : *ei)
+            collectPickup(atlases, e, r);
+}
+
+// Entities layer -> props (tile-carrying) + objects (typed, e.g. PlayerSpawn). LDtk px
 
 void parseEntities(AtlasCache& atlases, const json& level, const structures::Config& structureCfg,
                    Region& r)
@@ -976,10 +990,10 @@ Region loadImpl(const std::string& ldtk_path, const std::string& tileset_path,
     // the box is just where + how it fires. See docs/design/PSYCHE.md.
     collectEncountersInLayer(level, "Encounters", r);
     // Pickups: items lying in the world, authored on their own Pickups layer (a Pickup entity
-    // carrying an `item` id, or a Gather entity carrying a `loot` table id). Bound to
-    // inventory/loot at load, spawned as floor sprites (world_items::spawn). See
+    // carrying an `item` id, or one carrying a `yields` table id). Bound to
+    // inventory/yields at load, spawned as floor sprites (world_items::spawn). See
     // docs/design/GAME-SYSTEMS.md.
-    collectPickupsInLayer(level, "Pickups", r);
+    collectPickupsInLayer(atlases, level, "Pickups", r);
     parseLevelFields(level, r);
 
     r.ok = true;
@@ -1022,6 +1036,35 @@ std::unordered_map<std::string, std::string> warpIndex(const std::string& ldtk_p
                              id.c_str(), it->second.c_str(), levelId.c_str(), it->second.c_str());
         }
     }
+    return out;
+}
+
+std::unordered_set<std::string> clearingFlags(const std::string& ldtk_path)
+{
+    std::unordered_set<std::string> out;
+    std::ifstream f(ldtk_path);
+    if (!f)
+        return out;
+    const json j = json::parse(f, nullptr, /*allow_exceptions=*/false);
+    if (j.is_discarded())
+        return out;
+    const auto levels = j.find("levels");
+    if (levels == j.end() || !levels->is_array())
+        return out;
+    // A clearing may be authored on either layer a placed thing lives on.
+    for (const auto& level : *levels)
+        for (const char* layerName : {"Pickups", "Entities"})
+        {
+            const json* lay = findLayer(level, layerName);
+            if (!lay)
+                continue;
+            const auto ei = lay->find("entityInstances");
+            if (ei == lay->end() || !ei->is_array())
+                continue;
+            for (const auto& e : *ei)
+                if (const std::string flag = entityField(e, "clears_flag"); !flag.empty())
+                    out.insert(flag);
+        }
     return out;
 }
 

@@ -141,6 +141,7 @@ json encodePilgrim(const Data& d)
                 {"world", json{{"gone", fromSet(d.world.gone)}}},
                 {"self", encodeSelf(d.self)},
                 {"satchel", encodeSatchel(d.satchel)},
+                {"held", d.held},
                 {"notebook", json{{"at", d.notebook_at}}},
                 {"known_recipes", fromSet(d.known_recipes)},
                 {"announced", fromSet(d.announced)},
@@ -164,6 +165,7 @@ Data decodePilgrim(const json& j)
     if (const auto it = j.find("self"); it != j.end() && it->is_object())
         d.self = decodeSelf(*it);
     d.satchel = decodeSatchel(j);
+    d.held = j.value("held", std::string{});
     if (const auto it = j.find("notebook"); it != j.end() && it->is_object())
         toNumMap(*it, "at", d.notebook_at);
     toSet(j, "known_recipes", d.known_recipes);
@@ -184,6 +186,7 @@ json encodeSettings(const settings::Settings& s)
 {
     return json{{"hud", json{{"visibility", settings::visibilityName(s.hud.visibility)},
                              {"show_time", s.hud.show_time},
+                             {"show_spirit", s.hud.show_spirit},
                              {"show_stance", s.hud.show_stance}}}};
 }
 
@@ -199,6 +202,7 @@ settings::Settings decodeSettings(const json& j, const settings::Settings& fallb
     const std::string vis = h->value("visibility", std::string{});
     s.hud.visibility = settings::visibilityFromName(vis.c_str(), s.hud.visibility);
     s.hud.show_time = h->value("show_time", s.hud.show_time);
+    s.hud.show_spirit = h->value("show_spirit", s.hud.show_spirit);
     s.hud.show_stance = h->value("show_stance", s.hud.show_stance);
     return s;
 }
@@ -336,6 +340,7 @@ void capture(const GameState& gs, float player_x, float player_y, Data& d)
     d.satchel.reserve(gs.satchel.items.size());
     for (const auto& e : gs.satchel.items)
         d.satchel.push_back(Item{e.id, e.quantity, e.is_new});
+    d.held = gs.satchel.held;
 
     d.notebook_at = gs.notebook.at;
     d.known_recipes = gs.crafting_state.known;
@@ -368,6 +373,10 @@ void apply(const Data& data, GameState& gs)
     gs.satchel.items.reserve(data.satchel.size());
     for (const auto& i : data.satchel)
         gs.satchel.items.push_back(inventory::ItemInstance{i.id, i.quantity, i.is_new});
+    // A walk resumes with what it was holding -- reconciled, so a save written before this
+    // field existed (or one naming a thing since spent) simply resumes empty-handed.
+    gs.satchel.held = data.held;
+    inventory::reconcileHeld(gs.satchel);
 
     gs.notebook.at = data.notebook_at;
     gs.crafting_state.known = data.known_recipes;

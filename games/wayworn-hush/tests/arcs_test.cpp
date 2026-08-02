@@ -2,16 +2,21 @@
 
 #include <nlohmann/json.hpp>
 
+#include <filesystem>
+#include <fstream>
+
 #include <catch2/catch_test_macros.hpp>
 
 namespace
 {
-// A world that can produce two memories and one flag, and gates on the goal.
+// A world that can produce two memories, can raise the route flag AND the goal, and gates on
+// the goal. The goal belongs in BOTH sets: something must be able to raise it (or the thread
+// can never finish) and something must read it (or finishing changes nothing).
 arcs::Producible makeWorld()
 {
     arcs::Producible w;
     w.observable = {"tide_line", "whelk_case"};
-    w.flags = {"cleared_the_reeds"};
+    w.flags = {"cleared_the_reeds", "shore_understood"};
     w.read_flags = {"shore_understood"};
     return w;
 }
@@ -54,6 +59,23 @@ TEST_CASE("a well-formed arc reports no problems", "[arcs]")
     arcs::Registry reg;
     reg.arcs.push_back(twoRouteArc());
     REQUIRE(arcs::validate(reg, makeWorld()).empty());
+}
+
+TEST_CASE("a goal nothing can raise is caught", "[arcs]")
+{
+    // The worse half of a broken thread: not "finishing changes nothing" but "it can never be
+    // finished". An errand the pilgrim would carry for the whole walk.
+    arcs::Registry reg;
+    reg.arcs.push_back(twoRouteArc());
+    arcs::Producible w = makeWorld();
+    w.flags.erase("shore_understood");
+
+    const auto problems = arcs::validate(reg, w);
+    bool caught = false;
+    for (const auto& p : problems)
+        if (p.detail.find("never set") != std::string::npos)
+            caught = true;
+    REQUIRE(caught);
 }
 
 TEST_CASE("a route requiring a memory nothing produces is caught", "[arcs]")
@@ -175,4 +197,210 @@ TEST_CASE("survey reports what the authored content can produce", "[arcs]")
     REQUIRE(w.flags.count("midden_understood") == 1);
     REQUIRE(w.read_flags.count("shore_understood") == 1);
     REQUIRE(w.flags.count("never_authored") == 0);
+}
+
+// --- The agenda -----------------------------------------------------------------------
+
+namespace
+{
+// A held world the Knowledge can point into (Knowledge holds pointers, not copies).
+struct Held
+{
+    std::unordered_set<std::string> observed;
+    std::unordered_set<std::string> flags;
+    std::unordered_map<std::string, int> stats;
+
+    unlock::Knowledge view() const
+    {
+        unlock::Knowledge k;
+        k.observed = &observed;
+        k.flags = &flags;
+        k.stats = &stats;
+        return k;
+    }
+};
+
+// An errand he can write down: learned when mom mentions it, done when the flag lands.
+arcs::Arc errand()
+{
+    arcs::Arc a;
+    a.id = "richards_debris";
+    a.goal_flag = "richards_debris_cleared";
+    a.line = "Clear the storm debris from Mr. Richards' trail.";
+    unlock::Clause known;
+    known.flags = {"mom_mentioned_trail"};
+    a.known_when.any.push_back(known);
+    return a;
+}
+} // namespace
+
+TEST_CASE("an arc reaches the agenda only once he has learned it", "[arcs][agenda]")
+{
+    arcs::Registry reg;
+    reg.arcs.push_back(errand());
+    Held w;
+
+    REQUIRE(arcs::agenda(reg, w.view()).empty()); // nobody has told him yet
+
+    w.flags.insert("mom_mentioned_trail");
+    const auto list = arcs::agenda(reg, w.view());
+    REQUIRE(list.size() == 1);
+    REQUIRE(list[0].arc->id == "richards_debris");
+    REQUIRE(list[0].openness == arcs::Openness::Open); // no window authored = always open
+}
+
+TEST_CASE("a finished thread leaves the agenda", "[arcs][agenda]")
+{
+    arcs::Registry reg;
+    reg.arcs.push_back(errand());
+    Held w;
+    w.flags.insert("mom_mentioned_trail");
+    REQUIRE(arcs::agenda(reg, w.view()).size() == 1);
+
+    w.flags.insert("richards_debris_cleared");
+    REQUIRE(arcs::agenda(reg, w.view()).empty());
+}
+
+TEST_CASE("an arc with no written line stays invisible scaffolding", "[arcs][agenda]")
+{
+    // The routes-only arcs that exist purely to be linted must never surface to the player.
+    arcs::Registry reg;
+    reg.arcs.push_back(twoRouteArc());
+    Held w;
+    REQUIRE(arcs::agenda(reg, w.view()).empty());
+}
+
+TEST_CASE("a shut window says when it opens rather than failing the thread", "[arcs][agenda]")
+{
+    arcs::Registry reg;
+    arcs::Arc a = errand();
+    unlock::Clause daylight;
+    daylight.from = 8.0 / 24.0;
+    daylight.to = 20.0 / 24.0;
+    a.window.any.push_back(daylight);
+    reg.arcs.push_back(a);
+
+    Held w;
+    w.flags.insert("mom_mentioned_trail");
+    unlock::Knowledge k = w.view();
+
+    k.day_frac = 10.0 / 24.0; // mid-morning: the door is open
+    auto list = arcs::agenda(reg, k);
+    REQUIRE(list.size() == 1);
+    REQUIRE(list[0].openness == arcs::Openness::Open);
+
+    k.day_frac = 6.0 / 24.0; // before dawn: shut, but the morning will open it
+    list = arcs::agenda(reg, k);
+    REQUIRE(list.size() == 1);
+    REQUIRE(list[0].openness == arcs::Openness::ShutUntil);
+    REQUIRE(list[0].opens_at > 7.9 / 24.0);
+    REQUIRE(list[0].opens_at < 8.3 / 24.0);
+
+    k.day_frac = 21.0 / 24.0; // after the door shuts: nothing more today
+    list = arcs::agenda(reg, k);
+    REQUIRE(list.size() == 1);
+    REQUIRE(list[0].openness == arcs::Openness::ShutToday);
+    REQUIRE(list[0].opens_at < 0.0);
+}
+
+TEST_CASE("a thread stays on the agenda across days until it is done", "[arcs][agenda]")
+{
+    // No fail state: sleeping on it does not lose it, which is what lets day-2 content tease
+    // him about it (a day_min clause) while the errand is still there to discharge.
+    arcs::Registry reg;
+    arcs::Arc a = errand();
+    unlock::Clause daylight;
+    daylight.from = 8.0 / 24.0;
+    daylight.to = 20.0 / 24.0;
+    a.window.any.push_back(daylight);
+    reg.arcs.push_back(a);
+
+    Held w;
+    w.flags.insert("mom_mentioned_trail");
+    unlock::Knowledge k = w.view();
+    k.day = 3;
+    k.day_frac = 9.0 / 24.0;
+
+    const auto list = arcs::agenda(reg, k);
+    REQUIRE(list.size() == 1);
+    REQUIRE(list[0].openness == arcs::Openness::Open);
+}
+
+TEST_CASE("nextOpening reports nothing for a window already open or absent", "[arcs][agenda]")
+{
+    Held w;
+    unlock::Knowledge k = w.view();
+    k.day_frac = 12.0 / 24.0;
+
+    REQUIRE(arcs::nextOpening(unlock::Condition{}, k) < 0.0); // no window at all
+
+    unlock::Condition daylight;
+    unlock::Clause c;
+    c.from = 8.0 / 24.0;
+    c.to = 20.0 / 24.0;
+    daylight.any.push_back(c);
+    REQUIRE(arcs::nextOpening(daylight, k) < 0.0); // already inside it
+}
+
+TEST_CASE("agenda keeps the authored order", "[arcs][agenda]")
+{
+    arcs::Registry reg;
+    arcs::Arc first = errand();
+    arcs::Arc second = errand();
+    second.id = "brook";
+    second.goal_flag = "brook_followed";
+    second.line = "Find where the brook goes.";
+    reg.arcs.push_back(first);
+    reg.arcs.push_back(second);
+
+    Held w;
+    w.flags.insert("mom_mentioned_trail");
+    const auto list = arcs::agenda(reg, w.view());
+    REQUIRE(list.size() == 2);
+    REQUIRE(list[0].arc->id == "richards_debris");
+    REQUIRE(list[1].arc->id == "brook");
+}
+
+TEST_CASE("line, known_when and window parse from the arc file", "[arcs][agenda]")
+{
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "wayworn_arcs_test";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    const fs::path file = dir / "arcs.json";
+    {
+        std::ofstream(file) << R"({ "arcs": [{
+            "id": "richards_debris",
+            "goal_flag": "richards_debris_cleared",
+            "line": "Clear the storm debris from Mr. Richards' trail.",
+            "known_when": [{ "flag": "mom_mentioned_trail" }],
+            "window": { "between": ["08:00", "20:00"], "day_min": 1 },
+            "routes": [{ "label": "by doing", "unlock_when": [{ "flag": "mom_mentioned_trail" }] }]
+        }] })";
+    }
+
+    arcs::Registry reg;
+    arcs::load(reg, file.string());
+    REQUIRE(reg.arcs.size() == 1);
+    const arcs::Arc& a = reg.arcs[0];
+    REQUIRE(a.line == "Clear the storm debris from Mr. Richards' trail.");
+    REQUIRE(a.known_when.any.size() == 1);
+    REQUIRE(a.known_when.any[0].flags == std::vector<std::string>{"mom_mentioned_trail"});
+    // An object window wraps into the one-clause condition the gate grammar expects.
+    REQUIRE(a.window.any.size() == 1);
+    REQUIRE(a.window.any[0].from == 8.0 / 24.0);
+    REQUIRE(a.window.any[0].to == 20.0 / 24.0);
+    REQUIRE(a.window.any[0].day_min == 1);
+
+    // And it behaves as an agenda line once loaded, not just as parsed fields.
+    Held w;
+    w.flags.insert("mom_mentioned_trail");
+    unlock::Knowledge k = w.view();
+    k.day = 1;
+    k.day_frac = 21.0 / 24.0;
+    const auto list = arcs::agenda(reg, k);
+    REQUIRE(list.size() == 1);
+    REQUIRE(list[0].openness == arcs::Openness::ShutToday);
+
+    fs::remove_all(dir);
 }

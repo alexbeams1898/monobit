@@ -5,7 +5,8 @@
 #include <vector>
 
 // The pilgrim's satchel -- "things carried." Deliberately light (DESIGN.md: no
-// weight, no slot-Tetris): an unbounded, unordered bag. Two layers, like the
+// weight, no slot-Tetris): an unbounded, unordered bag, plus the ONE thing he has
+// taken up in his hands. Two layers, like the
 // engine's other authored data -- an immutable ItemDef (blueprint, one JSON per
 // item) resolved from an ItemRegistry, and a lightweight ItemInstance (a copy in
 // the bag). Key items (notebook, watch, gating gear) are queried by has(); their
@@ -14,16 +15,21 @@
 namespace inventory
 {
 
-// The three roles the fiction names (DESIGN.md "Gathering / inventory"):
+// The roles the fiction names (DESIGN.md "Gathering / inventory"):
 //   Practical -- ingredients / crafting materials. Stackable, consumed.
-//   Keepsake  -- collection / attention-reward. Kept, no mechanical use (yet).
-//   KeyItem   -- notebook, watch, gating gear, skill-unlockers. Unique, never
-//                consumed, queried by has(); may grant a carried effect.
+//   Keepsake  -- collection / attention-reward. Kept for itself, no mechanical use.
+//   KeyItem   -- something the world grants you access THROUGH (the notebook opens
+//                writing, the kit opens making). Works from inside the bag, queried
+//                by has(); never consumed, never thrown in the pot.
+//   Tool      -- something you take UP and use on a thing. The ONLY category that can
+//                be held (Satchel::held), which is what keeps materials out of his
+//                hands, and holding one is what unlocks deeds on what he faces.
 enum class Category
 {
     Practical,
     Keepsake,
-    KeyItem
+    KeyItem,
+    Tool
 };
 
 // Immutable blueprint, authored one-JSON-per-item, keyed by a short stable id.
@@ -84,6 +90,11 @@ struct ItemInstance
 struct Satchel
 {
     std::vector<ItemInstance> items;
+    // What he has taken up: one item id, or empty for empty hands. Only a Tool can be here --
+    // a material is not something you hold, it is something you carry. Holding gates DEEDS
+    // (unlock::Clause::holding), so what is in his hands decides what he can do to the thing
+    // in front of him. Saved with the walk.
+    std::string held;
 };
 
 // The loaded blueprints, keyed by id.
@@ -122,5 +133,17 @@ void markAllSeen(Satchel& satchel);
 // Whether the pilgrim carries at least one. The gating query -- item-gating and
 // key-item carried-effects read this everywhere (has(satchel, "notebook")).
 bool has(const Satchel& satchel, const std::string& id);
+
+// Is this a thing he can take up? Only a Tool -- an unknown id is not.
+bool equippable(const Registry& registry, const std::string& id);
+
+// Take `id` up (or put it away when it is already held -- the same gesture both ways). Refuses
+// anything that is not a carried Tool, so the caller can offer the gesture on every row and
+// let the item decide. Returns what is held afterwards changed.
+bool toggleHeld(Satchel& satchel, const Registry& registry, const std::string& id);
+
+// Drop the held item if it is no longer in the bag (spent, given away, consumed). The hands
+// and the bag are two records of one fact; this is what keeps them from disagreeing.
+void reconcileHeld(Satchel& satchel);
 
 } // namespace inventory

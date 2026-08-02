@@ -4,7 +4,10 @@
     "name": "Worn River Stone",
     "description": "Smooth and grey, shaped by water where none runs now. You kept it.",
     "icon": "assets/tilesets/items.png",
-    "icon_cell": [ 2, 0 ],
+    "icon_cell": [
+        4,
+        0
+    ],
     "icon_size": 32,
     "category": "keepsake",
     "rarity": 2

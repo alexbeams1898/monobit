@@ -16,6 +16,8 @@ Category categoryFrom(const std::string& s)
         return Category::Practical;
     if (s == "key" || s == "key_item")
         return Category::KeyItem;
+    if (s == "tool")
+        return Category::Tool;
     return Category::Keepsake; // default / "keepsake"
 }
 
@@ -137,6 +139,31 @@ void markAllSeen(Satchel& satchel)
 {
     for (auto& e : satchel.items)
         e.is_new = false;
+}
+
+bool equippable(const Registry& registry, const std::string& id)
+{
+    const ItemDef* def = registry.find(id);
+    return def != nullptr && def->category == Category::Tool;
+}
+
+bool toggleHeld(Satchel& satchel, const Registry& registry, const std::string& id)
+{
+    if (satchel.held == id)
+    {
+        satchel.held.clear(); // putting it away is the same gesture as taking it up
+        return true;
+    }
+    if (!equippable(registry, id) || !has(satchel, id))
+        return false;
+    satchel.held = id;
+    return true;
+}
+
+void reconcileHeld(Satchel& satchel)
+{
+    if (!satchel.held.empty() && !has(satchel, satchel.held))
+        satchel.held.clear();
 }
 
 } // namespace inventory

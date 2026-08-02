@@ -62,12 +62,12 @@ struct Action
     std::string say;
     std::string set_flag; // world-state it sets (empty = none)
     // Item effects, declared as OPAQUE ids (like set_flag): the observation system carries
-    // them but never interprets them -- the GAME enacts the grant (it owns the satchel/loot).
-    // grant_item -> deposit that item; grant_table -> roll that loot table. So a "Pick up" /
+    // them but never interprets them -- the GAME enacts the grant (it owns the satchel).
+    // grant_item -> deposit that item; grant_table -> draw from that yield table. So a "Pick up" /
     // "Gather" deed on an encounter-and-takeable thing lives in the same deed list as its
     // readings-deeds, with no inventory dependency here.
     std::string grant_item;   // item id to deposit on take (empty = none)
-    std::string grant_table;  // loot table id to roll on take (empty = none)
+    std::string grant_table;  // yield table id to roll on take (empty = none)
     std::string grant_recipe; // recipe id to TEACH on take (empty = none) -- a deed that hands you
                               // a recipe outright (e.g. reading a cleared rock teaches the draught)
     bool one_shot = false;    // true = leaves the menu once taken
@@ -248,7 +248,19 @@ struct RollConfig
     // major lore" (high value, simple structure) stays easy.
     float value_weight = 0.15f;
     int value_nudge_cap = 1; // most bands value alone can add to difficulty
-    int exp_per_value = 5;   // Spirit EXP earned per point of value (reward scaling)
+    int exp_per_value = 5;   // Spirit EXP a THOUGHT earns per point of value (reward scaling)
+    // THE DENSITY RULE (docs/design/GAME-SYSTEMS.md section 1): you are paid for the world
+    // opening, never for looking at it. A reading pays only the FIRST time an encounter is
+    // reached at all -- re-reading a spot you have seen, or reaching a deeper tier of it,
+    // pays nothing. Most of the game's text is free, so the counter climbing is an event.
+    int exp_discovery = 5;
+    // What a FLAG landing is worth, by what it opened -- derived, never authored. A flag
+    // nothing gates on is incidental (the alarm you silenced) and pays nothing; a flag some
+    // content depends on opened something; an arc's GOAL flag closed a thread. The caller
+    // supplies the two sets (see State::read_flags / State::goal_flags) because arcs::survey
+    // already computes them for the linter -- one derivation, not two.
+    int exp_flag_read = 5;
+    int exp_flag_goal = 25;
     // Faculty EXP earned per point of value -- feeds the passive, use-based stat growth
     // (docs/design/PSYCHE.md §5). A thought grants THIS to its own faculty; a
     // reading grants it to the reading's faculty. Rarity/tier already fold into `value`, so a
@@ -313,7 +325,12 @@ struct State
     std::unordered_map<std::string, int> observed_tier; // spot -> deepest tier reached
     std::unordered_set<std::string> fired;              // thought ids that landed
     std::unordered_set<std::string> flags;              // quest/event flags set
-    std::unordered_set<std::string> taken;              // one-shot action ids performed
+    // What a flag landing is WORTH, supplied by the caller at load (arcs::survey computes
+    // both). `read_flags` = anything gates on it, so setting it opened something.
+    // `goal_flags` = it closes an authored thread. Empty = every flag is incidental.
+    std::unordered_set<std::string> read_flags;
+    std::unordered_set<std::string> goal_flags;
+    std::unordered_set<std::string> taken; // one-shot action ids performed
 
     std::deque<PendingLine> pending; // lines waiting to surface
 
@@ -326,6 +343,16 @@ struct State
     // satchel (psyche owns no inventory; see the `carrying` / `without` clauses).
     // RUNTIME state, never authored, never saved here (the satchel is the record).
     std::unordered_set<std::string> carrying;
+    // What is in his hands (inventory::Satchel::held), mirrored each frame like `carrying`.
+    // A spade in the bag is not a spade in the hands, so deeds gate on this separately.
+    std::string holding;
+
+    // WHEN it is, mirrored from the world clock so a `between` / `day_min` clause
+    // can be asked (a door open until eight, a line that only exists once you have
+    // let him down). Psyche owns no clock; the game refreshes these, exactly as it
+    // does `carrying`. RUNTIME, never authored, never saved here.
+    double day_frac = 0.0;
+    int day = 1;
 
     // A THOUGHT IS THE NOTEBOOK: it is where he articulates what he never says
     // aloud, so without one nothing finishes becoming a thought -- it stays
@@ -411,7 +438,7 @@ struct ObserveResult
     // observations is inventory-ignorant). grant_item ids in `granted`; grant_table ids in
     // `gathered`. Empty for a plain reading/deed.
     std::vector<std::string> granted;  // item ids to deposit
-    std::vector<std::string> gathered; // loot table ids to roll
+    std::vector<std::string> gathered; // yield table ids to roll
     std::vector<std::string> taught;   // recipe ids a deed handed over (the game marks them known)
     // Thought ids that LANDED this call, in the order they fired. Reported as opaque ids like
     // the grants above: the game notes when they happened (observations doesn't know what a
@@ -487,7 +514,8 @@ void bindPlayerName(State& state, const std::string& name);
 // when a thought that ached for want of one gets its second look. No-op (and no
 // engine run) when nothing actually changed, so this is safe to call every tick.
 ObserveResult evaluateCarried(State& state, const growth::GrowthState& growth,
-                              const std::unordered_set<std::string>& held, const RollRng& rng);
+                              const std::unordered_set<std::string>& held, const RollRng& rng,
+                              const std::string& in_hand = {});
 
 // External event sets a quest/event flag, then runs the ambient engine (a flag
 // change can satisfy a thought's unlock_when, DE-passive style). Returns EXP

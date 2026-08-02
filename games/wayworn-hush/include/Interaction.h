@@ -2,8 +2,8 @@
 
 #include "Growth.h"
 #include "Inventory.h"
-#include "Loot.h"
 #include "Psyche.h"
+#include "Yields.h"
 
 #include <string>
 #include <vector>
@@ -18,7 +18,7 @@ class EntityManager;
 // item, gather a node; the item's floor icon is the cue, no glow). A spot can be both: an
 // observable-and-takeable thing is an observation whose deed list includes a "pick up" deed
 // (so the action lives in the observation menu, no mixed-menu here). A pure material is
-// actionable-only: interacting fires it DIRECTLY (fast looting), never a menu. A single
+// actionable-only: interacting fires it DIRECTLY, never a menu. A single
 // InteractionSystem resolves the ACTIVE spot each frame; Space OR a click fires it. See
 // docs/design/GAME-SYSTEMS.md.
 namespace interaction
@@ -31,7 +31,7 @@ enum class ActionKind
 {
     None,   // not directly actionable (observe-only, or nothing)
     Pickup, // deposit the item at `target` into the satchel, then despawn
-    Gather, // roll the loot table at `target` into the satchel, then despawn
+    Gather, // roll the yield table at `target` into the satchel, then despawn
     // Craft, Open ... later
 };
 
@@ -52,7 +52,7 @@ struct Interactable
     std::string placement_id;
     std::string observe_id;               // observation id (empty = not observable)
     ActionKind action = ActionKind::None; // direct action (None = not directly actionable)
-    std::string target;                   // the action's id (item id / loot table id)
+    std::string target;                   // the action's id (item id / yield table id)
     bool active = false; // set by the system each frame: is this the highlighted target?
     // Is this interactable LIVE right now? A hidden encounter (visible_when unmet) is not:
     // it must offer NEITHER verb, so it isn't a target and doesn't glow. Set live by whoever
@@ -81,7 +81,7 @@ struct Intent
     bool clicked = false;     // the left mouse button fired this frame
     // The "act" modifier: interacting while RUNNING (Shift held) means ACT (skip straight to
     // the deed menu) rather than OBSERVE. Walking = observe (slow down to notice); running =
-    // act (you're in motion, you know this spot). Only affects observable spots; items loot
+    // act (you're in motion, you know this spot). Only affects observable spots; items take
     // the same either way.
     bool act = false;
 };
@@ -120,7 +120,7 @@ struct Context
     const psyche::RollRng& rng;
     inventory::Satchel& satchel;      // Pickup/Gather deposit here
     const inventory::Registry& items; // item blueprints (stackability, rarity, name)
-    const loot::Registry& loot;       // loot tables (Gather rolls one)
+    const yields::Registry& yields;   // yield tables (a Gather draws from one)
     float reach = 0.0f;
 };
 

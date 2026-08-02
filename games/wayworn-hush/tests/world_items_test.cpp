@@ -23,7 +23,7 @@ std::vector<ldtk::PickupPlacement> twoPickups()
 
     ldtk::PickupPlacement patch;
     patch.placement_id = "p_patch";
-    patch.kind = ldtk::PickupPlacement::Kind::Loot;
+    patch.kind = ldtk::PickupPlacement::Kind::Table;
     patch.target = "hillside_herbs";
     patch.cx = 200.0f;
     patch.cy = 200.0f;
@@ -42,10 +42,10 @@ inventory::Registry itemsWithStone()
     return r;
 }
 
-loot::Registry lootWithHerbs()
+yields::Registry tableWithHerbs()
 {
-    loot::Registry r;
-    loot::Table t;
+    yields::Registry r;
+    yields::Table t;
     t.id = "hillside_herbs";
     r.tables["hillside_herbs"] = t;
     return r;
@@ -75,7 +75,7 @@ TEST_CASE("a fresh walk gets everything the map places", "[world_items]")
 {
     EntityManager em;
     const world_items::Config cfg;
-    world_items::spawn(em, twoPickups(), itemsWithStone(), lootWithHerbs(), cfg, /*gone=*/{});
+    world_items::spawn(em, twoPickups(), itemsWithStone(), tableWithHerbs(), cfg, /*gone=*/{});
     REQUIRE(spawnedCount(em) == 2);
 }
 
@@ -84,7 +84,7 @@ TEST_CASE("what a pilgrim already took is not put back", "[world_items]")
     EntityManager em;
     const world_items::Config cfg;
     const std::unordered_set<std::string> gone = {"p_stone"};
-    world_items::spawn(em, twoPickups(), itemsWithStone(), lootWithHerbs(), cfg, gone);
+    world_items::spawn(em, twoPickups(), itemsWithStone(), tableWithHerbs(), cfg, gone);
 
     REQUIRE(spawnedCount(em) == 1);
     REQUIRE_FALSE(present(em, "p_stone")); // taken on a previous visit -- stays taken
@@ -96,7 +96,7 @@ TEST_CASE("a spawned pickup carries its identity, so taking it can be remembered
     // Without this the entity dies anonymously and the removal can't be recorded.
     EntityManager em;
     const world_items::Config cfg;
-    world_items::spawn(em, twoPickups(), itemsWithStone(), lootWithHerbs(), cfg);
+    world_items::spawn(em, twoPickups(), itemsWithStone(), tableWithHerbs(), cfg);
 
     REQUIRE(present(em, "p_stone"));
     REQUIRE(present(em, "p_patch"));
@@ -107,6 +107,6 @@ TEST_CASE("a walk that took everything gets an empty world", "[world_items]")
     EntityManager em;
     const world_items::Config cfg;
     const std::unordered_set<std::string> gone = {"p_stone", "p_patch"};
-    world_items::spawn(em, twoPickups(), itemsWithStone(), lootWithHerbs(), cfg, gone);
+    world_items::spawn(em, twoPickups(), itemsWithStone(), tableWithHerbs(), cfg, gone);
     REQUIRE(spawnedCount(em) == 0);
 }

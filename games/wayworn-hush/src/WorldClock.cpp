@@ -55,20 +55,39 @@ std::string stamp(const WorldClock& clock)
     return "Day " + std::to_string(day(clock));
 }
 
-std::string timeAt(const WorldClock& clock, double seconds)
+std::string clockOfDay(double frac)
 {
-    if (clock.seconds_per_day <= 0.0)
-        return "";
-    // How far into its day the moment sits, on a 24-hour face. Rounded to the
-    // nearest whole minute -- truncation would read a float-exact 10:47 as
-    // 10:46 (46.999... minutes cut down).
-    const double into =
-        seconds - std::floor(seconds / clock.seconds_per_day) * clock.seconds_per_day;
-    const long total = std::lround((into / clock.seconds_per_day) * 24.0 * 60.0) % (24 * 60);
+    // Rounded to the nearest whole minute -- truncation would read a float-exact
+    // 10:47 as 10:46 (46.999... minutes cut down).
+    const long total = std::lround(frac * 24.0 * 60.0) % (24 * 60);
     const int h = static_cast<int>(total / 60);
     const int m = static_cast<int>(total % 60);
     const std::string mm = (m < 10 ? "0" : "") + std::to_string(m);
     return std::to_string(h) + ":" + mm;
+}
+
+std::string partOfDay(double frac)
+{
+    const double h = frac * 24.0;
+    if (h < 5.0)
+        return "tonight";
+    if (h < 12.0)
+        return "in the morning";
+    if (h < 17.0)
+        return "this afternoon";
+    if (h < 21.0)
+        return "this evening";
+    return "tonight";
+}
+
+std::string timeAt(const WorldClock& clock, double seconds)
+{
+    if (clock.seconds_per_day <= 0.0)
+        return "";
+    // How far into its day the moment sits, on a 24-hour face.
+    const double into =
+        seconds - std::floor(seconds / clock.seconds_per_day) * clock.seconds_per_day;
+    return clockOfDay(into / clock.seconds_per_day);
 }
 
 std::string stampAt(const WorldClock& clock, double seconds)

@@ -17,14 +17,17 @@ struct FloorItem
 {
     std::string placement_id; // which placed thing (so taking it can be remembered)
     std::string icon;
+    // The art's source rect on `icon`. Square cells on a shared sheet are the common case
+    // (col/row * size); a placement carrying its own tileset region says the rect outright,
+    // which is how a thing gets to look like ITSELF rather than like what it yields.
     int size = 32;
-    // The art's cell on `icon` when it is a sheet (items share one, like every
-    // other art in the game); <0 = the whole image is the art.
-    int col = -1;
+    int col = -1; // <0 = the whole image, or `rect` if it is set
     int row = -1;
+    bool has_rect = false;
+    int rx = 0, ry = 0, rw = 0, rh = 0;
     float sort_offset = 0.0f; // depth base past the furniture it rests on
     interaction::ActionKind action = interaction::ActionKind::None;
-    std::string target; // item id (Pickup) or loot table id (Gather)
+    std::string target; // item id (a yield of exactly this) or yield table id (a roll)
     float cx = 0.0f;
     float cy = 0.0f;
 };
@@ -46,7 +49,14 @@ void spawnFloorItem(EntityManager& em, const FloorItem& item, const Config& cfg)
     spr.texture_path = item.icon;
     spr.src_w = item.size;
     spr.src_h = item.size;
-    if (item.col >= 0 && item.row >= 0) // a cell on the shared items sheet
+    if (item.has_rect) // its own region of the world atlas (a pile of wood, not an icon)
+    {
+        spr.src_x = item.rx;
+        spr.src_y = item.ry;
+        spr.src_w = item.rw;
+        spr.src_h = item.rh;
+    }
+    else if (item.col >= 0 && item.row >= 0) // a cell on the shared items sheet
     {
         spr.src_x = item.col * item.size;
         spr.src_y = item.row * item.size;
@@ -103,7 +113,7 @@ void updateOutlines(EntityManager& em, const Config& cfg)
 }
 
 void spawn(EntityManager& em, const std::vector<ldtk::PickupPlacement>& pickups,
-           const inventory::Registry& items, const loot::Registry& loot, const Config& cfg,
+           const inventory::Registry& items, const yields::Registry& tables, const Config& cfg,
            const std::unordered_set<std::string>& gone)
 {
     for (const auto& p : pickups)
@@ -113,38 +123,51 @@ void spawn(EntityManager& em, const std::vector<ldtk::PickupPlacement>& pickups,
         if (gone.count(p.placement_id) > 0)
             continue;
 
-        if (p.kind == ldtk::PickupPlacement::Kind::Item)
+        // ONE placed thing; the yield is a field. What it gives decides which registry has to
+        // know the target and which verb takes it -- nothing else about it differs.
+        const bool draws = p.kind == ldtk::PickupPlacement::Kind::Table;
+        const inventory::ItemDef* def = draws ? nullptr : items.find(p.target);
+        if (draws ? tables.find(p.target) == nullptr : def == nullptr)
         {
-            const inventory::ItemDef* def = items.find(p.target);
-            if (!def)
-            {
-                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                            "pickup '%s' has no matching item def -- skipped", p.target.c_str());
-                continue;
-            }
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "pickup '%s' has no matching %s -- skipped",
+                        p.target.c_str(), draws ? "yield table" : "item def");
+            continue;
+        }
+
+        FloorItem fi{};
+        fi.placement_id = p.placement_id;
+        fi.sort_offset = p.sort_offset;
+        fi.action = draws ? interaction::ActionKind::Gather : interaction::ActionKind::Pickup;
+        fi.target = p.target;
+        fi.cx = p.cx;
+        fi.cy = p.cy;
+        if (p.sw > 0 && p.sh > 0)
+        {
+            // Its own art from the map's atlas -- the pile of storm wood IS the thing you
+            // take, rather than a decorative prop with an invisible node sitting on it.
+            fi.icon = p.texture_path;
+            fi.has_rect = true;
+            fi.rx = p.sx;
+            fi.ry = p.sy;
+            fi.rw = p.sw;
+            fi.rh = p.sh;
+        }
+        else if (def != nullptr)
+        {
             // The item's own icon IS its world cue -- one source of truth (the satchel shows
-            // the same art). Its own cell size wins over the gather default.
-            spawnFloorItem(em,
-                           FloorItem{p.placement_id, def->icon, def->icon_size, def->icon_col,
-                                     def->icon_row, p.sort_offset, interaction::ActionKind::Pickup,
-                                     p.target, p.cx, p.cy},
-                           cfg);
+            // the same art). Its own cell size wins over the stand-in default.
+            fi.icon = def->icon;
+            fi.size = def->icon_size;
+            fi.col = def->icon_col;
+            fi.row = def->icon_row;
         }
-        else // gather node: a stand-in sprite until node art is authored per spot
+        else
         {
-            if (!loot.find(p.target))
-            {
-                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                            "gather node '%s' has no matching loot table -- skipped",
-                            p.target.c_str());
-                continue;
-            }
-            spawnFloorItem(em,
-                           FloorItem{p.placement_id, cfg.gather_sprite, cfg.gather_size,
-                                     /*col=*/-1, /*row=*/-1, p.sort_offset,
-                                     interaction::ActionKind::Gather, p.target, p.cx, p.cy},
-                           cfg);
+            // A roll has no single icon and this one named no art: the configured stand-in.
+            fi.icon = cfg.gather_sprite;
+            fi.size = cfg.gather_size;
         }
+        spawnFloorItem(em, fi, cfg);
     }
 }
 

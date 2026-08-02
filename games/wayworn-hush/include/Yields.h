@@ -7,12 +7,13 @@
 #include <unordered_map>
 #include <vector>
 
-// The gather lottery: a gather node names a loot TABLE, and harvesting it rolls a handful
-// of items from that table. Static drops name a single item id instead (an actionable
-// interaction::ActionKind::Pickup) and don't touch this system. A table is authored one-
-// JSON-per-file (config/loot/*.json), keyed by a stable id. The roll is pure over an RNG so
-// it unit-tests without a registry. See docs/design/GAME-SYSTEMS.md.
-namespace loot
+// What a placed thing gives up, when it gives more than one certain thing. A pickup names
+// either an `item` (exactly that, once) or a `yields` TABLE -- several possible items with
+// relative weights and quantity ranges, drawn from on the take. A pile of storm wood gives
+// branches and now and then a stone the water carried down; that is a table, and this is the
+// draw. Tables are authored one-JSON-per-file (config/yields/*.json), keyed by a stable id.
+// Pure over an RNG, so it unit-tests without a registry. See docs/design/GAME-SYSTEMS.md.
+namespace yields
 {
 
 // One possible drop in a table: an item, its relative weight (NOT a percentage -- a roll
@@ -26,7 +27,7 @@ struct Entry
     int qty_max = 1;
 };
 
-// A named loot table: N independent weighted picks per harvest (rolls_min..rolls_max),
+// A named yield table: N independent weighted picks per take (rolls_min..rolls_max),
 // each pick drawing one entry by weight and then rolling its quantity. Ranging the roll
 // count makes a harvest yield a handful, not a fixed amount.
 struct Table
@@ -57,7 +58,7 @@ struct Registry
     }
 };
 
-// Load all loot tables from a directory of JSON files (one per table; id = the JSON's "id"
+// Load all yield tables from a directory of JSON files (one per table; id = the JSON's "id"
 // or the filename stem). Silent no-op if the dir is missing. Call once at startup.
 void load(Registry& out, const std::string& dir);
 
@@ -68,4 +69,4 @@ void load(Registry& out, const std::string& dir);
 // the table is empty / all-zero weight.
 std::vector<inventory::ItemInstance> roll(const Table& table, const psyche::RollRng& rng);
 
-} // namespace loot
+} // namespace yields

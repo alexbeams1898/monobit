@@ -1,7 +1,7 @@
 #include "Interaction.h"
 
 #include "Inventory.h"
-#include "Loot.h"
+#include "Yields.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 
@@ -133,7 +133,7 @@ Outcome update(EntityManager& em, const Intent& intent, const Context& ctx)
         return out;
     }
 
-    // Actionable-only: fire the direct action (fast looting -- no menu), deposit, then remove
+    // Actionable-only: fire the direct action (no menu), deposit, then remove
     // the world item. Destroying the entity drops its Interactable + floor sprite with it, so
     // the highlight can't linger on empty space.
     switch (target.action)
@@ -142,8 +142,8 @@ Outcome update(EntityManager& em, const Intent& intent, const Context& ctx)
         out.items.push_back(inventory::ItemInstance{target.target});
         break;
     case ActionKind::Gather:
-        if (const loot::Table* table = ctx.loot.find(target.target))
-            out.items = loot::roll(*table, ctx.rng);
+        if (const yields::Table* table = ctx.yields.find(target.target))
+            out.items = yields::roll(*table, ctx.rng);
         break;
     case ActionKind::None:
         break; // a spot with neither observe nor action shouldn't be a candidate; no-op

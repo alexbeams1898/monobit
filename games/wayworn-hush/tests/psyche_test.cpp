@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <string>
 
@@ -1521,4 +1522,162 @@ TEST_CASE("the played sequence: look, no notebook, fetch one, come back", "[obse
         if (line.kind == LineKind::Thought && line.text == "water shaped it once")
             sawThought = true;
     REQUIRE(sawThought);
+}
+
+TEST_CASE("taking a tool up is itself a change worth re-checking", "[psyche]")
+{
+    // The bag is unchanged when he takes something out of it and puts it in his hand -- but
+    // what he can DO changed, so a deed gated on `holding` has to be re-checked. Without this
+    // the spade would sit in his hand doing nothing until some unrelated event shook it loose.
+    State s = makeWorld();
+    const GrowthState g = self({{"perception", 20}});
+    const std::unordered_set<std::string> bag = {"spade"};
+
+    // First mirror: the bag changed, hands empty.
+    psyche::evaluateCarried(s, g, bag, kMaxNudge, /*in_hand=*/"");
+    REQUIRE(s.carrying == bag);
+    REQUIRE(s.holding.empty());
+
+    // Same bag, but now it is in his hand -- this must NOT be treated as "nothing changed".
+    psyche::evaluateCarried(s, g, bag, kMaxNudge, /*in_hand=*/"spade");
+    REQUIRE(s.holding == "spade");
+
+    // And laying it down again is equally a change.
+    psyche::evaluateCarried(s, g, bag, kMaxNudge, /*in_hand=*/"");
+    REQUIRE(s.holding.empty());
+}
+
+TEST_CASE("an arrival is not an event -- a seeded baseline surfaces nothing", "[psyche]")
+{
+    // THE LOAD-TIME BUG, pinned. Every pump here is an edge detector: it compares the world
+    // against a "last seen" baseline and treats a difference as something that just happened.
+    // Left default-constructed at world-enter, the whole RESTORED walk reads as new -- which
+    // is how a notebook-want line fired at the title screen, and how the TV clunked on every
+    // load. Seeding each baseline from the restored world is what makes "nothing has changed
+    // since load" true by construction.
+    State s = makeWorld();
+    s.carrying.clear();
+    s.notebook_want_text = "Something worth keeping -- and nothing to keep it in.";
+    const GrowthState g = self({{"perception", 20}});
+
+    // A restored walk: he has seen the stone (so its thought is eligible) and carries nothing
+    // to write with -- exactly the state that surfaced the want.
+    obsAt(s, g, "stone", kMaxNudge);
+    s.pending.clear();
+    REQUIRE(s.fired.count("moss_thought") == 0); // waiting on a notebook
+
+    // World-enter seeds the baselines to match the restored world; the first tick's mirror
+    // then sees no difference and must not run the engine at all.
+    const std::unordered_set<std::string> bag = s.carrying;
+    const ObserveResult carried = psyche::evaluateCarried(s, g, bag, kMaxNudge, s.holding);
+    REQUIRE(carried.outcome == Outcome::None);
+    REQUIRE(s.pending.empty()); // no want-line: the engine never ran
+
+    // The point of the seeding: evaluateStats itself is UNGUARDED -- it re-checks whenever it
+    // is asked, and an eligible-but-unwritable thought says so every time. That is correct
+    // when an hour really has passed, and wrong at load, so the guard is the CALLER's
+    // baseline (GameState::clock_hour_seen / stats_seen_sum), never a check inside here.
+    psyche::evaluateStats(s, g, kMaxNudge);
+    REQUIRE_FALSE(s.pending.empty()); // asked, so it answers -- which is why load must not ask
+}
+
+TEST_CASE("a reading pays nothing; FINDING the thing pays once", "[psyche]")
+{
+    // THE DENSITY RULE. Spirit is for the world opening, not for looking at it -- otherwise
+    // the counter ticks constantly and the number stops meaning anything. Discovery pays a
+    // flat amount, once, ever; every reading after that is free text.
+    State s = makeWorld();
+    const GrowthState g = self({{"perception", 20}});
+    // A thing standing in the world, which he walked up to -- see the placement rule below.
+    for (auto& e : s.encounters)
+        if (e.id == "stone")
+            e.placement_id = "stone@1";
+
+    const ObserveResult first = obsAt(s, g, "stone", kMaxNudge);
+    REQUIRE(first.earned >= s.roll.exp_discovery); // found it
+
+    // Looking again pays nothing for the LOOKING -- including reaching a deeper tier, which
+    // is still just text. (A thought landing on the way is its own reward and may add on top;
+    // this is about the reading itself, so the assertion is on the reading's line.)
+    s.pending.clear(); // the first look's lines are still queued; this is about the SECOND
+    s.observed_tier["stone"] = 1; // pretend only the surface was reached
+    const ObserveResult again = psyche::observeById(s, g, "stone", kNoNudge);
+    for (const auto& line : s.pending)
+        if (line.kind == LineKind::Observation || line.kind == LineKind::Impression)
+            REQUIRE(line.spirit_exp == 0); // a reading carries no reward
+    REQUIRE(again.earned == 0);            // and nothing was earned by looking again
+}
+
+TEST_CASE("a flag pays by what it OPENED, not by being set", "[psyche]")
+{
+    // Derived, never authored: incidental flags are free, a flag something gates on opened a
+    // way, and a thread's goal closed the thread.
+    State s = makeWorld();
+    const GrowthState g = self({{"perception", 1}});
+    s.read_flags = {"opened_a_way"};
+    s.goal_flags = {"closed_a_thread"};
+
+    REQUIRE(psyche::setFlag(s, g, "incidental", kNoNudge).earned == 0);
+    REQUIRE(psyche::setFlag(s, g, "opened_a_way", kNoNudge).earned == s.roll.exp_flag_read);
+    REQUIRE(psyche::setFlag(s, g, "closed_a_thread", kNoNudge).earned == s.roll.exp_flag_goal);
+
+    // And a flag already set pays nothing a second time.
+    REQUIRE(psyche::setFlag(s, g, "closed_a_thread", kNoNudge).earned == 0);
+}
+
+TEST_CASE("a scene handing you a moment is not a discovery", "[psyche]")
+{
+    // Discovery is FINDING something -- walking up to a thing that stands in the world. The
+    // wake-up, or someone speaking as they enter, is pushed at you; you did not go and look.
+    // Placed content carries a placement_id, scene-only content never does.
+    State s = makeWorld();
+    const GrowthState g = self({{"perception", 1}});
+    for (auto& e : s.encounters)
+        e.placement_id.clear(); // nothing is placed: every spot here is scene-fired
+
+    const ObserveResult r = obsAt(s, g, "water", kNoNudge);
+    REQUIRE(r.earned == 0); // it surfaced, and it paid nothing
+    REQUIRE_FALSE(s.pending.empty());
+    for (const auto& line : s.pending)
+        REQUIRE(line.spirit_exp == 0);
+}
+
+TEST_CASE("a remark pays nothing -- speech is not understanding", "[psyche]")
+{
+    // A remark is a thing he SAID, not a thing he worked out. Same reason it never reaches the
+    // notebook. However central the value graph says it is, a grumble into a pillow is a noise
+    // a person makes. Tested through load(), which is where the derivation runs.
+    namespace fs = std::filesystem;
+    const fs::path file = fs::temp_directory_path() / "wayworn_remark_pay.json";
+    std::ofstream(file) << R"JSON({
+      "encounters": [
+        { "id": "bed", "value": 2, "tiers": [{"text": "the bed"}],
+          "actions": {"add": [{"id": "lie", "label": "Lie back."}]} }
+      ],
+      "thoughts": [
+        { "id": "the_conclusion", "text": "So that is why.", "unlock_when": [{"observed": "bed"}] }
+      ],
+      "remarks": [
+        { "id": "first_grumble", "text": "Mmmmffhh.", "unlock_when": [{"observed": "bed"}] }
+      ]
+    })JSON";
+
+    State s;
+    psyche::load(s, file.string(), /*actions_path=*/{});
+
+    const Thought* said = nullptr;
+    const Thought* worked_out = nullptr;
+    for (const auto& t : s.thoughts)
+    {
+        if (t.id == "first_grumble")
+            said = &t;
+        if (t.id == "the_conclusion")
+            worked_out = &t;
+    }
+    REQUIRE(said != nullptr);
+    REQUIRE(worked_out != nullptr);
+    REQUIRE(said->isRemark());
+    REQUIRE(said->spirit_exp == 0);      // speech pays nothing
+    REQUIRE(worked_out->spirit_exp > 0); // a conclusion does
+    fs::remove(file);
 }

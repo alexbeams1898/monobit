@@ -1,9 +1,9 @@
-#include "Loot.h"
+#include "Yields.h"
 
 #include <catch2/catch_test_macros.hpp>
 
-using loot::Entry;
-using loot::Table;
+using yields::Entry;
+using yields::Table;
 
 namespace
 {
@@ -26,30 +26,30 @@ const psyche::RollRng kZero = [](int) { return 0; };
 const psyche::RollRng kMax = [](int n) { return n; };
 } // namespace
 
-TEST_CASE("An empty / zero-weight table rolls nothing", "[loot]")
+TEST_CASE("An empty / zero-weight table rolls nothing", "[yields]")
 {
     Table empty;
     empty.id = "empty";
-    REQUIRE(loot::roll(empty, kMax).empty());
+    REQUIRE(yields::roll(empty, kMax).empty());
 
     Table zeroed;
     zeroed.id = "zeroed";
     zeroed.entries = {Entry{"x", 0, 1, 1}}; // weight 0 -> filtered from total
     REQUIRE(zeroed.totalWeight() == 0);
-    REQUIRE(loot::roll(zeroed, kMax).empty());
+    REQUIRE(yields::roll(zeroed, kMax).empty());
 }
 
-TEST_CASE("rng->0 takes the low end: one roll, first entry, min quantity", "[loot]")
+TEST_CASE("rng->0 takes the low end: one roll, first entry, min quantity", "[yields]")
 {
-    const auto out = loot::roll(herbTable(), kZero);
+    const auto out = yields::roll(herbTable(), kZero);
     REQUIRE(out.size() == 1);           // rolls_min
     REQUIRE(out[0].id == "wild_thyme"); // first entry (cumulative weight hits it first)
     REQUIRE(out[0].quantity == 1);      // qty_min
 }
 
-TEST_CASE("rng->n takes the high end: max rolls, last entry, max quantity", "[loot]")
+TEST_CASE("rng->n takes the high end: max rolls, last entry, max quantity", "[yields]")
 {
-    const auto out = loot::roll(herbTable(), kMax);
+    const auto out = yields::roll(herbTable(), kMax);
     REQUIRE(out.size() == 3); // rolls_max
     for (const auto& inst : out)
     {
@@ -59,13 +59,13 @@ TEST_CASE("rng->n takes the high end: max rolls, last entry, max quantity", "[lo
     }
 }
 
-TEST_CASE("Every rolled item stays within its entry's quantity bounds", "[loot]")
+TEST_CASE("Every rolled item stays within its entry's quantity bounds", "[yields]")
 {
     // Sweep a range of rng responses; thyme qty must always land in [1,2], stone in [1,1].
     for (int k = 0; k < 8; ++k)
     {
         const psyche::RollRng rng = [k](int n) { return n < k ? n : k; };
-        for (const auto& inst : loot::roll(herbTable(), rng))
+        for (const auto& inst : yields::roll(herbTable(), rng))
         {
             if (inst.id == "wild_thyme")
                 REQUIRE((inst.quantity >= 1 && inst.quantity <= 2));
@@ -75,7 +75,7 @@ TEST_CASE("Every rolled item stays within its entry's quantity bounds", "[loot]"
     }
 }
 
-TEST_CASE("The roll count always lands within rolls_min..rolls_max", "[loot]")
+TEST_CASE("The roll count always lands within rolls_min..rolls_max", "[yields]")
 {
     // The rng contract is: rng(n) returns a value in [0,n]. A well-behaved rng clamped to
     // that range must yield a roll count inside the table's bounds.
@@ -83,13 +83,13 @@ TEST_CASE("The roll count always lands within rolls_min..rolls_max", "[loot]")
     for (int k = 0; k <= 5; ++k)
     {
         const psyche::RollRng rng = [k](int n) { return k <= n ? k : n; };
-        const auto out = loot::roll(t, rng);
+        const auto out = yields::roll(t, rng);
         REQUIRE(out.size() >= static_cast<std::size_t>(t.rolls_min));
         REQUIRE(out.size() <= static_cast<std::size_t>(t.rolls_max));
     }
 }
 
-TEST_CASE("A weighted pick lands on the entry whose cumulative band contains the roll", "[loot]")
+TEST_CASE("A weighted pick lands on the entry whose cumulative band contains the roll", "[yields]")
 {
     // Single roll (rolls 1..1), controlled weighted index: rng returns a fixed value for the
     // weight pick. thyme occupies band [0,79], stone [80,99].
@@ -105,7 +105,7 @@ TEST_CASE("A weighted pick lands on the entry whose cumulative band contains the
         int call = 0;
         const psyche::RollRng rng = [&call, weightRoll](int)
         { return call++ == 0 ? weightRoll : 0; };
-        return loot::roll(t, rng);
+        return yields::roll(t, rng);
     };
 
     REQUIRE(pickAt(0).at(0).id == "wild_thyme");   // start of thyme's band

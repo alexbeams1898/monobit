@@ -75,14 +75,23 @@ void stanceAdvance(settings::Settings& s, int)
 {
     s.hud.show_stance = !s.hud.show_stance;
 }
+std::string spiritValue(const settings::Settings& s)
+{
+    return yesNo(s.hud.show_spirit);
+}
+void spiritAdvance(settings::Settings& s, int)
+{
+    s.hud.show_spirit = !s.hud.show_spirit;
+}
 // Status only. The game's speech (readings, thoughts, toasts) is content, not a HUD
 // widget, and has no row here -- see docs/design/HUD.md.
 constexpr Row kHudRows[] = {
     {"Show the HUD", hudModeValue, hudModeAdvance},
     {"The time", timeValue, timeAdvance},
     {"The stance badge", stanceValue, stanceAdvance},
+    {"What you have to spend", spiritValue, spiritAdvance},
 };
-constexpr int kHudRowCount = 3;
+constexpr int kHudRowCount = 4;
 
 // Which page is showing. The top page lists CATEGORIES; a category page lists its settings.
 // Settings grows by adding a category here, not by lengthening one list -- audio and display

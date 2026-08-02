@@ -144,13 +144,14 @@ TEST_CASE("a toggle goes both ways whichever direction is pressed", "[settings_s
 
 TEST_CASE("the cursor wraps around a category's rows", "[settings_screen]")
 {
-    // Up from the top lands on the last row (the stance badge), not off the end.
+    // Up from the top lands on the LAST row, not off the end. Asserted against whatever the
+    // last row currently is (the Spirit readout) -- the wrap is the subject, not the row.
     settings::Settings s;
-    s.hud.show_stance = true;
+    s.hud.show_spirit = true;
     openHud(s);
     settings_screen::step(s, /*up=*/true, false, false, false, false, false);
     right(s);
-    REQUIRE_FALSE(s.hud.show_stance);
+    REQUIRE_FALSE(s.hud.show_spirit);
 }
 
 TEST_CASE("the cursor resets when stepping into and out of a category", "[settings_screen]")

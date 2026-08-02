@@ -100,6 +100,7 @@ struct Data
     World world;
     Self self;
     std::vector<Item> satchel;
+    std::string held; // what was in his hands (inventory::Satchel::held); empty = empty-handed
     // What the notebook keeps: the world-clock moment each thought was written down
     // (notebook::kUntimed = written with no watch). The thought itself -- its text,
     // faculty, rarity -- is authored, so it is reloaded from config rather than copied

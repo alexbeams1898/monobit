@@ -58,7 +58,7 @@ inline const char* rarityWord(int difficulty)
     }
 }
 
-// The rarity word's own color -- a loot-style ramp INDEPENDENT of the faculty
+// The rarity word's own color -- a rarity ramp INDEPENDENT of the faculty
 // hue, so rarity pops on its own (faculty = name/border color, rarity = this).
 inline Color rarityColor(int difficulty, float alpha = 1.0f)
 {

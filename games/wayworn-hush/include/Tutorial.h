@@ -23,8 +23,11 @@ struct Card
     std::string on; // event that triggers it (game-emitted, e.g. "reading")
     std::string title;
     std::string body;
-    std::string focus; // hud region left lit while the card is up:
-                       // "content" / "notification"; empty = full dim
+    // What stays lit while the card is up; everything else holds its breath. Either a HUD
+    // REGION by name ("content" / "notification"), or "spirit" -- the corner badge, which is
+    // not a region and so is resolved by the caller and passed in (see render). Empty (or an
+    // unknown name) dims the whole frame.
+    std::string focus;
 };
 
 struct Config
@@ -57,6 +60,18 @@ void dismiss(State& st);
 
 // Rendering (needs GL -- integration-tested by running the game, like the box).
 void init(FontHandle body_font, FontHandle heading_font);
-void render(const Card& card, const hud::Regions& regions, int windowW, int windowH);
+// A focus target the HUD REGIONS do not own -- a corner badge, resolved by the caller from
+// wherever it actually draws, so the lit rectangle and the thing lit cannot drift apart. Zero
+// width = nothing to point at, and a card asking for it falls back to a full dim.
+struct FocusRect
+{
+    float x = 0.0f;
+    float y = 0.0f;
+    float w = 0.0f;
+    float h = 0.0f;
+};
+
+void render(const Card& card, const hud::Regions& regions, const FocusRect& spirit, int windowW,
+            int windowH);
 
 } // namespace tutorial

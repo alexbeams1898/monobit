@@ -369,18 +369,16 @@ void renderSatchel(PauseState& pause, const SatchelView& v, float cx, float y, C
 // then keepsakes, then practical -- one grid, in that order, so the cursor walks it naturally.
 std::vector<GridItem> satchelGrid(const inventory::Satchel& sat, const inventory::Registry& reg)
 {
-    const inventory::Category order[] = {inventory::Category::KeyItem,
-                                         inventory::Category::Keepsake,
-                                         inventory::Category::Practical};
     std::vector<GridItem> out;
-    for (const auto cat : order)
+    for (const auto& id : satchelOrder(sat, reg))
         for (const auto& e : sat.items)
-        {
-            const inventory::ItemDef* def = reg.find(e.id);
-            const inventory::Category c = def ? def->category : inventory::Category::Keepsake;
-            if (c == cat)
-                out.push_back(GridItem{e.id, e.quantity, false, e.is_new});
-        }
+            if (e.id == id)
+            {
+                // `marked` is the pot's word on the Craft tab; on the Satchel it is what is in
+                // his hands -- the same soft fill, meaning "this one is spoken for".
+                out.push_back(GridItem{e.id, e.quantity, e.id == sat.held, e.is_new});
+                break;
+            }
     return out;
 }
 
@@ -390,6 +388,25 @@ std::vector<GridItem> satchelGrid(const inventory::Satchel& sat, const inventory
 // stable order. Row order is shared by render + step so the selection cursor lines up. The pot
 // takes ANYTHING you carry (Little-Alchemy: experiment freely) EXCEPT key items -- those are
 // progression-bound (the notebook, the watch) and must not be consumed on a failed attempt.
+std::vector<std::string> satchelOrder(const inventory::Satchel& sat, const inventory::Registry& reg)
+{
+    // Tools first -- what he acts with is what he reaches for; then the instruments the world
+    // opened to him, then what he keeps, then what he works with.
+    const inventory::Category order[] = {inventory::Category::Tool, inventory::Category::KeyItem,
+                                         inventory::Category::Keepsake,
+                                         inventory::Category::Practical};
+    std::vector<std::string> out;
+    for (const auto cat : order)
+        for (const auto& e : sat.items)
+        {
+            const inventory::ItemDef* def = reg.find(e.id);
+            const inventory::Category c = def ? def->category : inventory::Category::Keepsake;
+            if (c == cat)
+                out.push_back(e.id);
+        }
+    return out;
+}
+
 std::vector<CraftMaterial> craftMaterials(const inventory::Satchel& sat,
                                           const inventory::Registry& reg)
 {
@@ -577,6 +594,65 @@ void drawDayHeading(int day, float x, float y, float w)
                          {kTextDim.r, kTextDim.g, kTextDim.b, 0.25f});
 }
 
+// What an errand's window says about right now. With the watch he reads an hour off it; without
+// one he only knows the part of the day, which is the watch's whole worth -- the world keeps its
+// hours either way, and the instrument buys knowing them (the same rule the notes follow).
+std::string windowWord(const arcs::Item& item, bool can_tell_time)
+{
+    if (item.openness == arcs::Openness::Open)
+        return {};
+    if (item.openness == arcs::Openness::ShutToday)
+        return "not again today";
+    if (!can_tell_time)
+        return "not yet -- later " + worldclock::partOfDay(item.opens_at);
+    return "not until " + worldclock::clockOfDay(item.opens_at);
+}
+
+// One agenda line: the errand, and under it the world's answer about the hour. Dimmer when
+// shut -- a thing he cannot do right now should not read as loud as one he can.
+void drawErrandRow(const arcs::Item& item, float x, float y, float rowW, float rowH, bool active)
+{
+    if (active)
+        UIRenderer::drawRect(x, y, rowW, rowH, kCellCursor);
+
+    const bool open = item.openness == arcs::Openness::Open;
+    const float textX = x + rowH * 0.5f;
+    // A mark in the left margin, as a hand would tick an errand: the page reads as a list
+    // before any word of it is read.
+    softText(open ? "-" : "~", x + rowH * 0.18f, y + (rowH - lineH()) * 0.5f, kTextDim,
+             active ? 1.0f : 0.6f);
+
+    const std::string label = elide(item.arc->line, rowW - (textX - x) - rowH * 0.2f);
+    const Color hue = open ? kText : kTextDim;
+    softText(label, textX, y + (rowH - UIRenderer::measureText(sFont, label).height) * 0.5f, hue,
+             active ? 1.0f : 0.75f);
+}
+
+// The selected errand, on the same paper a note is read on -- it is the same book. No faculty
+// or rarity header: an errand is not something he worked out, it is something he was asked.
+void drawErrandDetail(const arcs::Item& item, bool can_tell_time, float x, float y, float w,
+                      float h)
+{
+    const float pad = lineH() * 0.7f;
+    const screen_style::Inset in = screen_style::paperPanel(x, y, w, h, kTextDim, pad, pad);
+    const auto ink = [](const std::string& s, float tx, float ty, const Color& c)
+    { UIRenderer::drawText(sFont, s, tx, ty, c); };
+
+    ink("To do", in.x, in.y, screen_style::kInkFaint);
+    float cy = in.y + lineH() * 1.1f;
+    UIRenderer::drawRect(
+        in.x, cy, in.w, 1.0f,
+        {screen_style::kInkFaint.r, screen_style::kInkFaint.g, screen_style::kInkFaint.b, 0.45f});
+    cy += lineH() * 0.5f;
+
+    cy = inkTextWrapped(item.arc->line, in.x, cy, in.w, screen_style::kInkBody);
+    if (const std::string when = windowWord(item, can_tell_time); !when.empty())
+    {
+        cy += lineH() * 0.6f;
+        inkTextWrapped(when, in.x, cy, in.w, screen_style::kInkFaint);
+    }
+}
+
 // The selected note, read back on the SAME page it was written on: the reading box's paper
 // panel, so a thought looks like one thing whether it's landing or being looked up. Ink on
 // paper here, not the screen's light-on-dark text -- the panel brings its own palette.
@@ -626,51 +702,96 @@ void drawNotebookDetail(const growth::GrowthState& g, const notebook::Entry& e,
 // The Notebook tab, drawn as pages: each day gets a dateline, then the notes he wrote under
 // it. Only his own -- what he hasn't thought has no line here. List on the LEFT, the full
 // note on the RIGHT, the same shape as the Satchel; hovering a note selects it.
-void renderNotebook(PauseState& pause, const growth::GrowthState& g, const Content& content,
-                    const Mouse& mouse, float cx, float y, Canvas canvas)
+// One row of the book. Datelines are chrome -- never selectable -- so they don't consume a
+// cursor index, which makes the row index and the drawn geometry disagree unless ONE walk
+// produces both. A row is one of the two kinds of writing in it: an errand he still owes, or a
+// thought that landed. Exactly one pointer is set.
+struct NotebookRow
 {
-    const notebook::Record& rec = content.notebook;
-    const psyche::State& obs = content.psyche;
-    const std::vector<notebook::Day> days = notebook::byDay(rec, obs, content.clock);
-    const float contentW = contentBandW(canvas);
-    const float leftX = cx - contentW * 0.5f;
-    const float colGap = contentW * 0.08f;
-    const float listW = (contentW - colGap) * 0.5f;
+    const arcs::Item* errand = nullptr;
+    const notebook::Entry* entry = nullptr;
+    float y = 0.0f;
+};
 
-    int noteCount = 0;
-    for (const auto& d : days)
-        noteCount += static_cast<int>(d.entries.size());
-    if (noteCount == 0)
-    {
-        softText("Nothing yet", leftX, y, kTextDim);
-        return;
-    }
-    pause.notebook_sel = std::clamp(pause.notebook_sel, 0, noteCount - 1);
-
-    // Where each note's row sits, walked once. Datelines are chrome -- never selectable -- so
-    // they don't consume a cursor index, which makes the note index and the drawn geometry
-    // disagree unless one walk produces both. This is that walk: the hit-test, the draw, and
-    // the detail panel all read it.
-    struct Row
-    {
-        const notebook::Entry* entry;
-        float y;
-    };
-    std::vector<Row> rows;
+// The page's layout: every row's y, and the datelines between them. This is the one walk the
+// hit-test, the draw and the detail panel all read.
+struct NotebookLayout
+{
+    std::vector<NotebookRow> rows;
     std::vector<std::pair<int, float>> headings; // day -> its y
+};
+
+NotebookLayout layOutNotebook(const std::vector<arcs::Item>& agenda,
+                              const std::vector<notebook::Day>& days, int today, float y)
+{
+    NotebookLayout out;
     const float rowH = listRowH();
     float rowY = y;
+    const auto heading = [&](int day)
+    {
+        out.headings.emplace_back(day, rowY);
+        rowY += lineH() * 1.3f;
+    };
+
+    // What he owes is owed NOW, so it opens TODAY's page -- above the day's notes, and under
+    // the same dateline, because it is the same day of the same book. The errands come first:
+    // a page you open to plan the day should say what is left before what is done.
+    if (!agenda.empty())
+    {
+        heading(today);
+        for (const auto& item : agenda)
+        {
+            out.rows.push_back(NotebookRow{&item, nullptr, rowY});
+            rowY += rowH;
+        }
+    }
     for (const auto& day : days)
     {
-        headings.emplace_back(day.day, rowY);
-        rowY += lineH() * 1.3f;
+        // Today's dateline is already down if the agenda opened the page under it.
+        if (!(day.day == today && !agenda.empty()))
+            heading(day.day);
         for (const auto& e : day.entries)
         {
-            rows.push_back(Row{&e, rowY});
+            out.rows.push_back(NotebookRow{nullptr, &e, rowY});
             rowY += rowH;
         }
         rowY += lineH() * 0.5f; // breathing room before the next dateline
     }
+    return out;
+}
+
+void renderNotebook(PauseState& pause, const growth::GrowthState& g, const Content& content,
+                    const Mouse& mouse, float cx, float y, Canvas canvas)
+{
+    const std::vector<notebook::Day> days =
+        notebook::byDay(content.notebook, content.psyche, content.clock);
+    const float contentW = contentBandW(canvas);
+    const float leftX = cx - contentW * 0.5f;
+    const float colGap = contentW * 0.08f;
+    const float listW = (contentW - colGap) * 0.5f;
+    const bool canTellTime = inventory::has(content.satchel, "watch");
+
+    // An errand is only on the page if there is a page to have written it on -- the same rule
+    // the thoughts follow (psyche's notebook rule). Without the book he still owes the errand;
+    // he just has nothing to read it off.
+    const bool hasBook = content.psyche.notebook_item.empty() ||
+                         inventory::has(content.satchel, content.psyche.notebook_item);
+    const std::vector<arcs::Item> agenda = hasBook ? content.agenda : std::vector<arcs::Item>{};
+
+    int rowCount = static_cast<int>(agenda.size());
+    for (const auto& d : days)
+        rowCount += static_cast<int>(d.entries.size());
+    if (rowCount == 0)
+    {
+        softText("Nothing yet", leftX, y, kTextDim);
+        return;
+    }
+    pause.notebook_sel = std::clamp(pause.notebook_sel, 0, rowCount - 1);
+
+    const NotebookLayout layout = layOutNotebook(agenda, days, worldclock::day(content.clock), y);
+    const std::vector<NotebookRow>& rows = layout.rows;
+    const std::vector<std::pair<int, float>>& headings = layout.headings;
+    const float rowH = listRowH();
 
     // Hover BEFORE drawing, so the highlight and the detail agree with the mouse this frame.
     for (int i = 0; i < static_cast<int>(rows.size()); ++i)
@@ -682,17 +803,25 @@ void renderNotebook(PauseState& pause, const growth::GrowthState& g, const Conte
         drawDayHeading(day, leftX, hy, listW);
     for (int i = 0; i < static_cast<int>(rows.size()); ++i)
     {
-        const Row& r = rows[static_cast<std::size_t>(i)];
-        drawNotebookRow(g, *r.entry, leftX, r.y, listW, rowH, i == pause.notebook_sel);
+        const NotebookRow& r = rows[static_cast<std::size_t>(i)];
+        const bool active = i == pause.notebook_sel;
+        if (r.errand != nullptr)
+            drawErrandRow(*r.errand, leftX, r.y, listW, rowH, active);
+        else
+            drawNotebookRow(g, *r.entry, leftX, r.y, listW, rowH, active);
     }
     // The page fills the list's fixed region, so it stays one steady sheet rather than
-    // resizing to whatever note is selected.
+    // resizing to whatever row is selected.
     // Whether he can read an hour off a note is the WATCH's business -- the moment itself is
     // always on record (see noteLanded).
-    const bool canTellTime = inventory::has(content.satchel, "watch");
-    drawNotebookDetail(g, *rows[static_cast<std::size_t>(pause.notebook_sel)].entry, content.clock,
-                       canTellTime, leftX + listW + colGap, y, contentW - listW - colGap,
-                       listRegionH());
+    const NotebookRow& sel = rows[static_cast<std::size_t>(pause.notebook_sel)];
+    const float detailX = leftX + listW + colGap;
+    const float detailW = contentW - listW - colGap;
+    if (sel.errand != nullptr)
+        drawErrandDetail(*sel.errand, canTellTime, detailX, y, detailW, listRegionH());
+    else
+        drawNotebookDetail(g, *sel.entry, content.clock, canTellTime, detailX, y, detailW,
+                           listRegionH());
 }
 
 // One "Label   Keys" control line, label right-aligned to a shared column so the
@@ -840,20 +969,23 @@ int listStep(bool up, bool down)
 // Hand the keys to whatever tab is showing. System = its item menu; Craft = material select +
 // Combine; Satchel and Notebook = read-only list cursors (W/S walk the rows for the detail
 // panel, clamped at render time against the live list). Self is a plain readout -- no cursor.
-Action stepTab(PauseState& pause, const std::vector<CraftMaterial>& craftMats, bool up, bool down,
-               bool confirm)
+Action stepTab(PauseState& pause, const std::vector<CraftMaterial>& craftMats, const Keys& keys)
 {
     switch (pause.tab)
     {
     case PauseState::Tab::System:
-        return stepSystemMenu(pause, up, down, confirm);
+        return stepSystemMenu(pause, keys.up, keys.down, keys.confirm);
     case PauseState::Tab::Craft:
-        return stepCraft(pause, craftMats, up, down, confirm);
+        return stepCraft(pause, craftMats, keys.up, keys.down, keys.confirm);
     case PauseState::Tab::Satchel:
-        pause.satchel_sel += listStep(up, down);
+        pause.satchel_sel += listStep(keys.up, keys.down);
+        // Confirm on a row takes that thing up (or puts it down again). Offered on every row;
+        // the satchel refuses anything that is not a tool, so the page needs no rule of its own.
+        if (keys.confirm)
+            return Action::Hold;
         break;
     case PauseState::Tab::Notebook:
-        pause.notebook_sel += listStep(up, down);
+        pause.notebook_sel += listStep(keys.up, keys.down);
         break;
     case PauseState::Tab::Self:
         break;
@@ -861,12 +993,27 @@ Action stepTab(PauseState& pause, const std::vector<CraftMaterial>& craftMats, b
     return Action::None;
 }
 
-Action step(PauseState& pause, bool toggle, bool left, bool right, bool up, bool down, bool confirm,
+// Page to the next AVAILABLE tab, wrapping. Stepping over an absent one (rather than landing
+// on it dimmed) is what makes "no instrument, no tab" true for the keyboard as well as the eye.
+// Bounded by kTabCount so an all-absent Tabs cannot spin forever.
+PauseState::Tab nextTab(PauseState::Tab from, int dir, const Tabs& tabs)
+{
+    int i = static_cast<int>(from);
+    for (int guard = 0; guard < kTabCount; ++guard)
+    {
+        i = (i + dir + kTabCount) % kTabCount;
+        if (tabs.has(static_cast<PauseState::Tab>(i)))
+            return static_cast<PauseState::Tab>(i);
+    }
+    return from;
+}
+
+Action step(PauseState& pause, const Tabs& tabs, const Keys& keys,
             const std::vector<CraftMaterial>& craftMats)
 {
     if (!pause.open)
     {
-        if (toggle)
+        if (keys.toggle)
         {
             pause.open = true;
             pause.tab = PauseState::Tab::Self;
@@ -879,44 +1026,51 @@ Action step(PauseState& pause, bool toggle, bool left, bool right, bool up, bool
     // In a sub-view, Back (F) pops one level rather than closing the page.
     if (!pause.view_stack.empty())
     {
-        if (toggle)
+        if (keys.toggle)
             pause.view_stack.pop_back();
         return Action::None;
     }
 
     // On the tab strip, Back (F) closes the page.
-    if (toggle)
+    if (keys.toggle)
     {
         pause.open = false;
         return Action::Resume;
     }
 
-    // Left/Right page through the tabs (wrapping, D-pad style).
-    if (left || right)
-    {
-        const int dir = right ? 1 : -1;
-        const int next = (static_cast<int>(pause.tab) + dir + kTabCount) % kTabCount;
-        pause.tab = static_cast<PauseState::Tab>(next);
-    }
+    // A tab can vanish while the page is open (a lent kit handed back), so land somewhere real
+    // before the keys are read -- otherwise W/S would still be walking a list nobody can see.
+    if (!tabs.has(pause.tab))
+        pause.tab = PauseState::Tab::Self;
 
-    return stepTab(pause, craftMats, up, down, confirm);
+    // Left/Right page through the tabs (wrapping, D-pad style).
+    if (keys.left || keys.right)
+        pause.tab = nextTab(pause.tab, keys.right ? 1 : -1, tabs);
+
+    return stepTab(pause, craftMats, keys);
 }
 
 // Draw the always-visible tab strip (centered near the top) and handle clicks:
 // clicking a tab switches to it and pops any open sub-view. A layout pre-pass
 // gives each tab's x/width so the mouse hit-tests the same rects that are drawn.
-void renderTabStrip(PauseState& pause, float cx, float tabY, const Mouse& mouse)
+void renderTabStrip(PauseState& pause, const Tabs& tabs, float cx, float tabY, const Mouse& mouse)
 {
-    // Order must match PauseState::Tab: Self, Satchel, Craft, Notebook, System.
+    // Order must match PauseState::Tab: Self, Satchel, Craft, Notebook, System. An unavailable
+    // tab is not drawn at all -- the row closes over it, so the page never advertises a
+    // faculty the pilgrim has no instrument for.
     const char* labels[kTabCount] = {"Self", "Satchel", "Craft", "Notebook", "System"};
     const float tabH = lineH() + 10.0f;
     const float tabGap = 6.0f;
-    float widths[kTabCount];
+    float widths[kTabCount] = {};
     float rowW = 0.0f;
+    bool first = true;
     for (int i = 0; i < kTabCount; ++i)
     {
+        if (!tabs.has(static_cast<PauseState::Tab>(i)))
+            continue;
         widths[i] = tabWidth(labels[i]);
-        rowW += widths[i] + (i > 0 ? tabGap : 0.0f);
+        rowW += widths[i] + (first ? 0.0f : tabGap);
+        first = false;
     }
     const float rowX = cx - rowW * 0.5f;
 
@@ -926,6 +1080,8 @@ void renderTabStrip(PauseState& pause, float cx, float tabY, const Mouse& mouse)
     float tx = rowX;
     for (int i = 0; i < kTabCount; ++i)
     {
+        if (!tabs.has(static_cast<PauseState::Tab>(i)))
+            continue;
         const bool active = static_cast<int>(pause.tab) == i;
         const bool hovered = engine::ui::pointInRect(mouse.x, mouse.y, tx, tabY, widths[i], tabH);
         drawTab(labels[i], tx, tabY, widths[i], tabH, active, hovered);
@@ -990,8 +1146,9 @@ Action renderTabContent(PauseState& pause, const growth::GrowthState& growth,
     return Action::None;
 }
 
-Action render(PauseState& pause, const growth::GrowthState& growth, const Content& content,
-              const Mouse& mouse, const IconResolver& icon, int windowW, int windowH)
+Action render(PauseState& pause, const Tabs& tabs, const growth::GrowthState& growth,
+              const Content& content, const Mouse& mouse, const IconResolver& icon, int windowW,
+              int windowH)
 {
     if (!pause.open || sFont < 0)
         return Action::None;
@@ -1005,7 +1162,7 @@ Action render(PauseState& pause, const growth::GrowthState& growth, const Conten
 
     // The tab strip always stays visible; sub-views render in the content area
     // below it, never replacing the tabs.
-    renderTabStrip(pause, cx, wh * 0.12f, mouse);
+    renderTabStrip(pause, tabs, cx, wh * 0.12f, mouse);
     return renderTabContent(pause, growth, content, icon, cx, wh * 0.24f, mouse,
                             Canvas{windowW, windowH});
 }

@@ -102,6 +102,7 @@ void loadConfig(Config& cfg, const std::string& path)
     cfg.default_xp_stat = j.value("default_xp_stat", cfg.default_xp_stat);
     cfg.learn_faculty_exp = j.value("learn_faculty_exp", cfg.learn_faculty_exp);
     cfg.learn_spirit_exp = j.value("learn_spirit_exp", cfg.learn_spirit_exp);
+    cfg.kit_item = j.value("kit_item", cfg.kit_item);
 }
 
 Match match(const std::vector<std::string>& selectedTypes, const Registry& registry)

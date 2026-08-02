@@ -43,6 +43,7 @@ bool pressedThisFrame(const EntityManager& em, int scancode);
 bool clickedThisFrame(EntityManager& em, uint8_t button);
 void enactConfirm(EntityManager& em, GameState& gs, const thought_box::ConfirmResult& r);
 void attemptCraft(GameState& gs);
+void holdCursoredItem(GameState& gs);
 void enactPageAction(Engine& engine, EntityManager& em, GameState& gs, pause_page::Action action);
 
 // The surface name of the tile at world (wx,wy): the tile's id looked up in the
@@ -76,6 +77,18 @@ bool backPressed(EntityManager& em)
            clickedThisFrame(em, SDL_BUTTON_RIGHT);
 }
 
+// Which tabs the page has right now. MAKING IS THE KIT: without the tools in the satchel there
+// is no Craft tab -- the same shape as the notebook rule, where the instrument you carry is
+// what makes the doing possible. ONE answer, given to both step() and render(), so the keys
+// and the strip can never disagree about what exists.
+pause_page::Tabs pageTabs(const GameState& gs)
+{
+    pause_page::Tabs t;
+    t.craft = gs.crafting_config.kit_item.empty() ||
+              inventory::has(gs.satchel, gs.crafting_config.kit_item);
+    return t;
+}
+
 // Step the pause page from this frame's input, returning its action. F/Esc/RMB=back-toggle,
 // A/D=tabs, W/S=move, Space=confirm. The action menu (menuUp) is modal and captures those
 // keys, so the page ignores input while a menu is up. Also muffles the soundtrack while the
@@ -85,19 +98,18 @@ pause_page::Action stepPausePage(EntityManager& em, GameState& gs, bool menuUp)
     // RMB only BACKS OUT of an open page -- it must not open one, staying free as a world
     // verb (right-clicking the world is not a request for a menu).
     const bool back = gs.pause.open ? backPressed(em) : pressedThisFrame(em, SDL_SCANCODE_F);
-    const bool toggle = !menuUp && back;
-    const bool left = !menuUp && pressedThisFrame(em, SDL_SCANCODE_A);
-    const bool right = !menuUp && pressedThisFrame(em, SDL_SCANCODE_D);
-    const bool up = !menuUp && pressedThisFrame(em, SDL_SCANCODE_W);
-    const bool down = !menuUp && pressedThisFrame(em, SDL_SCANCODE_S);
-    const bool confirm = !menuUp && pressedThisFrame(em, SDL_SCANCODE_SPACE);
+    const pause_page::Keys keys{!menuUp && back,
+                                !menuUp && pressedThisFrame(em, SDL_SCANCODE_A),
+                                !menuUp && pressedThisFrame(em, SDL_SCANCODE_D),
+                                !menuUp && pressedThisFrame(em, SDL_SCANCODE_W),
+                                !menuUp && pressedThisFrame(em, SDL_SCANCODE_S),
+                                !menuUp && pressedThisFrame(em, SDL_SCANCODE_SPACE)};
     const std::vector<pause_page::CraftMaterial> craftMats =
         pause_page::craftMaterials(gs.satchel, gs.items);
     // Returns the keyboard action for the caller to enact (via enactPageAction) -- this function
     // gathers input + owns the page's side-concerns (badges, audio) but does NOT dispatch actions,
     // so keyboard + mouse share the one dispatch point.
-    const pause_page::Action action =
-        pause_page::step(gs.pause, toggle, left, right, up, down, confirm, craftMats);
+    const pause_page::Action action = pause_page::step(gs.pause, pageTabs(gs), keys, craftMats);
 
     // "New" item badges clear when the player LEAVES the satchel view (switched tab or closed
     // the page while on it) -- they saw the fresh finds, so they're no longer new.
@@ -931,9 +943,9 @@ void toastFinds(const GameState& gs, const std::vector<inventory::ItemInstance>&
     }
 }
 
-// Deposit item ids + rolled loot tables into the satchel, toasting each find. The ONE place
+// Deposit item ids + drawn yield tables into the satchel, toasting each find. The ONE place
 // an item enters the bag -- shared by the direct-pickup path (interactable action) and the
-// deed path (a "pick up"/"gather" deed). `items` are item ids (one each); `tables` are loot
+// deed path (a "pick up"/"gather" deed). `items` are item ids (one each); `tables` are yield
 // table ids to roll.
 void grantAndToast(GameState& gs, const std::vector<std::string>& items,
                    const std::vector<std::string>& tables)
@@ -945,8 +957,8 @@ void grantAndToast(GameState& gs, const std::vector<std::string>& items,
         deposited.push_back(inventory::ItemInstance{id});
     }
     for (const auto& tableId : tables)
-        if (const loot::Table* table = gs.loot_tables.find(tableId))
-            for (auto& inst : loot::roll(*table, observeNudge))
+        if (const yields::Table* table = gs.yield_tables.find(tableId))
+            for (auto& inst : yields::roll(*table, observeNudge))
             {
                 inventory::add(gs.satchel, gs.items, inst);
                 deposited.push_back(inst);
@@ -977,6 +989,24 @@ bool learnRecipe(GameState& gs, const std::string& recipeId)
 // craft consumes inputs + grants the output, and here we bank its XP, set any first-craft
 // reveal flag, and toast the find. Every outcome (made / near-miss / short on materials) surfaces
 // as a notification toast; the pot is cleared either way.
+// Take up (or put down) whatever the Satchel cursor is on. The satchel refuses anything that
+// is not a tool, so a material simply does nothing -- the gesture is offered on every row and
+// the item decides, rather than the page knowing which rows are special.
+void holdCursoredItem(GameState& gs)
+{
+    const std::vector<std::string> rows = pause_page::satchelOrder(gs.satchel, gs.items);
+    if (rows.empty())
+        return;
+    const int sel = std::clamp(gs.pause.satchel_sel, 0, static_cast<int>(rows.size()) - 1);
+    const std::string& id = rows[static_cast<std::size_t>(sel)];
+    if (!inventory::toggleHeld(gs.satchel, gs.items, id))
+        return;
+    const inventory::ItemDef* def = gs.items.find(id);
+    const std::string name = def ? def->name : id;
+    notify::push(gs.satchel.held == id ? name + " in hand" : name + " put away",
+                 def ? reading_color::rarityColor(def->rarity) : kUnlockColor);
+}
+
 void attemptCraft(GameState& gs)
 {
     // A making costs the hour whatever comes of it -- the trying is the time.
@@ -1060,11 +1090,35 @@ void enactPageAction(Engine& engine, EntityManager& em, GameState& gs, pause_pag
     case pause_page::Action::Craft:
         attemptCraft(gs);
         break;
+    case pause_page::Action::Hold:
+        holdCursoredItem(gs);
+        break;
     case pause_page::Action::Resume:
         writeSave(em, gs); // closing the page is a natural beat to keep
         break;
     case pause_page::Action::None:
         break;
+    }
+}
+
+// A thing was taken: if it was the LAST of its clearing, the world changes. Raising the flag
+// through psyche means the ambient engine re-checks on it like any other -- the thought that
+// waits on an open path lands here, not on the next thing the pilgrim happens to look at.
+// Silent unless this take emptied the group.
+void noteClearingProgress(GameState& gs, const std::string& placementId)
+{
+    for (const auto& [name, clearing] : gs.region_clearings)
+    {
+        const bool mine = std::find(clearing.placements.begin(), clearing.placements.end(),
+                                    placementId) != clearing.placements.end();
+        if (!mine || clearing.flag.empty() || gs.psyche.flags.count(clearing.flag) != 0)
+            continue;
+        const bool emptied =
+            std::all_of(clearing.placements.begin(), clearing.placements.end(),
+                        [&](const std::string& id) { return gs.gone.count(id) != 0; });
+        if (emptied)
+            applyGains(gs, psyche::setFlag(gs.psyche, gs.growth, clearing.flag, observeNudge));
+        return;
     }
 }
 
@@ -1119,7 +1173,10 @@ void onInteractionFired(GameState& gs, const interaction::Outcome& out)
         // A thing taken is gone for good: remember it against the map, or the next visit
         // rebuilds it from the authored placements and it can be taken again.
         if (!out.removed_placement.empty())
+        {
             gs.gone.insert(out.removed_placement);
+            noteClearingProgress(gs, out.removed_placement);
+        }
         if (!out.items.empty())
             markProgress(gs); // a find -- worth keeping
         return;
@@ -1654,7 +1711,7 @@ void tickWorldTargeting(const Engine& engine, EntityManager& em, GameState& gs, 
                                    observeNudge,
                                    gs.satchel,
                                    gs.items,
-                                   gs.loot_tables,
+                                   gs.yield_tables,
                                    gs.psyche.interact_reach};
     // Decide which encounters are present THIS frame before resolving a target, so a
     // hidden one is never interactable and a just-revealed one is.
@@ -1781,17 +1838,34 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // observations/actions (the pull-back to a spot).
     pumpStatChangeThoughts(gs);
 
+    // What TIME it is, mirrored onto psyche so `between` / `day_min` clauses can be
+    // asked. Content gated on the hour also has to be RE-CHECKED as the hour turns
+    // (a door shutting at eight changes what is available with nothing else moving),
+    // so a crossed hour re-offers the stat keys -- the same cheap pump a stat rise
+    // uses. Per hour, not per tick: the engine runs on change, not on the clock.
+    gs.psyche.day_frac = worldclock::fractionOfDay(gs.clock);
+    gs.psyche.day = worldclock::day(gs.clock);
+    if (const int hour = static_cast<int>(gs.psyche.day_frac * 24.0); hour != gs.clock_hour_seen)
+    {
+        gs.clock_hour_seen = hour;
+        applyGains(gs, psyche::evaluateStats(gs.psyche, gs.growth, observeNudge));
+    }
+
     // What he carries, mirrored onto psyche so `carrying` / `without` clauses can
     // read it, re-running the engine over whatever changed hands (picking up the
     // notebook is when a thought that ached for one gets its second look). Done
     // HERE rather than at each satchel mutation -- there are several, and one
     // forgotten site is a gate that silently lies.
     {
+        // A thing spent or given away cannot still be in his hands -- reconcile before the
+        // mirror, so `holding` never names something the bag no longer has.
+        inventory::reconcileHeld(gs.satchel);
         std::unordered_set<std::string> held;
         held.reserve(gs.satchel.items.size());
         for (const auto& e : gs.satchel.items)
             held.insert(e.id);
-        applyGains(gs, psyche::evaluateCarried(gs.psyche, gs.growth, held, observeNudge));
+        applyGains(
+            gs, psyche::evaluateCarried(gs.psyche, gs.growth, held, observeNudge, gs.satchel.held));
     }
 
     // Cheap + idempotent (diffs against announced_unlocks), so once/frame.
@@ -2023,11 +2097,47 @@ void renderOverEverything(const Engine& engine, GameState& gs, int ww, int wh)
 {
     const tutorial::Card* card = tutorial::current(gs.tutorial_state);
     if (card != nullptr)
-        tutorial::render(*card, gs.hud, ww, wh);
+    {
+        // The Spirit badge is not a HUD region, so a card pointing at it gets the badge's own
+        // box -- one source of truth for where that number is.
+        const spirit_hud::Rect sb = spirit_hud::bounds(gs.spirit_hud_config, ww, wh);
+        tutorial::render(*card, gs.hud, tutorial::FocusRect{sb.x, sb.y, sb.w, sb.h}, ww, wh);
+    }
     notify::render(card != nullptr ? 0.0f : static_cast<float>(engine.frameDt()), ww, wh);
     if (const float a = std::max(warpFadeAlpha(gs), sceneFadeAlpha(gs)); a > 0.0f)
         UIRenderer::drawRect(0.0f, 0.0f, static_cast<float>(ww), static_cast<float>(wh),
                              Color{0.0f, 0.0f, 0.0f, a});
+}
+
+// The corner badges -- the always-true STATUS half of the HUD, as against the content boxes.
+// Each is individually switchable (settings::Hud) and the whole set goes at visibility Off.
+void renderCornerBadges(const Engine& engine, GameState& gs, int ww, int wh)
+{
+    if (gs.prefs.hud.visibility == hud::Visibility::Off)
+        return;
+
+    // The stance badge (Observe / Act), so the player always knows which verb an interact does.
+    if (gs.prefs.hud.show_stance)
+        interaction_mode::render(gs.int_mode_state, gs.int_mode_config, ww, wh);
+
+    // What the watch says, while one is carried. The world's clock is frozen behind the pause
+    // page, so this reads as a held hand there rather than a stale number.
+    watch_hud::render(gs.watch_hud_config, gs.clock,
+                      gs.prefs.hud.show_time && inventory::has(gs.satchel, "watch"), ww, wh);
+
+    // What he has to spend on becoming someone. The shown number climbs toward what has been
+    // ANNOUNCED (see SpiritHud.h) -- settled means nothing is left to read, so the counter may
+    // reconcile to the truth. Frozen while a teaching card holds the world, like the toasts:
+    // nothing should tick behind a stopped screen.
+    if (gs.prefs.hud.show_spirit)
+    {
+        const bool settled = !thought_box::active() && gs.psyche.pending.empty();
+        const float dt = tutorial::current(gs.tutorial_state) != nullptr
+                             ? 0.0f
+                             : static_cast<float>(engine.frameDt());
+        spirit_hud::tick(gs.spirit_hud_config, gs.growth.spirit_exp, settled, dt);
+        spirit_hud::render(gs.spirit_hud_config, ww, wh);
+    }
 }
 
 void gameRenderUI(Engine& engine, EntityManager& em)
@@ -2092,18 +2202,7 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     // HUD -- status, on screen because it is always true. The visibility mode governs the
     // lot of it, and each piece answers to its own setting besides: a piece switched off is
     // gone at any mode. The pause page is separate (F-gated), so Off still opens it.
-    if (gs.prefs.hud.visibility != hud::Visibility::Off)
-    {
-        // The stance badge (Observe / Act), so the player always knows which verb an
-        // interact will do.
-        if (gs.prefs.hud.show_stance)
-            interaction_mode::render(gs.int_mode_state, gs.int_mode_config, ww, wh);
-
-        // What the watch says, while one is carried. The world's clock is frozen behind the
-        // pause page, so this reads as a held hand there rather than a stale number.
-        watch_hud::render(gs.watch_hud_config, gs.clock,
-                          gs.prefs.hud.show_time && inventory::has(gs.satchel, "watch"), ww, wh);
-    }
+    renderCornerBadges(engine, gs, ww, wh);
 
     int mx = 0;
     int my = 0;
@@ -2125,8 +2224,15 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     // click Quit on the System tab to exit. Mouse handling lives here because it
     // hit-tests the geometry render() draws.
     const pause_page::Mouse mouse{static_cast<float>(mx), static_cast<float>(my), lClick};
-    const pause_page::Content content{gs.psyche, gs.satchel, gs.items,         gs.notebook,
-                                      gs.clock,  gs.recipes, gs.crafting_state};
+    // The agenda is read off the SAME knowledge the world gates on, so a line that says the
+    // door is open is the same judgement the door itself makes.
+    std::unordered_set<std::string> agendaObserved;
+    std::unordered_map<std::string, int> agendaStats;
+    const unlock::Knowledge know =
+        psyche::buildKnowledge(gs.psyche, gs.growth, agendaObserved, agendaStats);
+    const pause_page::Content content{
+        gs.psyche, gs.satchel, gs.items,          gs.notebook,
+        gs.clock,  gs.recipes, gs.crafting_state, arcs::agenda(gs.threads, know)};
     // Resolve item-icon paths to textures through the engine's cache (the page stays engine-
     // type-free). The image SIZE comes back too, so the page can draw an item's cell on the
     // shared items sheet. Empty path -> 0 (a swatch fallback in the grid).
@@ -2142,7 +2248,7 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     // The mouse action path funnels through the SAME enactPageAction as the keyboard, so a
     // Combine click enacts the craft exactly like Space does (no per-action wiring to forget).
     enactPageAction(engine, em, gs,
-                    pause_page::render(gs.pause, gs.growth, content, mouse, icon,
+                    pause_page::render(gs.pause, pageTabs(gs), gs.growth, content, mouse, icon,
                                        engine.windowWidth(), engine.windowHeight()));
 
     renderOverEverything(engine, gs, ww, wh);
@@ -2155,5 +2261,5 @@ void gameRenderImGui(Engine& /*engine*/, EntityManager& em)
     // Dev tunables panel (F1). No-op when hidden. Edits player_config + stats
     // live; the Cognition tab shows the observation state's live tree.
     auto& gs = em.registry().ctx().get<GameState>();
-    tune_panel::render(gs.player_config, gs.growth, gs.psyche);
+    tune_panel::render(gs.player_config, gs.growth, gs.psyche, gs.clock);
 }

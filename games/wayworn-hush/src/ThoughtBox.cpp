@@ -2,9 +2,9 @@
 
 #include "FontManager.h"
 #include "HudCanvas.h"
-#include "Notify.h"
 #include "ReadingColor.h"
 #include "ScreenStyle.h"
+#include "SpiritHud.h"
 #include "UIRenderer.h"
 #include "systems/AudioSystem.h"
 
@@ -208,11 +208,11 @@ void loadLine(psyche::PendingLine line, int windowW, int windowH)
     const float innerH = region.h - 2.0f * padY - (headingH + kHeadingGap);
     sLinesPerPage = std::max(1, static_cast<int>(innerH / bodyLineH));
     playAppearSfx();
-    // The reward toast lands WITH the line on screen (not when the engine queued
-    // it seconds earlier), so "+N Spirit" reads alongside the thought that earned it.
+    // The gain announces itself WITH the line on screen (not when the engine queued it
+    // seconds earlier), so the "+N" over the counter reads alongside the thought that earned
+    // it -- and then feeds into the total, which climbs to meet it.
     if (sLine.spirit_exp > 0)
-        notify::push("+" + std::to_string(sLine.spirit_exp) + " Spirit",
-                     {0.98f, 0.90f, 0.55f, 1.0f});
+        spirit_hud::gained(sLine.spirit_exp);
 }
 
 // Sentinel option id: always the last entry, closes the menu (equivalent to F).
