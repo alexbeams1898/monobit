@@ -1,0 +1,21 @@
+{
+    "_comment": "Floor layout (see include/FloorGen.h). The floor is a grid of tiles that starts solid; rooms from config/rooms/*.room are stamped into it and connected with corridors. room_attempts is how many placements are tried before giving up, room_target how many are wanted. corridor_half: a corridor is (2*half + 1) tiles wide. tile_visuals gives each tile id a flat colour; with no tileset_path the renderer draws flat quads, which is what the art-less skeleton wants.",
+    "width": 96,
+    "height": 72,
+    "tile_size": 32,
+    "room_attempts": 60,
+    "room_target": 6,
+    "corridor_half": 1,
+    "tile_visuals": {
+        "0": {
+            "r": 0.16,
+            "g": 0.15,
+            "b": 0.17
+        },
+        "1": {
+            "r": 0.07,
+            "g": 0.07,
+            "b": 0.08
+        }
+    }
+}

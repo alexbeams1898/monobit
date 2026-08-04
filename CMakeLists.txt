@@ -41,5 +41,6 @@ enable_testing()
 
 add_subdirectory(engines/engine)
 add_subdirectory(games/prison-escape-game)
+add_subdirectory(games/point-of-entry)
 add_subdirectory(games/selva-oscura)
 add_subdirectory(games/wayworn-hush)
