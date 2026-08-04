@@ -6,6 +6,7 @@ project(PointOfEntry VERSION 0.1.0 LANGUAGES C CXX)
 # Kept separate from the exe so tests can link the same code without main().
 add_library(poe-systems STATIC
     src/Capture.cpp
+    src/DebugPanel.cpp
     src/FloorGen.cpp
     src/Player.cpp
 )

@@ -139,7 +139,9 @@ bool Engine::init(const char* title, int width, int height)
     // Dear ImGui — initialised here so games can register an ImGui callback
     // and start drawing tuning panels. The engine owns NewFrame / Render /
     // event forwarding; the game just calls ImGui::Begin/widgets/End from
-    // its setRenderImGui callback. No-op cost when no callback is set.
+    // its setRenderImGui callback. The per-frame PASS is skipped entirely when no callback
+    // is registered (see Engine::render), so a game that never asks for ImGui pays only this
+    // one-time init.
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui::GetIO().IniFilename = nullptr; // don't write imgui.ini next to the exe
@@ -165,12 +167,20 @@ bool Engine::init(const char* title, int width, int height)
 void Engine::run()
 {
     running = true;
-    double previousTime = static_cast<double>(SDL_GetTicks64()) / 1000.0;
+    // HIGH-RESOLUTION timing, not SDL_GetTicks64(). Ticks has 1 ms resolution, so a real
+    // 16.667 ms frame is reported as either 16 or 17 -- a 4% error, every frame, always in
+    // whole milliseconds. That error accumulates in the fixed-timestep accumulator until it
+    // slips: measured over 117 frames, 16 of them ran ZERO ticks and 16 ran TWO, so about a
+    // quarter of frames either repeated a position or jumped double. It reads as a periodic
+    // hitch roughly every seventh frame while every position, camera and pixel value in the
+    // game is exactly correct.
+    const double counterFreq = static_cast<double>(SDL_GetPerformanceFrequency());
+    double previousTime = static_cast<double>(SDL_GetPerformanceCounter()) / counterFreq;
     double accumulator = 0.0;
 
     while (running)
     {
-        const double currentTime = static_cast<double>(SDL_GetTicks64()) / 1000.0;
+        const double currentTime = static_cast<double>(SDL_GetPerformanceCounter()) / counterFreq;
         double frameTime = currentTime - previousTime;
         previousTime = currentTime;
 
@@ -216,7 +226,7 @@ void Engine::run()
             if (timing_reset_pending)
             {
                 timing_reset_pending = false;
-                previousTime = static_cast<double>(SDL_GetTicks64()) / 1000.0;
+                previousTime = static_cast<double>(SDL_GetPerformanceCounter()) / counterFreq;
                 accumulator = 0.0;
                 last_frame_time = 1.0 / 60.0;
                 break;
@@ -474,11 +484,8 @@ void Engine::render()
                     camera.prev_offset_x + (camera.offset_x - camera.prev_offset_x) * a;
                 const float offY =
                     camera.prev_offset_y + (camera.offset_y - camera.prev_offset_y) * a;
-                // Round the offset so it lands on integer pixels. Without this,
-                // the sprite (rounded) and camera (rounded) have independent
-                // rounding errors that don't cancel, causing 1-2px oscillation.
-                camX = baseX + std::round(offX);
-                camY = baseY + std::round(offY);
+                camX = baseX + offX;
+                camY = baseY + offY;
             }
             else
             {
@@ -488,6 +495,20 @@ void Engine::render()
             break;
         }
     }
+
+    // ONE pixel snap, here, before anyone sees the camera.
+    //
+    // Every world renderer rounds what it draws to a whole pixel, and each of them used to
+    // round the CAMERA independently as well. Two roundings of two slightly different numbers
+    // do not cancel: a half-pixel disagreement between the camera and a sprite is a whole
+    // SCREEN pixel at 2x zoom, and because the interpolated camera drifts across the rounding
+    // boundary at whatever rate the frame times happen to jitter, things pop against each
+    // other at irregular intervals. It reads as lag when nothing is actually late.
+    //
+    // Snapping once means every renderer receives an already-integer camera and its own
+    // rounding is measured from the same origin, so the errors cancel by construction.
+    camX = std::round(camX);
+    camY = std::round(camY);
 
     if (render_world)
     {
@@ -508,10 +529,14 @@ void Engine::render()
     }
 
     // ImGui pass — drawn after the game's UI so panels float on top.
-    // NewFrame must precede any ImGui::Begin in the callback; Render
-    // emits the actual draw lists. The frame is started even if no
-    // callback is set, so future frame-state queries (DeltaTime,
-    // viewport size) stay valid.
+    //
+    // SKIPPED ENTIRELY when the game registered no ImGui callback. A game that never asks
+    // for ImGui should not pay for it, and more importantly should not have it silently
+    // sitting in its frame: with no callback the pass still built and submitted an empty
+    // draw list every frame, and because that was the LAST GL work before the swap it was
+    // where the driver parked its vsync wait. A profile of such a game reads as though
+    // ImGui costs 16 ms a frame, which sends you hunting a phantom.
+    if (render_imgui)
     {
         ZoneScopedN("render-imgui");
         {

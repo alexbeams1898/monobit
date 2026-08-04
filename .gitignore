@@ -78,8 +78,12 @@ UserSettings/
 # LPC raw sources (fetched by scripts/fetch_lpc.py, reassembled on demand)
 games/prison-escape-game/assets/sprites/lpc/raw/
 
-# Tracy traces
+# Tracy traces. Both spellings: the per-game directories are DOTTED (.traces/), and a
+# bare `traces/` never matched them -- selva only stayed clean because it carries its own
+# .gitignore. Captures are large, per-machine, and never worth committing.
 traces/
+.traces/
+*.tracy
 
 # AI debug dumps
 debug/

@@ -1,5 +1,5 @@
 {
-    "_comment": "Floor layout (see include/FloorGen.h). The floor is a grid of tiles that starts solid; rooms from config/rooms/*.room are stamped into it and connected with corridors. room_attempts is how many placements are tried before giving up, room_target how many are wanted. corridor_half: a corridor is (2*half + 1) tiles wide. tile_visuals gives each tile id a flat colour; with no tileset_path the renderer draws flat quads, which is what the art-less skeleton wants.",
+    "_comment": "Floor layout (see include/FloorGen.h). The floor is a grid of tiles that starts solid; rooms from config/rooms/*.room are stamped into it and connected with corridors. room_attempts is how many placements are tried before giving up, room_target how many are wanted. corridor_half: a corridor is (2*half + 1) tiles wide. tile_size 32 against the 1280x720 internal render gives 40x22 tiles on screen -- the close, room-at-a-time framing this game wants -- while the buffer still upscales by a clean integer. Chunkiness comes from the TILE, not from starving the framebuffer.",
     "width": 96,
     "height": 72,
     "tile_size": 32,

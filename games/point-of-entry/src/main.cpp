@@ -1,12 +1,16 @@
 #include "Capture.h"
+#include "DebugPanel.h"
 #include "Engine.h"
 #include "FloorGen.h"
 #include "Log.h"
 #include "Player.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
+#include "gl/PixelRenderTarget.h"
 #include "systems/RenderSystem.h"
 #include "systems/TileMapRenderer.h"
+
+#include <cmath>
 
 #include <glad/glad.h>
 
@@ -16,10 +20,34 @@
 
 namespace
 {
+// THE INTERNAL RESOLUTION. Everything renders here at zoom 1 and the whole buffer is
+// then scaled to the window in one pass -- the pixel-art pipeline. Two reasons it is
+// this and not the window:
+//
+//   1. It IS the lo-fi look. 640x360 with 16px tiles shows 40x22 tiles: chunky enough
+//      to read as pixel art, wide enough for a swarm and a cursor. (GBC is 160x144 and
+//      NES 256x240 -- both authentic and both too claustrophobic to fight in.)
+//   2. One rounding pass. Drawing straight to the window means the camera and every
+//      sprite round to a pixel independently, and at a zoom those errors do not cancel
+//      -- things pop against each other whenever frame times jitter, which reads as lag.
+//
+// 1280x720 lands on an EXACT 2x at 2560x1440 and 1.5x at 1080p. The earlier 640x360 was
+// chosen for chunkiness and turned out to be a 4x upscale on a 1440p panel -- every 16px
+// tile drawing as 64 real pixels, which reads as being zoomed most of the way in and makes
+// ordinary walking speed feel frantic. The lo-fi look comes from the ART (16px tiles, flat
+// colour, few frames), not from starving the framebuffer.
+constexpr int kInternalWidth = 1280;
+constexpr int kInternalHeight = 720;
+
+// The cellar's unlit dark -- what shows where no tile is drawn.
+constexpr float kVoidR = 0.05f;
+constexpr float kVoidG = 0.05f;
+constexpr float kVoidB = 0.06f;
+
 // Placeholder art: the engine draws a coloured quad for a sprite with no
 // texture, which is all this needs until the real pixel art exists.
-constexpr float kPlayerSize = 24.0f;
-constexpr float kPoeSize = 28.0f;
+constexpr float kPlayerSize = 28.0f;
+constexpr float kPoeSize = 32.0f;
 
 // A box that reads as a thing, with no art yet.
 entt::entity spawnBox(EntityManager& em, float x, float y, float size, float r, float g, float b)
@@ -48,16 +76,21 @@ entt::entity spawnBox(EntityManager& em, float x, float y, float size, float r, 
 
 void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, float /*alpha*/)
 {
-    const float zoom = engine.cameraZoom();
-    TileMapRenderer::render(camX, camY, engine.windowWidth(), engine.windowHeight(), zoom);
-    RenderSystem::render(em, engine.textureManager(), camX, camY, zoom);
+    // Draw the world at the internal resolution, then blit the whole buffer up. Zoom stays
+    // at 1: the scale comes from the upscale, not from the camera, which is what keeps every
+    // pixel square and every rounding decision in one place.
+    engine::gl::pixelTargetBegin(kVoidR, kVoidG, kVoidB);
+    TileMapRenderer::render(camX, camY, kInternalWidth, kInternalHeight, 1.0f);
+    RenderSystem::render(em, engine.textureManager(), camX, camY, 1.0f);
+    engine::gl::pixelTargetEnd(engine.windowWidth(), engine.windowHeight());
 
     capture::writeIfRequested(engine.windowWidth(), engine.windowHeight());
 }
 
 void gameOnResize(Engine& /*engine*/, int w, int h)
 {
-    RenderSystem::resize(w, h);
+    // Only the BLIT follows the window; the world keeps rendering at the internal size.
+    engine::gl::pixelTargetResize(w, h);
 }
 } // namespace
 
@@ -67,11 +100,21 @@ int main(int argc, char* argv[])
     (void)argv;
 
     Engine engine;
+    // BORDERLESS FULLSCREEN, and it is a performance decision as much as a presentation one.
+    // In a WINDOW the Windows compositor (DWM) owns the present: it caps the swap regardless
+    // of what SDL_GL_SetSwapInterval asks for, delivering ~57 fps against a 60 Hz tick with
+    // periodic 47-76 ms stalls. The fixed-timestep accumulator then slips a tick every so
+    // often and the world visibly hitches -- while the game itself renders in 0.04 ms.
+    // Going borderless bypasses the compositor and gets a real present. (Wayworn does the
+    // same; prison-escape does not, and shows the same hitch.)
+    engine.setWindowMode(Engine::WindowMode::BorderlessFullscreen);
     if (!engine.init("Point of Entry", 1280, 720))
         return 1;
 
     poe::log().info("boot: window is {}x{}", engine.windowWidth(), engine.windowHeight());
-    RenderSystem::init(engine.windowWidth(), engine.windowHeight());
+    engine::gl::pixelTargetInit(kInternalWidth, kInternalHeight);
+    engine::gl::pixelTargetResize(engine.windowWidth(), engine.windowHeight());
+    RenderSystem::init(kInternalWidth, kInternalHeight);
     TileMapRenderer::init();
     // The engine enables depth testing globally at init for the 3D path. This is a 2D
     // game: everything draws at z=0, so with GL_LESS the tilemap writes depth first and
@@ -110,12 +153,13 @@ int main(int argc, char* argv[])
     poe::log().info("boot: player at ({:.0f},{:.0f}), {} points of entry placed", floor.spawn_x,
                     floor.spawn_y, poeCount);
 
-    engine.setCameraZoom(2.0f);
     engine.setGameUpdate(&player::update);
     engine.setRenderWorld(&gameRenderWorld);
     engine.setOnResize(&gameOnResize);
+    engine.setRenderImGui(&debug_panel::render);
     engine.run();
 
+    engine::gl::pixelTargetShutdown();
     TileMapRenderer::shutdown();
     RenderSystem::shutdown();
     return 0;
