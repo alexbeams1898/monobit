@@ -1,9 +1,15 @@
+#include "AppState.h"
 #include "Capture.h"
 #include "DebugPanel.h"
 #include "Engine.h"
 #include "FloorGen.h"
+#include "FontManager.h"
 #include "Log.h"
+#include "PauseScreen.h"
 #include "Player.h"
+#include "ScreenStyle.h"
+#include "ShellInput.h"
+#include "TitleScreen.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "gl/PixelRenderTarget.h"
@@ -38,6 +44,11 @@ namespace
 // colour, few frames), not from starving the framebuffer.
 constexpr int kInternalWidth = 1280;
 constexpr int kInternalHeight = 720;
+
+// The shell's state, and the handles the callbacks need. File-scope because the engine's
+// callbacks are plain function pointers -- there is no user-data slot to thread them through.
+app::State sApp;
+Engine* sEngine = nullptr;
 
 // The cellar's unlit dark -- what shows where no tile is drawn.
 constexpr float kVoidR = 0.05f;
@@ -74,17 +85,164 @@ entt::entity spawnBox(EntityManager& em, float x, float y, float size, float r, 
     return e;
 }
 
+// The world only ticks while it is being PLAYED: not behind the title, and not behind the
+// pause screen. Pausing is a thing the world does, not a phase the program enters, so it is a
+// flag checked here rather than a separate branch of the shell.
+void gameUpdate(Engine& engine, EntityManager& em, double dt)
+{
+    if (sApp.phase != app::Phase::Playing || sApp.paused)
+        return;
+    player::update(engine, em, dt);
+}
+
 void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, float /*alpha*/)
 {
     // Draw the world at the internal resolution, then blit the whole buffer up. Zoom stays
     // at 1: the scale comes from the upscale, not from the camera, which is what keeps every
     // pixel square and every rounding decision in one place.
     engine::gl::pixelTargetBegin(kVoidR, kVoidG, kVoidB);
-    TileMapRenderer::render(camX, camY, kInternalWidth, kInternalHeight, 1.0f);
-    RenderSystem::render(em, engine.textureManager(), camX, camY, 1.0f);
+    if (sApp.world_built)
+    {
+        TileMapRenderer::render(camX, camY, kInternalWidth, kInternalHeight, 1.0f);
+        RenderSystem::render(em, engine.textureManager(), camX, camY, 1.0f);
+    }
     engine::gl::pixelTargetEnd(engine.windowWidth(), engine.windowHeight());
 
+    // Captures the WORLD only. The shell is drawn by the UI callback, which the engine runs
+    // inside UIRenderer begin/endFrame -- its text is still unsubmitted when any game callback
+    // returns, so a menu cannot be grabbed from here.
     capture::writeIfRequested(engine.windowWidth(), engine.windowHeight());
+}
+
+// Build the house. Not done at boot: the title must be able to greet you without a floor
+// existing, and a new job should be a NEW house rather than the one generated at startup.
+bool buildWorld(Engine& engine)
+{
+    auto& em = engine.entityManager();
+    em.registry().clear(); // a previous job's world, if any
+
+    const floorgen::Floor floor = floorgen::generate(em, "config/floor.json", "config/rooms");
+    if (!floor.ok)
+    {
+        poe::log().error("world: could not build a floor");
+        return false;
+    }
+    TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
+
+    // Every marker the rooms carried. 'P' is a point of entry -- for now a red box standing in
+    // the room, which is enough to prove placement works.
+    int poeCount = 0;
+    for (const auto& m : floor.markers)
+        if (m.type == 'P')
+        {
+            spawnBox(em, m.x, m.y, kPoeSize, 0.75f, 0.15f, 0.15f);
+            ++poeCount;
+        }
+
+    const entt::entity playerEnt =
+        spawnBox(em, floor.spawn_x, floor.spawn_y, kPlayerSize, 0.85f, 0.84f, 0.78f);
+    em.registry().emplace<Camera>(playerEnt, Camera{floor.spawn_x, floor.spawn_y});
+    player::bind(playerEnt);
+    poe::log().info("world: player at ({:.0f},{:.0f}), {} points of entry", floor.spawn_x,
+                    floor.spawn_y, poeCount);
+    sApp.world_built = true;
+    return true;
+}
+
+// What the shell does with what a screen reported.
+void enactTitle(Engine& engine, title_screen::Action a)
+{
+    switch (a)
+    {
+    case title_screen::Action::NewJob:
+    case title_screen::Action::Continue: // no saves yet; both mean "go in" for now
+        if (buildWorld(engine))
+            sApp.phase = app::Phase::Playing;
+        break;
+    case title_screen::Action::Settings:
+        sApp.settings_return_to = app::Phase::Title;
+        sApp.phase = app::Phase::Settings;
+        break;
+    case title_screen::Action::Quit:
+        engine.requestQuit();
+        break;
+    case title_screen::Action::None:
+        break;
+    }
+}
+
+void enactPause(Engine& engine, pause_screen::Action a)
+{
+    switch (a)
+    {
+    case pause_screen::Action::Resume:
+        sApp.paused = false;
+        break;
+    case pause_screen::Action::Settings:
+        sApp.settings_return_to = app::Phase::Playing;
+        sApp.phase = app::Phase::Settings;
+        break;
+    case pause_screen::Action::Leave:
+        sApp.paused = false;
+        sApp.world_built = false;
+        sApp.phase = app::Phase::Title;
+        title_screen::reset();
+        break;
+    case pause_screen::Action::Quit:
+        engine.requestQuit();
+        break;
+    case pause_screen::Action::None:
+        break;
+    }
+}
+
+// The shell, drawn over everything. Which surface is up follows from the phase; pausing is a
+// flag on Playing rather than a phase, because the world is still loaded behind it.
+void gameRenderUI(Engine& engine, EntityManager& /*em*/)
+{
+    const int ww = engine.windowWidth();
+    const int wh = engine.windowHeight();
+
+    const shell_input::Frame in = shell_input::read();
+
+    switch (sApp.phase)
+    {
+    case app::Phase::Title:
+    {
+        const title_screen::Mouse m{in.mouse_x, in.mouse_y, in.clicked};
+        // Keyboard first, then the mouse over what was drawn -- either may commit.
+        enactTitle(engine, title_screen::step(in.up, in.down, in.confirm, /*has_save=*/false));
+        if (sApp.phase == app::Phase::Title)
+            enactTitle(engine, title_screen::render(m, /*has_save=*/false, ww, wh));
+        break;
+    }
+    case app::Phase::Settings:
+        // No settings surface yet: anything that leaves goes back where it came from.
+        screen_style::dim(ww, wh);
+        screen_style::headingCentered("SETTINGS", static_cast<float>(ww) * 0.5f,
+                                      static_cast<float>(wh) * 0.35f, screen_style::kText);
+        screen_style::textCentered(
+            "nothing to set yet -- Esc goes back", static_cast<float>(ww) * 0.5f,
+            static_cast<float>(wh) * 0.35f + screen_style::lineHeight() * 2.0f,
+            screen_style::kTextDim);
+        if (in.back || in.confirm)
+            sApp.phase = sApp.settings_return_to;
+        break;
+    case app::Phase::Playing:
+        if (!sApp.paused && in.back)
+        {
+            sApp.paused = true;
+            pause_screen::reset();
+        }
+        else if (sApp.paused)
+        {
+            const pause_screen::Mouse m{in.mouse_x, in.mouse_y, in.clicked};
+            enactPause(engine, pause_screen::step(in.up, in.down, in.confirm, in.back));
+            if (sApp.paused)
+                enactPause(engine, pause_screen::render(m, ww, wh));
+        }
+        break;
+    }
 }
 
 void gameOnResize(Engine& /*engine*/, int w, int h)
@@ -126,36 +284,24 @@ int main(int argc, char* argv[])
     // with no HUD yet hits it immediately, and every diagnostic still reads as correct.
     glDisable(GL_DEPTH_TEST);
 
+    // The shell's two type sizes, scaled off the window so the menus read the same on any
+    // display. Loaded here rather than per-screen so both surfaces share one face.
+    {
+        const float s = static_cast<float>(engine.windowHeight());
+        const FontHandle body = FontManager::loadFont("assets/fonts/placeholder.ttf", s * 0.022f);
+        const FontHandle heading =
+            FontManager::loadFont("assets/fonts/placeholder.ttf", s * 0.045f);
+        poe::log().info("boot: fonts body={} heading={} (size {:.1f}/{:.1f})", body, heading,
+                        s * 0.022f, s * 0.045f);
+        screen_style::init(body, heading);
+    }
+
     auto& em = engine.entityManager();
 
-    const floorgen::Floor floor = floorgen::generate(em, "config/floor.json", "config/rooms");
-    if (!floor.ok)
-    {
-        poe::log().error("boot: could not build a floor -- nothing to walk around in");
-        return 1;
-    }
-    TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
-
-    // Every marker the rooms carried. 'P' is a point of entry -- for now it is a
-    // red box standing in the room, which is enough to prove placement works.
-    int poeCount = 0;
-    for (const auto& m : floor.markers)
-        if (m.type == 'P')
-        {
-            spawnBox(em, m.x, m.y, kPoeSize, 0.75f, 0.15f, 0.15f);
-            ++poeCount;
-        }
-
-    const entt::entity playerEnt =
-        spawnBox(em, floor.spawn_x, floor.spawn_y, kPlayerSize, 0.85f, 0.84f, 0.78f);
-    em.registry().emplace<Camera>(playerEnt, Camera{floor.spawn_x, floor.spawn_y});
-    player::bind(playerEnt);
-    poe::log().info("boot: player at ({:.0f},{:.0f}), {} points of entry placed", floor.spawn_x,
-                    floor.spawn_y, poeCount);
-
-    engine.setGameUpdate(&player::update);
+    engine.setGameUpdate(&gameUpdate);
     engine.setRenderWorld(&gameRenderWorld);
     engine.setOnResize(&gameOnResize);
+    engine.setRenderUI(&gameRenderUI);
     engine.setRenderImGui(&debug_panel::render);
     engine.run();
 

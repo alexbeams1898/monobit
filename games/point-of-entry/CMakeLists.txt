@@ -7,6 +7,10 @@ project(PointOfEntry VERSION 0.1.0 LANGUAGES C CXX)
 add_library(poe-systems STATIC
     src/Capture.cpp
     src/DebugPanel.cpp
+    src/PauseScreen.cpp
+    src/ScreenStyle.cpp
+    src/ShellInput.cpp
+    src/TitleScreen.cpp
     src/FloorGen.cpp
     src/Player.cpp
 )
