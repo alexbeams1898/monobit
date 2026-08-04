@@ -10,6 +10,8 @@ add_library(poe-systems STATIC
     src/PauseScreen.cpp
     src/ScreenStyle.cpp
     src/ShellInput.cpp
+    src/SpriteAnim.cpp
+    src/SpriteDef.cpp
     src/TitleScreen.cpp
     src/FloorGen.cpp
     src/Player.cpp

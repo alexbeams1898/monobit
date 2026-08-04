@@ -23,4 +23,10 @@ void render(Engine& engine, EntityManager& em);
 // evenly -- see Player.cpp.
 float walkSpeed();
 
+// How many screen pixels one drawn pixel occupies. INTEGER, always: a fractional upscale
+// makes some pixels bigger than others, which is the one thing pixel art cannot survive.
+// The internal render size is the window divided by this, so the same character is the same
+// physical size on any display.
+int zoom();
+
 } // namespace debug_panel

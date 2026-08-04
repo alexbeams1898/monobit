@@ -93,6 +93,20 @@ who was sent. **A silent protagonist:** he never narrates and never explains. Th
 register comes from what he DOES and from the trade language around him, not from
 a running commentary.
 
+**The reference is MARIO, not a Metal Gear operative.** Mario is a plumber; a pipe
+leads somewhere impossible; he goes down it. No exposition, no reluctance, no "what
+*is* this place." The absurdity is load-bearing precisely because the game refuses
+to treat it as absurd.
+
+That distinction is the whole tone. A competent-and-AWARE protagonist (Snake) knows
+he is in a strange situation and remarks on it — which makes the game *about* the
+strangeness. A competent-and-INCURIOUS one just keeps working, and the horror goes
+ambient: the player carries it alone, which is the gap the tone lives in.
+
+(And the echo is not a coincidence worth ignoring: a plumber's trade is things
+travelling through openings that connect places they should not. Mario's pipes are
+points of entry.)
+
 Why the trade earns its place:
 
 - His job is *already* about things living in walls that should not be there. He

@@ -2,6 +2,8 @@
 
 #include "Capture.h"
 #include "DebugPanel.h"
+#include "Log.h"
+#include "SpriteAnim.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "systems/CameraSystem.h"
@@ -22,6 +24,17 @@ namespace
 
 entt::entity sPlayer = entt::null;
 
+// ONE DRAWING, FLIPPED -- the whole game's sprite convention. A character is drawn once and
+// mirrored to face the other way; there is no back sprite and no up/down pose. It is what
+// makes a bestiary running from ants to demons affordable: every new creature is one
+// drawing, not four.
+//
+// EVERY CHARACTER IS DRAWN FACING RIGHT, which is the direction needing no correction anywhere
+// -- art facing left would need its sign inverted for that one sprite, and that is a rule
+// nobody remembers on the fortieth creature. Source drawn the wrong way is corrected once in
+// the .aseprite file itself (tools/flip.lua), never compensated for in code; the art pipeline
+// warns on a layer marked facing-left so it is caught at export rather than in play.
+//
 // Sub-pixel movement not yet applied, carried between ticks (see stepWhole).
 float sCarryX = 0.0f;
 float sCarryY = 0.0f;
@@ -102,7 +115,11 @@ bool walkableAt(const EntityManager& em, float x, float y)
     const int row = static_cast<int>(y) / map.tile_size;
     if (col < 0 || row < 0 || col >= map.width || row >= map.height)
         return false;
-    return map.tiles[static_cast<std::size_t>(row * map.width + col)].walkable;
+    // Widen BEFORE multiplying, not after: the index is computed in the wider type rather than
+    // overflowing as an int and being widened once the damage is done.
+    const std::size_t index = static_cast<std::size_t>(row) * static_cast<std::size_t>(map.width) +
+                              static_cast<std::size_t>(col);
+    return map.tiles[index].walkable;
 }
 } // namespace
 
@@ -124,6 +141,26 @@ void update(Engine& /*engine*/, EntityManager& em, double dt)
     readMoveDir(keys, dx, dy);
 
     auto& t = em.registry().get<Transform>(sPlayer);
+    // Face the way he last went horizontally; vertical-only movement leaves it alone.
+    //
+    // Through FacingDirection rather than onto the sprite directly: the sprite's flip is OWNED
+    // by AnimationSystem, which derives it from facing and rewrites it every tick. Setting the
+    // flip here would be overwritten before it was ever drawn.
+    if (dx != 0.0f)
+    {
+        auto& facing = em.registry().get_or_emplace<FacingDirection>(sPlayer);
+        facing.dx = dx < 0.0f ? -1.0f : 1.0f;
+        facing.render_dx = facing.dx;
+    }
+
+    // Walking or standing. The tag names are the art's, straight from the .aseprite timeline.
+    // Art with no "idle" tag yet is normal while a character is being drawn -- standing still
+    // then holds the walk cycle's first frame, which is a rest pose, rather than nothing.
+    if (dx != 0.0f || dy != 0.0f)
+        sprite_anim::play(em, sPlayer, "walk");
+    else
+        sprite_anim::playIfPresent(em, sPlayer, "idle", "walk");
+
     if (dx != 0.0f || dy != 0.0f)
     {
         const float step = debug_panel::walkSpeed() * static_cast<float>(dt);

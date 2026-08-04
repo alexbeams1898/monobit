@@ -78,6 +78,7 @@ add_executable(engine-tests
     tests/collision_test.cpp
     tests/tilemap_test.cpp
     tests/animation_test.cpp
+    tests/direction_mirror_test.cpp
     tests/inventory_ops_test.cpp
     tests/crafting_ops_test.cpp
     tests/evolution_ops_test.cpp

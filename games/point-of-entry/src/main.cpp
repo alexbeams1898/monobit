@@ -9,10 +9,13 @@
 #include "Player.h"
 #include "ScreenStyle.h"
 #include "ShellInput.h"
+#include "SpriteAnim.h"
+#include "SpriteDef.h"
 #include "TitleScreen.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "gl/PixelRenderTarget.h"
+#include "systems/AnimationSystem.h"
 #include "systems/RenderSystem.h"
 #include "systems/TileMapRenderer.h"
 
@@ -26,24 +29,25 @@
 
 namespace
 {
-// THE INTERNAL RESOLUTION. Everything renders here at zoom 1 and the whole buffer is
-// then scaled to the window in one pass -- the pixel-art pipeline. Two reasons it is
-// this and not the window:
+// THE INTERNAL RESOLUTION IS DERIVED, not fixed. Everything renders at window/zoom and the
+// whole buffer is then scaled up by that integer -- the pixel-art pipeline.
 //
-//   1. It IS the lo-fi look. 640x360 with 16px tiles shows 40x22 tiles: chunky enough
-//      to read as pixel art, wide enough for a swarm and a cursor. (GBC is 160x144 and
-//      NES 256x240 -- both authentic and both too claustrophobic to fight in.)
-//   2. One rounding pass. Drawing straight to the window means the camera and every
-//      sprite round to a pixel independently, and at a zoom those errors do not cancel
-//      -- things pop against each other whenever frame times jitter, which reads as lag.
+// Derived rather than constant because a FIXED internal size means the same character is a
+// different physical size on every display: 1280x720 fills a 1440p monitor at 2x and a laptop
+// at rather less, so the art shrinks when you undock. Dividing the window instead keeps one
+// drawn pixel equal to `zoom` screen pixels everywhere.
 //
-// 1280x720 lands on an EXACT 2x at 2560x1440 and 1.5x at 1080p. The earlier 640x360 was
-// chosen for chunkiness and turned out to be a 4x upscale on a 1440p panel -- every 16px
-// tile drawing as 64 real pixels, which reads as being zoomed most of the way in and makes
-// ordinary walking speed feel frantic. The lo-fi look comes from the ART (16px tiles, flat
-// colour, few frames), not from starving the framebuffer.
-constexpr int kInternalWidth = 1280;
-constexpr int kInternalHeight = 720;
+// One rounding pass, too. Drawing straight to the window means the camera and every sprite
+// round to a pixel independently, and at a zoom those errors do not cancel -- things pop
+// against each other whenever frame times jitter, which reads as lag.
+int internalW(const Engine& engine)
+{
+    return engine.windowWidth() / debug_panel::zoom();
+}
+int internalH(const Engine& engine)
+{
+    return engine.windowHeight() / debug_panel::zoom();
+}
 
 // The shell's state, and the handles the callbacks need. File-scope because the engine's
 // callbacks are plain function pointers -- there is no user-data slot to thread them through.
@@ -93,6 +97,10 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     if (sApp.phase != app::Phase::Playing || sApp.paused)
         return;
     player::update(engine, em, dt);
+    // AFTER the movement that chooses which animation plays, so a frame shows the pose that
+    // matches where the character now is rather than trailing it by a tick. Paused above, so a
+    // character stops mid-stride instead of walking on the spot behind the menu.
+    AnimationSystem::update(em, static_cast<float>(dt));
 }
 
 void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, float /*alpha*/)
@@ -100,10 +108,23 @@ void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, 
     // Draw the world at the internal resolution, then blit the whole buffer up. Zoom stays
     // at 1: the scale comes from the upscale, not from the camera, which is what keeps every
     // pixel square and every rounding decision in one place.
+    // A zoom change (or a resize) re-makes the target at the new size. Cheap, and it happens
+    // only when the number actually moves.
+    static int sLastZoom = 0;
+    static int sLastW = 0;
+    if (debug_panel::zoom() != sLastZoom || engine.windowWidth() != sLastW)
+    {
+        sLastZoom = debug_panel::zoom();
+        sLastW = engine.windowWidth();
+        engine::gl::pixelTargetInit(internalW(engine), internalH(engine));
+        engine::gl::pixelTargetResize(engine.windowWidth(), engine.windowHeight());
+        RenderSystem::resize(internalW(engine), internalH(engine));
+    }
+
     engine::gl::pixelTargetBegin(kVoidR, kVoidG, kVoidB);
     if (sApp.world_built)
     {
-        TileMapRenderer::render(camX, camY, kInternalWidth, kInternalHeight, 1.0f);
+        TileMapRenderer::render(camX, camY, internalW(engine), internalH(engine), 1.0f);
         RenderSystem::render(em, engine.textureManager(), camX, camY, 1.0f);
     }
     engine::gl::pixelTargetEnd(engine.windowWidth(), engine.windowHeight());
@@ -141,6 +162,19 @@ bool buildWorld(Engine& engine)
 
     const entt::entity playerEnt =
         spawnBox(em, floor.spawn_x, floor.spawn_y, kPlayerSize, 0.85f, 0.84f, 0.78f);
+    // Real art, if the pipeline has produced any. The frame size comes from the def rather
+    // than a constant here -- the same number written twice is the same number drifting.
+    // No def means the placeholder box stands in, loudly (SpriteDef::load logs).
+    if (const sprite_def::Def def = sprite_def::load("assets/sprites/player.json"); def.ok)
+    {
+        auto& spr = em.registry().get<Sprite>(playerEnt);
+        spr.texture_path = def.sheet;
+        spr.src_w = def.frame_w;
+        spr.src_h = def.frame_h;
+        em.registry().remove<SolidColor>(playerEnt);
+        // Tags on the timeline become playable animations. Art with none stays a still sprite.
+        sprite_anim::attach(em, playerEnt, def);
+    }
     em.registry().emplace<Camera>(playerEnt, Camera{floor.spawn_x, floor.spawn_y});
     player::bind(playerEnt);
     poe::log().info("world: player at ({:.0f},{:.0f}), {} points of entry", floor.spawn_x,
@@ -247,7 +281,7 @@ void gameRenderUI(Engine& engine, EntityManager& /*em*/)
 
 void gameOnResize(Engine& /*engine*/, int w, int h)
 {
-    // Only the BLIT follows the window; the world keeps rendering at the internal size.
+    // The blit follows the window, and so does the internal size -- see internalW().
     engine::gl::pixelTargetResize(w, h);
 }
 } // namespace
@@ -270,9 +304,9 @@ int main(int argc, char* argv[])
         return 1;
 
     poe::log().info("boot: window is {}x{}", engine.windowWidth(), engine.windowHeight());
-    engine::gl::pixelTargetInit(kInternalWidth, kInternalHeight);
+    engine::gl::pixelTargetInit(internalW(engine), internalH(engine));
     engine::gl::pixelTargetResize(engine.windowWidth(), engine.windowHeight());
-    RenderSystem::init(kInternalWidth, kInternalHeight);
+    RenderSystem::init(internalW(engine), internalH(engine));
     TileMapRenderer::init();
     // The engine enables depth testing globally at init for the 3D path. This is a 2D
     // game: everything draws at z=0, so with GL_LESS the tilemap writes depth first and
