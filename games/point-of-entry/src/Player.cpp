@@ -4,6 +4,7 @@
 #include "DebugPanel.h"
 #include "Log.h"
 #include "SpriteAnim.h"
+#include "Tools.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "systems/CameraSystem.h"
@@ -31,9 +32,8 @@ entt::entity sPlayer = entt::null;
 //
 // EVERY CHARACTER IS DRAWN FACING RIGHT, which is the direction needing no correction anywhere
 // -- art facing left would need its sign inverted for that one sprite, and that is a rule
-// nobody remembers on the fortieth creature. Source drawn the wrong way is corrected once in
-// the .aseprite file itself (tools/flip.lua), never compensated for in code; the art pipeline
-// warns on a layer marked facing-left so it is caught at export rather than in play.
+// nobody remembers on the fortieth creature. Source drawn the wrong way is corrected in the
+// .aseprite file itself, never compensated for in code.
 //
 // Sub-pixel movement not yet applied, carried between ticks (see stepWhole).
 float sCarryX = 0.0f;
@@ -80,6 +80,17 @@ void pollDevKeys(const Uint8* keys)
         capture::request();
     sPrevPanel = panel;
     sPrevShot = shot;
+
+    // 1..9 pick a tool. Edge-triggered like the rest: holding a number should not re-select
+    // every frame once tools carry state of their own.
+    static bool sPrevNum[9] = {};
+    for (int i = 0; i < 9; ++i)
+    {
+        const bool down = keys[SDL_SCANCODE_1 + i] != 0;
+        if (down && !sPrevNum[i])
+            tools::select(i);
+        sPrevNum[i] = down;
+    }
 }
 
 // Move `pos` by `amount`, but only ever in WHOLE pixels -- the fraction is carried in
@@ -126,6 +137,11 @@ bool walkableAt(const EntityManager& em, float x, float y)
 void bind(entt::entity player)
 {
     sPlayer = player;
+}
+
+entt::entity entity()
+{
+    return sPlayer;
 }
 
 void update(Engine& /*engine*/, EntityManager& em, double dt)

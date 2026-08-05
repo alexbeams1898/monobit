@@ -1,9 +1,13 @@
+#include "Aim.h"
 #include "AppState.h"
 #include "Capture.h"
+#include "Combat.h"
 #include "DebugPanel.h"
 #include "Engine.h"
 #include "FloorGen.h"
 #include "FontManager.h"
+#include "HitArea.h"
+#include "Hud.h"
 #include "Log.h"
 #include "PauseScreen.h"
 #include "Player.h"
@@ -12,6 +16,7 @@
 #include "SpriteAnim.h"
 #include "SpriteDef.h"
 #include "TitleScreen.h"
+#include "Tools.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "gl/PixelRenderTarget.h"
@@ -96,7 +101,13 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
 {
     if (sApp.phase != app::Phase::Playing || sApp.paused)
         return;
+    // Aim first: everything that fires this tick reads where he is pointing, and a stale
+    // cursor would put the shot where he pointed last frame.
+    aim::update(engine, em);
     player::update(engine, em, dt);
+    tools::update(em, static_cast<float>(dt));
+    tools::tickStamina(em, static_cast<float>(dt));
+    hit_area::update(em, static_cast<float>(dt));
     // AFTER the movement that chooses which animation plays, so a frame shows the pose that
     // matches where the character now is rather than trailing it by a tick. Paused above, so a
     // character stops mid-stride instead of walking on the spot behind the menu.
@@ -148,6 +159,7 @@ bool buildWorld(Engine& engine)
         poe::log().error("world: could not build a floor");
         return false;
     }
+    tools::load("config/tools.json");
     TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
 
     // Every marker the rooms carried. 'P' is a point of entry -- for now a red box standing in
@@ -157,6 +169,16 @@ bool buildWorld(Engine& engine)
         if (m.type == 'P')
         {
             spawnBox(em, m.x, m.y, kPoeSize, 0.75f, 0.15f, 0.15f);
+            // Something to shoot while the swarm is being built: a handful of stationary
+            // vermin around each hole, enough to prove an area hits many things at once.
+            for (int i = 0; i < 6; ++i)
+            {
+                const float ax = m.x + static_cast<float>((i % 3) - 1) * 26.0f;
+                const float ay = m.y + static_cast<float>((i / 3) - 1) * 26.0f + 40.0f;
+                const entt::entity v = spawnBox(em, ax, ay, 14.0f, 0.35f, 0.65f, 0.3f);
+                em.registry().emplace<Health>(v, Health{12, 12});
+                em.registry().emplace<Vermin>(v, Vermin{4.0f});
+            }
             ++poeCount;
         }
 
@@ -232,8 +254,14 @@ void enactPause(Engine& engine, pause_screen::Action a)
 
 // The shell, drawn over everything. Which surface is up follows from the phase; pausing is a
 // flag on Playing rather than a phase, because the world is still loaded behind it.
-void gameRenderUI(Engine& engine, EntityManager& /*em*/)
+void gameRenderUI(Engine& engine, EntityManager& em)
 {
+    const bool playing = sApp.phase == app::Phase::Playing && !sApp.paused;
+    // The dev panel needs a pointer to click, and it opens while playing -- so it counts as a
+    // screen with options, exactly like a menu.
+    hud::cursorForPhase(playing && !debug_panel::visible());
+    if (playing)
+        hud::render(engine, em);
     const int ww = engine.windowWidth();
     const int wh = engine.windowHeight();
 

@@ -281,10 +281,13 @@ static TintResult resolveTint(EntityManager& em, entt::entity entity)
     }
     if (reg.all_of<SolidColor>(entity))
     {
+        // SolidColor is the sprite's own colour -- the base a tint MODULATES, exactly as a
+        // texture is. Overwriting the tint with it instead would make an untextured entity the
+        // one thing in the game that cannot flash, go red, or be dimmed.
         const auto& sc = reg.get<SolidColor>(entity);
-        r.tr = sc.r;
-        r.tg = sc.g;
-        r.tb = sc.b;
+        r.tr *= sc.r;
+        r.tg *= sc.g;
+        r.tb *= sc.b;
         r.is_solid = true;
     }
     return r;

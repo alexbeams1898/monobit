@@ -18,6 +18,10 @@ namespace player
 // Remember who to move. Called once, after the floor exists.
 void bind(entt::entity player);
 
+// Who he is. Anything that acts on the player's behalf -- a tool, a hit area -- needs this
+// rather than searching the registry for whoever looks like a player.
+entt::entity entity();
+
 // WASD against the tile map. Per-frame; wired to Engine::setGameUpdate.
 void update(Engine& engine, EntityManager& em, double dt);
 

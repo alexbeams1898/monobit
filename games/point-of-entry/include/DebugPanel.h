@@ -18,6 +18,9 @@ void toggle();
 // Draw it. Called from the engine's ImGui pass; a no-op while hidden.
 void render(Engine& engine, EntityManager& em);
 
+// Is it open? The cursor needs to know: a panel you cannot point at is not a panel.
+bool visible();
+
 // The walk speed the panel is currently holding, in px/s. The player reads this rather
 // than a constant so the slider is live. Whole pixels per tick keeps the world scrolling
 // evenly -- see Player.cpp.

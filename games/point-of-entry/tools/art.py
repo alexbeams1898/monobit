@@ -31,9 +31,7 @@ copy of Aseprite. Re-export after editing a source; the watcher does it for you.
 DRAW EVERY CHARACTER FACING RIGHT. There is one drawing per creature and the game mirrors it
 to face left -- no back sprite, no up or down pose. Right is the direction that needs no
 correction anywhere in the code, so a sprite drawn facing left is a bug rather than a
-preference. If one already exists, correct the source once:
-
-    aseprite -b art/characters/foo.aseprite --script tools/flip.lua
+preference. One drawn the wrong way is fixed in Aseprite: Sprite > Flip Canvas Horizontal.
 """
 
 from __future__ import annotations
@@ -125,11 +123,11 @@ def export(aseprite: str, src: Path) -> dict | None:
     # way looks fine in Aseprite and is only noticed in play, as a character who moonwalks. The
     # file cannot be inspected for which way a face points, so it is asserted instead: a layer
     # named "facing-left" marks art that needs correcting, and this says so at export rather
-    # than letting it ship. Correct it with tools/flip.lua, do not compensate in code.
+    # than letting it ship. Fix it in Aseprite (Sprite > Flip Canvas Horizontal), never in code.
     layers = [l.get("name", "") for l in meta["meta"].get("layers", []) or []]
     if any(name.strip().lower() == "facing-left" for name in layers):
         print(f"art: {src.name} WARNING -- marked facing-left. Characters are drawn facing "
-              f"right.\n     Fix the source once:  aseprite -b {src} --script tools/flip.lua")
+              f"right.\n     In Aseprite: Sprite > Flip Canvas Horizontal, then save.")
 
     # SLICES carry pivots. A slice named "feet" says where the character stands, which is
     # what a sprite has to be positioned and depth-sorted by -- not its centre, and not the

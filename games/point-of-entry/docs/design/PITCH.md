@@ -223,10 +223,20 @@ setback is a bad day at work, not a lost run.
 - **Mouse-aimed, click to fire.** Decoupled from facing: the sprite flips left or
   right; the aim is wherever the cursor is. Twin-stick convention, instantly
   readable.
-- **A few upgradable projectile options** — Vampire Survivors' build depth, but
-  you fire manually. One verb (aim and shoot) with two multipliers (what you're
-  firing, where you're standing). That is enough for a whole game if the enemies
-  interrogate it.
+- **A tool hits an AREA, not a target.** [SETTLED] This is the load-bearing
+  decision, and it is what makes swarms playable: one input clears everything
+  inside a shape, rather than one input killing one thing. A game of large
+  crowds where each shot kills a single enemy cannot keep up with its own
+  swarm — the player drowns, and the fantasy of clearing a room dies with it.
+  Area size is one of the things upgrades change.
+- **Melee and ranged are the same primitive.** The area is identical; only where
+  it appears differs. A close-range tool puts its area beside the player in the
+  aim direction; a ranged tool sends one out along it. There is no separate
+  melee system, and there should never be one.
+- **A few upgradable tools, fired manually.** Build depth in the Vampire
+  Survivors sense, but nothing fires on a timer. Because every shot is chosen,
+  a tool can be slower and heavier than an auto-firing one — the fogger that
+  clears a room is fair when you picked the moment.
 - **Bi-directional sprites only.** Half the art of a 4-way game, no facing state
   machine.
 - **Known risk of this control scheme:** decoupled aim makes backing-away-while-

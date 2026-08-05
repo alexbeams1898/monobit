@@ -33,6 +33,11 @@ float walkSpeed()
     return sWalkSpeed;
 }
 
+bool visible()
+{
+    return sVisible;
+}
+
 int zoom()
 {
     return sZoom;

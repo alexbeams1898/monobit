@@ -161,6 +161,11 @@ bool Engine::init(const char* title, int width, int height)
     ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
     ImGui_ImplOpenGL3_Init("#version 330 core");
 
+    // The GAME owns the cursor, not ImGui. Its SDL backend otherwise calls SDL_ShowCursor every
+    // NewFrame -- which runs before the game's UI pass -- so a game hiding the pointer to draw
+    // its own reticle would have it restored underneath, one frame later, forever.
+    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+
     return true;
 }
 

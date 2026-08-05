@@ -10,6 +10,10 @@ add_library(poe-systems STATIC
     src/PauseScreen.cpp
     src/ScreenStyle.cpp
     src/ShellInput.cpp
+    src/Aim.cpp
+    src/Hud.cpp
+    src/Tools.cpp
+    src/HitArea.cpp
     src/SpriteAnim.cpp
     src/SpriteDef.cpp
     src/TitleScreen.cpp
