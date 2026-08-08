@@ -1,0 +1,16 @@
+{
+    "sheet": "assets/sprites/mouse.png",
+    "frame_w": 9,
+    "frame_h": 6,
+    "frames": 2,
+    "durations": [
+        100,
+        100
+    ],
+    "anims": {
+        "walk": {
+            "from": 0,
+            "to": 1
+        }
+    }
+}

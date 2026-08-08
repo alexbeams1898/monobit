@@ -1,0 +1,9 @@
+{
+    "sheet": "assets/sprites/hole.png",
+    "frame_w": 24,
+    "frame_h": 24,
+    "frames": 1,
+    "durations": [
+        100
+    ]
+}

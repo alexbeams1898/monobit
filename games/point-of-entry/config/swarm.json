@@ -1,5 +1,5 @@
 {
-    "_comment": "How bad a dig gets. base is the first chamber; per_depth is added (or for spacing and breath, subtracted) for every chamber deeper. Curves rather than a table per depth, so the twentieth dig is worse than the nineteenth without anyone authoring the nineteenth. growth is what turns a trickle into a swarm: each wave is this many times the last, so the first is a handful and the last is a tide. ant is the creature itself -- health and touch damage are balance, not code.",
+    "_comment": "How bad a dig gets. base is the first chamber; per_depth is added (or for spacing and breath, subtracted) for every chamber deeper. Curves rather than a table per depth, so the twentieth dig is worse than the nineteenth without anyone authoring the nineteenth. growth is what turns a trickle into a swarm: each wave is this many times the last, so the first is a handful and the last is a tide. ant is the creature itself -- health and touch damage are balance, not code. surge is the surfacing burst: each creature erupts OUT of the hole in its own direction before it starts hunting, so a held spray at the pit mouth meets a scattering ring rather than a queue.",
     "base": {
         "waves": 4,
         "per_wave": 8,
@@ -15,6 +15,12 @@
     },
     "ant": {
         "health": 7,
-        "contact_damage": 4
+        "contact_damage": 4,
+        "xp": 2,
+        "scale": 0.75
+    },
+    "surge": {
+        "speed": 150.0,
+        "duration": 0.35
     }
 }

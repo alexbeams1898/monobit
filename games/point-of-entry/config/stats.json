@@ -25,5 +25,12 @@
     },
     "scaling": {
         "per_point": 0.08
+    },
+    "reward": {
+        "xp_base": 40,
+        "xp_growth": 1.35
+    },
+    "rest": {
+        "heal_per_second": 15.0
     }
 }

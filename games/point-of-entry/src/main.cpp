@@ -1,34 +1,35 @@
-#include "Aim.h"
-#include "AppState.h"
-#include "Capture.h"
-#include "Chase.h"
-#include "Combat.h"
-#include "DebugPanel.h"
 #include "Engine.h"
-#include "Floaters.h"
 #include "FloorGen.h"
 #include "FontManager.h"
-#include "HitArea.h"
-#include "Hud.h"
-#include "Log.h"
-#include "PauseScreen.h"
-#include "Player.h"
-#include "ScreenStyle.h"
-#include "ShellInput.h"
-#include "SpriteAnim.h"
-#include "SpriteDef.h"
-#include "Stats.h"
-#include "Swarm.h"
-#include "TitleScreen.h"
-#include "Tools.h"
-#include "WalkBob.h"
+#include "SpriteDefLoader.h"
+#include "ecs/AppState.h"
+#include "ecs/BalanceConfig.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
+#include "ecs/GameComponents.h"
 #include "gl/PixelRenderTarget.h"
+#include "ops/CaptureUtils.h"
+#include "ops/LogUtils.h"
+#include "renderers/DebugPanelRenderer.h"
+#include "renderers/FloaterRenderer.h"
+#include "renderers/HudRenderer.h"
+#include "screens/PauseScreen.h"
+#include "screens/ScreenInput.h"
+#include "screens/ScreenStyle.h"
+#include "screens/TitleScreen.h"
+#include "systems/AimSystem.h"
 #include "systems/AnimationSystem.h"
+#include "systems/ChaseSystem.h"
+#include "systems/CombatSystem.h"
+#include "systems/DamageSystem.h"
 #include "systems/FlowFieldSystem.h"
+#include "systems/GaitSystem.h"
+#include "systems/PlayerSystem.h"
 #include "systems/RenderSystem.h"
+#include "systems/RewardSystem.h"
+#include "systems/SpriteAnimSystem.h"
 #include "systems/TileMapRenderer.h"
+#include "systems/WaveSystem.h"
 
 #include <cmath>
 
@@ -129,6 +130,7 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     tools::tickStamina(em, static_cast<float>(dt));
     tools::tickParticles(em, static_cast<float>(dt));
     hit_area::update(em, static_cast<float>(dt));
+    reward::update(em, static_cast<float>(dt));
     floaters::update(static_cast<float>(dt));
     // AFTER the movement that chooses which animation plays, so a frame shows the pose that
     // matches where the character now is rather than trailing it by a tick. Paused above, so a
@@ -191,12 +193,24 @@ bool buildWorld(Engine& engine)
     // the room, which is enough to prove placement works.
     int poeCount = 0;
     std::vector<swarm::Seep> seeps;
+    // The hole itself, if it has been drawn; a red box stands in until then. Ground layer: a
+    // hole is IN the floor, so everything that walks draws over it.
+    const sprite_def::Def holeDef = sprite_def::load("assets/sprites/hole.json");
     for (const auto& m : floor.markers)
         if (m.type == 'P')
         {
             // Where the chamber leaks. The rot pushes what it is festering up through wherever
             // the earth is weakest, and the room templates say where that is.
-            spawnBox(em, m.x, m.y, kPoeSize, 0.75f, 0.15f, 0.15f);
+            const entt::entity hole = spawnBox(em, m.x, m.y, kPoeSize, 0.75f, 0.15f, 0.15f);
+            if (holeDef.ok)
+            {
+                auto& spr = em.registry().get<Sprite>(hole);
+                spr.texture_path = holeDef.sheet;
+                spr.src_w = holeDef.frame_w;
+                spr.src_h = holeDef.frame_h;
+                spr.layer = 1;
+                em.registry().remove<SolidColor>(hole);
+            }
             seeps.push_back(swarm::Seep{m.x, m.y});
             ++poeCount;
         }
@@ -220,6 +234,15 @@ bool buildWorld(Engine& engine)
     // draw the sprite standing ON the box, which is what lets his torso overlap walls above
     // him (top-down depth) while his feet stay out of them.
     em.registry().emplace<Collider>(playerEnt, Collider{16.0f, 12.0f});
+    // The rest spot: at the way in. A pale ring of floor where the kit is set down -- the only
+    // place points are sold, so the walk back to it with a full pocket is the loop's tension.
+    {
+        const entt::entity spot =
+            spawnBox(em, floor.spawn_x, floor.spawn_y + 8.0f, 22.0f, 0.30f, 0.42f, 0.40f);
+        em.registry().emplace<RestSpot>(spot, RestSpot{40.0f});
+        em.registry().get<Sprite>(spot).layer = 1; // ground marking, under everything that walks
+    }
+
     // No authored health: the sheet is the only source, and the numbers derive from it.
     em.registry().emplace<Stats>(playerEnt, stats::playerStart());
     stats::applyDerivations(em, playerEnt);

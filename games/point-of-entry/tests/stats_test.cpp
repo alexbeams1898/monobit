@@ -1,5 +1,5 @@
-#include "Stats.h"
-#include "Tools.h"
+#include "ecs/BalanceConfig.h"
+#include "systems/CombatSystem.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 

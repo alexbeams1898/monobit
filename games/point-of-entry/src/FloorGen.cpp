@@ -1,7 +1,7 @@
 #include "FloorGen.h"
 
-#include "Log.h"
 #include "ecs/EntityManager.h"
+#include "ops/LogUtils.h"
 
 #include <nlohmann/json.hpp>
 
@@ -53,6 +53,12 @@ struct Config
     int room_attempts = 40; // placement tries; more rooms than this is unlikely
     int room_target = 6;    // stop once this many are down
     int corridor_half = 1;  // corridors are (2*half + 1) tiles wide
+    // Placement rules for marker letters that are spawners. The generator stays agnostic about
+    // what a letter MEANS -- the config names which letters carry the rule.
+    std::string spaced_types;
+    float spaced_min_from_spawn = 6.0f; // tiles
+    float spaced_min_apart = 5.0f;      // tiles
+    int spaced_min_count = 2;           // a lone spawner is a fight with one bearing -- campable
 };
 
 Config loadConfig(const std::string& path)
@@ -76,6 +82,12 @@ Config loadConfig(const std::string& path)
     cfg.room_attempts = j.value("room_attempts", cfg.room_attempts);
     cfg.room_target = j.value("room_target", cfg.room_target);
     cfg.corridor_half = j.value("corridor_half", cfg.corridor_half);
+    const auto& sm = j.value("spaced_markers", nlohmann::json::object());
+    cfg.spaced_types = sm.value("types", cfg.spaced_types);
+    cfg.spaced_min_from_spawn =
+        static_cast<float>(sm.value("min_from_spawn_tiles", cfg.spaced_min_from_spawn));
+    cfg.spaced_min_apart = static_cast<float>(sm.value("min_apart_tiles", cfg.spaced_min_apart));
+    cfg.spaced_min_count = sm.value("min_count", cfg.spaced_min_count);
     return cfg;
 }
 
@@ -332,20 +344,13 @@ Room parseRoom(const std::string& text, const std::string& name)
     return room;
 }
 
-Floor generate(EntityManager& em, const std::string& configPath, const std::string& roomsDir,
-               unsigned seed)
+namespace
+{
+Floor generateOnce(EntityManager& em, const Config& cfg, const std::vector<Room>& rooms,
+                   unsigned seed)
 {
     Floor out;
-    const Config cfg = loadConfig(configPath);
-    const std::vector<Room> rooms = loadRooms(roomsDir);
-    if (rooms.empty())
-        return out;
-
-    if (seed == 0)
-        seed = static_cast<unsigned>(std::chrono::steady_clock::now().time_since_epoch().count() &
-                                     0xFFFFFFFF);
     std::mt19937 rng(seed);
-    poe::log().info("floor: seed {}", seed);
 
     // Solid to begin with; rooms and corridors carve into it.
     TileMap& map = em.tile_map;
@@ -356,7 +361,6 @@ Floor generate(EntityManager& em, const std::string& configPath, const std::stri
                      TileMap::Tile{TileMap::SOLID_ID, false});
     map.decoration.clear();
     map.overhang.clear();
-    loadVisuals(configPath, em.tile_config);
 
     std::vector<Placed> placed;
     std::uniform_int_distribution<int> pick(0, static_cast<int>(rooms.size()) - 1);
@@ -405,9 +409,132 @@ Floor generate(EntityManager& em, const std::string& configPath, const std::stri
         nearestWalkable(map, placed.front().centreCol(), placed.front().centreRow());
     out.spawn_x = (static_cast<float>(spawnC) + 0.5f) * ts;
     out.spawn_y = (static_cast<float>(spawnR) + 0.5f) * ts;
+
+    // SPAWNER SPACING. Templates put markers where their author drew them, which knows nothing
+    // about where this floor's spawn landed or where another room's marker sits. The rule:
+    // spawner-type markers keep their distance from the way in and from each other; violators
+    // are dropped, and a floor keeps at least one -- the farthest from the spawn -- because a
+    // chamber with nothing seeping is not a chamber. Greedy farthest-first, so the survivors
+    // are the well-spread ones rather than whichever the template list happened to order first.
+    if (!cfg.spaced_types.empty())
+    {
+        const float minSpawn = cfg.spaced_min_from_spawn * ts;
+        const float minApart = cfg.spaced_min_apart * ts;
+        std::vector<Marker> spawners;
+        std::vector<Marker> rest;
+        for (const auto& m : out.markers)
+            (cfg.spaced_types.find(m.type) != std::string::npos ? spawners : rest).push_back(m);
+
+        const auto dist2 = [](float ax, float ay, float bx, float by)
+        { return (ax - bx) * (ax - bx) + (ay - by) * (ay - by); };
+        std::sort(spawners.begin(), spawners.end(),
+                  [&](const Marker& a, const Marker& b) {
+                      return dist2(a.x, a.y, out.spawn_x, out.spawn_y) >
+                             dist2(b.x, b.y, out.spawn_x, out.spawn_y);
+                  });
+        // The spacing BENDS before it starves the floor: fewer spawners than min_count means a
+        // fight with too few bearings, which is campable -- so the apart-rule halves until
+        // enough survive (or until it is meaningless). The from-spawn rule never bends: however
+        // cramped the floor, nothing surfaces beside the way in.
+        std::vector<Marker> kept;
+        for (float apart = minApart;; apart *= 0.5f)
+        {
+            kept.clear();
+            for (const auto& m : spawners)
+            {
+                if (!kept.empty() &&
+                    dist2(m.x, m.y, out.spawn_x, out.spawn_y) < minSpawn * minSpawn)
+                    continue;
+                bool crowded = false;
+                for (const auto& k : kept)
+                    if (dist2(m.x, m.y, k.x, k.y) < apart * apart)
+                        crowded = true;
+                if (!crowded)
+                    kept.push_back(m);
+            }
+            if (static_cast<int>(kept.size()) >= cfg.spaced_min_count || apart < ts)
+                break;
+        }
+        if (kept.empty() && !spawners.empty())
+            kept.push_back(spawners.front()); // the farthest survives even a cramped floor
+        if (kept.size() < spawners.size())
+            poe::log().info("floor: {} spawner marker(s) dropped by spacing rules",
+                            spawners.size() - kept.size());
+        out.markers = std::move(rest);
+        out.markers.insert(out.markers.end(), kept.begin(), kept.end());
+    }
     out.ok = true;
-    poe::log().info("floor: {} rooms, {} markers", placed.size(), out.markers.size());
     return out;
+}
+
+// How many of the floor's markers are spawner-typed under this config.
+int spawnerCount(const Config& cfg, const Floor& floor)
+{
+    int n = 0;
+    for (const auto& m : floor.markers)
+        if (cfg.spaced_types.find(m.type) != std::string::npos)
+            ++n;
+    return n;
+}
+} // namespace
+
+Floor generate(EntityManager& em, const std::string& configPath, const std::string& roomsDir,
+               unsigned seed)
+{
+    const Config cfg = loadConfig(configPath);
+    const std::vector<Room> rooms = loadRooms(roomsDir);
+    if (rooms.empty())
+        return Floor{};
+
+    if (seed == 0)
+        seed = static_cast<unsigned>(std::chrono::steady_clock::now().time_since_epoch().count() &
+                                     0xFFFFFFFF);
+    loadVisuals(configPath, em.tile_config); // seed-independent; once, not per attempt
+
+    // THE SEEP GUARANTEE. A floor with one spawner is a fight with one bearing, which is
+    // campable however the emergence behaves -- so a layout that cannot seat min_count seeps
+    // (templates too sparse, or the spawn exclusion swallowing them) is not accepted. Reroll on
+    // a seed DERIVED from the requested one, so a caller passing a fixed seed still gets a
+    // repeatable floor; give up loudly after enough tries and ship the best attempt rather
+    // than nothing, because a playable floor with one seep beats no floor at all.
+    constexpr int kAttempts = 12;
+    Floor best;
+    int bestCount = -1;
+    for (int attempt = 0; attempt < kAttempts; ++attempt)
+    {
+        const unsigned derived = seed + static_cast<unsigned>(attempt) * 2654435761u;
+        Floor f = generateOnce(em, cfg, rooms, derived);
+        if (!f.ok)
+            continue;
+        const int count = cfg.spaced_types.empty() ? cfg.spaced_min_count : spawnerCount(cfg, f);
+        if (count > bestCount)
+        {
+            best = f;
+            bestCount = count;
+        }
+        if (count >= cfg.spaced_min_count)
+        {
+            poe::log().info("floor: seed {} (attempt {}), {} markers", derived, attempt + 1,
+                            f.markers.size());
+            return f;
+        }
+    }
+    poe::log().warn("floor: no layout seated {} spawners in {} attempts -- shipping one with {}",
+                    cfg.spaced_min_count, kAttempts, bestCount);
+    if (bestCount >= 0)
+    {
+        // The tile map in `em` currently holds the LAST attempt; rebuild the best one so the
+        // returned markers and the world agree.
+        Floor rebuilt;
+        for (int attempt = 0; attempt < kAttempts; ++attempt)
+        {
+            const unsigned derived = seed + static_cast<unsigned>(attempt) * 2654435761u;
+            rebuilt = generateOnce(em, cfg, rooms, derived);
+            if (rebuilt.ok && spawnerCount(cfg, rebuilt) == bestCount)
+                return rebuilt;
+        }
+    }
+    return best;
 }
 
 } // namespace floorgen

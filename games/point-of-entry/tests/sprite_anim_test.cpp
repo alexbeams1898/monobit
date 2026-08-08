@@ -1,4 +1,4 @@
-#include "SpriteAnim.h"
+#include "systems/SpriteAnimSystem.h"
 
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"

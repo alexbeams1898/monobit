@@ -5,26 +5,27 @@ project(PointOfEntry VERSION 0.1.0 LANGUAGES C CXX)
 # Game-specific logic -- static library linked by both the game exe and tests.
 # Kept separate from the exe so tests can link the same code without main().
 add_library(poe-systems STATIC
-    src/Capture.cpp
-    src/DebugPanel.cpp
-    src/PauseScreen.cpp
-    src/ScreenStyle.cpp
-    src/ShellInput.cpp
-    src/Chase.cpp
-    src/Floaters.cpp
-    src/Stats.cpp
-    src/Swarm.cpp
-    src/Aim.cpp
-    src/Hud.cpp
-    src/Tools.cpp
-    src/Walkable.cpp
-    src/WalkBob.cpp
-    src/HitArea.cpp
-    src/SpriteAnim.cpp
-    src/SpriteDef.cpp
-    src/TitleScreen.cpp
+    src/ops/CaptureUtils.cpp
+    src/renderers/DebugPanelRenderer.cpp
+    src/screens/PauseScreen.cpp
+    src/screens/ScreenStyle.cpp
+    src/screens/ScreenInput.cpp
+    src/systems/ChaseSystem.cpp
+    src/renderers/FloaterRenderer.cpp
+    src/systems/RewardSystem.cpp
+    src/ecs/BalanceConfig.cpp
+    src/systems/WaveSystem.cpp
+    src/systems/AimSystem.cpp
+    src/renderers/HudRenderer.cpp
+    src/systems/CombatSystem.cpp
+    src/ops/NavUtils.cpp
+    src/systems/GaitSystem.cpp
+    src/systems/DamageSystem.cpp
+    src/systems/SpriteAnimSystem.cpp
+    src/SpriteDefLoader.cpp
+    src/screens/TitleScreen.cpp
     src/FloorGen.cpp
-    src/Player.cpp
+    src/systems/PlayerSystem.cpp
 )
 
 target_include_directories(poe-systems PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -61,6 +62,7 @@ add_dependencies(point-of-entry poe-sync-assets-and-config)
 add_executable(poe-tests
     tests/floorgen_test.cpp
     tests/sprite_anim_test.cpp
+    tests/reward_test.cpp
     tests/stats_test.cpp
 )
 target_link_libraries(poe-tests PRIVATE poe-systems Catch2::Catch2WithMain)

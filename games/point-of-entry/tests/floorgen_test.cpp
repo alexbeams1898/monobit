@@ -1,6 +1,9 @@
 #include "FloorGen.h"
 #include "ecs/EntityManager.h"
 
+#include <nlohmann/json.hpp>
+
+#include <fstream>
 #include <queue>
 #include <vector>
 
@@ -123,4 +126,50 @@ TEST_CASE("dump one seed", "[.dump]")
         out += '\n';
     }
     WARN(out);
+}
+
+TEST_CASE("spawner markers keep their distances", "[floorgen]")
+{
+    // The rule under test is the one in config -- read the real numbers rather than repeating
+    // them here to drift.
+    std::ifstream in("config/floor.json");
+    REQUIRE(in.good());
+    const nlohmann::json j = nlohmann::json::parse(in);
+    const auto& sm = j.at("spaced_markers");
+    const std::string types = sm.at("types");
+    const float ts = static_cast<float>(j.at("tile_size").get<int>());
+    const float minSpawn = sm.at("min_from_spawn_tiles").get<float>() * ts;
+
+    for (unsigned seed = 1; seed <= 200; ++seed)
+    {
+        EntityManager em;
+        const floorgen::Floor floor =
+            floorgen::generate(em, "config/floor.json", "config/rooms", seed);
+        INFO("seed " << seed);
+        REQUIRE(floor.ok);
+
+        std::vector<const floorgen::Marker*> spawners;
+        for (const auto& m : floor.markers)
+            if (types.find(m.type) != std::string::npos)
+                spawners.push_back(&m);
+        // THE GUARANTEE: every accepted floor seats at least min_count spawners, because one
+        // bearing is campable. (Generation rerolls layouts until this holds.)
+        const int minCount = sm.value("min_count", 2);
+        CHECK(static_cast<int>(spawners.size()) >= minCount);
+        if (spawners.size() < 2)
+            continue;
+        for (std::size_t a = 0; a < spawners.size(); ++a)
+        {
+            const float dsx = spawners[a]->x - floor.spawn_x;
+            const float dsy = spawners[a]->y - floor.spawn_y;
+            CHECK(dsx * dsx + dsy * dsy >= minSpawn * minSpawn);
+            for (std::size_t b = a + 1; b < spawners.size(); ++b)
+            {
+                const float dx = spawners[a]->x - spawners[b]->x;
+                const float dy = spawners[a]->y - spawners[b]->y;
+                // The apart rule bends (halving) to reach min_count, but never below one tile.
+                CHECK(dx * dx + dy * dy >= ts * ts);
+            }
+        }
+    }
 }
