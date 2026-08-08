@@ -1,10 +1,10 @@
 {
-    "_comment": "Floor layout (see include/FloorGen.h). The floor is a grid of tiles that starts solid; rooms from config/rooms/*.room are stamped into it and connected with corridors. room_attempts is how many placements are tried before giving up, room_target how many are wanted. corridor_half: a corridor is (2*half + 1) tiles wide. tile_size 32 against the 1280x720 internal render gives 40x22 tiles on screen -- the close, room-at-a-time framing this game wants -- while the buffer still upscales by a clean integer. Chunkiness comes from the TILE, not from starving the framebuffer.",
-    "width": 96,
-    "height": 72,
+    "_comment": "Floor layout (see include/FloorGen.h). The floor is a grid of tiles that starts solid; rooms from config/rooms/*.room are stamped into it and connected with corridors. room_attempts is how many placements are tried before giving up, room_target how many are wanted. corridor_half: a corridor is (2*half + 1) tiles wide. tile_size 32 against the 1280x720 internal render gives 40x22 tiles on screen -- the close, room-at-a-time framing this game wants -- while the buffer still upscales by a clean integer. Chunkiness comes from the TILE, not from starving the framebuffer. SIZE: a dug chamber is one fight, not a level -- about two screens across, so the swarm finds you rather than you hunting it through empty corridor. The gadget will scale this with depth.",
+    "width": 34,
+    "height": 26,
     "tile_size": 32,
-    "room_attempts": 60,
-    "room_target": 6,
+    "room_attempts": 40,
+    "room_target": 4,
     "corridor_half": 1,
     "tile_visuals": {
         "0": {

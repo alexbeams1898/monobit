@@ -32,6 +32,11 @@ void dim(int windowW, int windowH)
                          kOverlay);
 }
 
+int bodyFont()
+{
+    return sBody;
+}
+
 void text(const std::string& s, float x, float y, const Color& c)
 {
     if (sBody < 0)

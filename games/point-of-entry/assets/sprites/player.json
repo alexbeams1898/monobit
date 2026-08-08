@@ -2,20 +2,14 @@
     "sheet": "assets/sprites/player.png",
     "frame_w": 20,
     "frame_h": 40,
-    "frames": 3,
+    "frames": 1,
     "durations": [
-        100,
-        100,
         100
     ],
     "anims": {
         "idle": {
             "from": 0,
             "to": 0
-        },
-        "walk": {
-            "from": 1,
-            "to": 2
         }
     }
 }

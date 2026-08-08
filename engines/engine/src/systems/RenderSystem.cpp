@@ -378,8 +378,8 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
     float glowScale = 0.0f, glowAlpha = 0.0f;
     resolveGlow(em, entity, glowScale, glowAlpha);
 
-    out = {drawX - static_cast<float>(sprite.src_w) * scale * 0.5f,
-           drawY - static_cast<float>(sprite.src_h) * scale * 0.5f - yOffset,
+    out = {drawX + sprite.draw_offset_x - static_cast<float>(sprite.src_w) * scale * 0.5f,
+           drawY + sprite.draw_offset_y - static_cast<float>(sprite.src_h) * scale * 0.5f - yOffset,
            sortY,
            sprite.src_x,
            sprite.src_y,

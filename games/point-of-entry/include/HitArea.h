@@ -19,6 +19,18 @@ class EntityManager;
 struct HitArea
 {
     float radius = 0.0f;
+    // Cone half-angle in degrees, measured off dir. 0 means the whole circle -- a puff rather
+    // than a sweep. A cone is what a swept wand actually covers, and it is the shape that makes
+    // facing matter.
+    float arc = 0.0f;
+    // How fast the area's reach sweeps outward from its origin, px/s. Zero means the full
+    // radius applies the instant it exists. A sprayed cone is chemical TRAVELLING -- if the far
+    // edge kills before anything visibly arrives there, the picture and the rule disagree about
+    // time, and the rule feels like a cheat even when it is generous.
+    float expand = 0.0f;
+    // A LINGERING area re-hits what stands in it on this interval rather than once, or a held
+    // stream would tickle each ant a single time and then do nothing while pointed at it.
+    float rehit = 0.0f;
     float damage = 0.0f;
     float remaining = 0.0f; // seconds left alive; expires at or below zero
     entt::entity owner = entt::null;
@@ -32,6 +44,9 @@ struct HitArea
     // Everything already hurt by this area. Small by construction -- an area lives for a moment
     // and touches what is in reach, not the whole floor.
     std::vector<entt::entity> hit;
+    // When each of those may be hurt again, for a re-hitting area. Parallel to `hit`.
+    std::vector<float> hit_at;
+    float age = 0.0f;
 };
 
 namespace hit_area

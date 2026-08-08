@@ -1,0 +1,20 @@
+{
+    "_comment": "How bad a dig gets. base is the first chamber; per_depth is added (or for spacing and breath, subtracted) for every chamber deeper. Curves rather than a table per depth, so the twentieth dig is worse than the nineteenth without anyone authoring the nineteenth. growth is what turns a trickle into a swarm: each wave is this many times the last, so the first is a handful and the last is a tide. ant is the creature itself -- health and touch damage are balance, not code.",
+    "base": {
+        "waves": 4,
+        "per_wave": 8,
+        "growth": 2.1,
+        "spacing": 0.14,
+        "breath": 3.5
+    },
+    "per_depth": {
+        "waves": 0.34,
+        "per_wave": 2.5,
+        "spacing": 0.006,
+        "breath": 0.1
+    },
+    "ant": {
+        "health": 7,
+        "contact_damage": 4
+    }
+}

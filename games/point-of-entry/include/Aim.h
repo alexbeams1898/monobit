@@ -17,6 +17,11 @@ namespace aim
 // Read the cursor and mouse buttons. Call once per tick, before anything that fires.
 void update(Engine& engine, EntityManager& em);
 
+// Ignore the trigger until it is RELEASED and pressed again. Called when play begins: the click
+// that chose "take the job" is still physically down when the world appears, and without this it
+// is read a second time as an order to fire -- one press, two meanings.
+void requireFreshPress();
+
 // A unit vector from the player toward the cursor, in world space.
 float dirX();
 float dirY();

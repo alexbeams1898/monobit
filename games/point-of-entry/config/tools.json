@@ -1,42 +1,24 @@
 {
-    "_comment": "The kit. Every number here is tuning, not code -- adding a tool is an entry in this list, which is what lets the kit grow without touching the game.",
-    "stamina": {
+    "_comment": "The kit. Every number here is tuning, not code -- adding a tool is an entry in this list, which is what lets the kit grow without touching the game. reach: stream (held, a cone that sweeps with the cursor), adjacent (one puff beside him), thrown (travels). arc is the cone half-angle in degrees; 0 is a full circle. For a stream, stamina and charge are per SECOND held; otherwise per use. scaling carries per-stat grades the damage formula blends with the player's sheet (see config/stats.json scaling.per_point) -- the wand is a chemical-scaling tool. Body tuning (stamina max, recovery) lives in config/stats.json, derived from stats.",
+    "charge": {
         "max": 100.0,
-        "recovery_delay": 0.8,
-        "recovery_rate": 45.0
+        "per_kill": 4.0
     },
     "tools": [
         {
-            "name": "Sprayer",
-            "reach": "adjacent",
-            "radius": 26.0,
-            "offset": 22.0,
-            "damage": 8.0,
-            "cooldown": 0.35,
-            "stamina": 9.0,
-            "linger": 0.0
-        },
-        {
-            "name": "Fogger",
-            "reach": "adjacent",
-            "radius": 44.0,
-            "offset": 30.0,
-            "damage": 5.0,
-            "cooldown": 1.4,
-            "stamina": 34.0,
-            "linger": 1.6
-        },
-        {
-            "name": "Bait canister",
-            "reach": "thrown",
-            "radius": 34.0,
-            "offset": 10.0,
-            "range": 220.0,
-            "speed": 260.0,
-            "damage": 14.0,
-            "cooldown": 0.9,
-            "stamina": 22.0,
-            "linger": 0.0
+            "name": "Wand",
+            "reach": "stream",
+            "radius": 58.0,
+            "offset": 34.0,
+            "arc": 30.0,
+            "damage": 2.5,
+            "cooldown": 0.12,
+            "stamina": 14.0,
+            "charge": 11.0,
+            "linger": 0.0,
+            "scaling": {
+                "chemical": 1.0
+            }
         }
     ]
 }

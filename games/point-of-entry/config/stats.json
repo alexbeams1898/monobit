@@ -1,0 +1,29 @@
+{
+    "_comment": "The derivation formulas -- see include/Stats.h. Nothing in the game authors health, stamina or defense directly; they all come out of these curves and the five stats. player is the starting sheet.",
+    "player": {
+        "chemical": 2,
+        "physical": 1,
+        "biological": 1,
+        "endurance": 2,
+        "inspection": 1
+    },
+    "health": {
+        "base": 80.0,
+        "endurance_scale": 12.0,
+        "physical_scale": 4.0
+    },
+    "stamina": {
+        "base": 90.0,
+        "endurance_scale": 8.0,
+        "recovery_delay": 0.8,
+        "recovery_rate": 45.0
+    },
+    "defense": {
+        "level_scale": 0.4,
+        "physical_scale": 0.8,
+        "endurance_scale": 0.5
+    },
+    "scaling": {
+        "per_point": 0.08
+    }
+}

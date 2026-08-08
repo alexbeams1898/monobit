@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Stats.h"
+
 #include <string>
 #include <vector>
 
@@ -19,6 +21,9 @@ namespace tools
 
 enum class Reach
 {
+    // Held down: the area persists at the aim direction for as long as the trigger is held and
+    // the tank has charge, sweeping as the cursor moves. A sprayer, a fogger, a torch.
+    Stream,
     // The area appears immediately, offset from the player along the aim direction. A sprayer,
     // a swung crowbar, a boot.
     Adjacent,
@@ -37,27 +42,35 @@ struct Tool
     float speed = 0.0f;  // travel speed, world px/s (Thrown only)
     float damage = 0.0f;
     float cooldown = 0.0f; // seconds between shots -- the floor on rate of fire
-    float stamina = 0.0f;  // spent per use; the real constraint on sustained firing
+    float stamina = 0.0f;  // spent per use; his body's limit
+    float charge = 0.0f;   // spent per use (or per second, streaming) -- the TANK's limit
+    float arc = 0.0f;      // cone half-angle in degrees; 0 = the area is a full circle
     float linger = 0.0f;   // how long the area persists; 0 = a single instant
+    // Per-stat scaling grades: how much this tool rewards each discipline. Blended with the
+    // holder's sheet by damageOf -- the same wand is a different weapon in different hands.
+    float scale_chemical = 0.0f;
+    float scale_physical = 0.0f;
+    float scale_biological = 0.0f;
 };
 
-// The bar itself, which belongs to the exterminator rather than to any one tool. Souls-shaped:
-// spending resets a delay, and regen only begins once that delay has run out -- so firing
-// continuously never recovers, and the decision is when to STOP.
-struct StaminaTuning
+// THE TANK. What the wand runs on, and it does NOT refill by waiting -- only by working. Killing
+// vermin recovers charge, which keeps the player in the fight rather than sending him to a shop
+// to buy ammunition, and quietly makes the fiction better: he is putting back what he takes out.
+struct ChargeTuning
 {
     float max = 100.0f;
-    float recovery_delay = 0.8f; // seconds of not spending before regen begins
-    float recovery_rate = 45.0f; // per second, once it does
+    float per_kill = 6.0f; // recovered for each thing killed
 };
 
-const StaminaTuning& stamina();
+const ChargeTuning& chargeTuning();
 
-// What a use of this tool actually costs and does. Everything asks through these rather than
-// reading the Tool's fields, because these numbers will eventually be derived from the
-// exterminator's skills rather than authored flat -- and when that happens, the change belongs
-// in one place instead of at every call site.
-float damageOf(const Tool& tool);
+// Recover charge for a kill. Called where things die.
+void creditKill(EntityManager& em);
+
+// What a use of this tool actually costs and does, IN THESE HANDS. Everything asks through
+// these rather than reading the Tool's fields -- the tool says what it is, the sheet says who
+// is holding it, and only these functions know how the two blend.
+float damageOf(const Tool& tool, const Stats& holder);
 float staminaOf(const Tool& tool);
 float cooldownOf(const Tool& tool);
 float radiusOf(const Tool& tool);
@@ -72,6 +85,12 @@ const std::vector<Tool>& all();
 int selected();
 void select(int index);
 
+// Move to the next tool in the kit, wrapping. What the cycle key calls.
+void next();
+
+// Is a held stream live right now? Facing wants to know: a man spraying faces his work.
+bool streaming();
+
 // Tick cooldowns, and fire the held tool if it is aimed and ready. Areas are spawned here;
 // resolving what they hit is the damage pass.
 void update(EntityManager& em, float dt);
@@ -79,5 +98,9 @@ void update(EntityManager& em, float dt);
 // Recover the bar. Separate from update() because recovery happens whether or not he is
 // holding a tool, and must keep running while he is doing anything else.
 void tickStamina(EntityManager& em, float dt);
+
+// Move and age the spray. Separate from update() because droplets outlive the trigger pull that
+// made them -- releasing the button should not delete chemical already in the air.
+void tickParticles(EntityManager& em, float dt);
 
 } // namespace tools

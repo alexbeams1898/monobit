@@ -143,7 +143,7 @@ struct FormulaConfig
         float dodge_effort = 2.5f;
         float skill_effort = 4.0f;
         float sprint_effort = 2.0f;
-        float jump_effort = 6.0f; // flat per-jump cost; soulslike convention
+        float jump_effort = 6.0f; // flat per-jump cost, independent of stats
         float sprint_dex_scale = 0.15f;
         float base = 10.0f;
         float end_scale = 20.0f;

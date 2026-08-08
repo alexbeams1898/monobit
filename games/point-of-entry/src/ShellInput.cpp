@@ -26,6 +26,8 @@ Frame read()
     // Both clusters, because a menu should answer to whichever hand is on the keyboard.
     f.up = pressed(keys, SDL_SCANCODE_W) | pressed(keys, SDL_SCANCODE_UP);
     f.down = pressed(keys, SDL_SCANCODE_S) | pressed(keys, SDL_SCANCODE_DOWN);
+    f.left = pressed(keys, SDL_SCANCODE_A) | pressed(keys, SDL_SCANCODE_LEFT);
+    f.right = pressed(keys, SDL_SCANCODE_D) | pressed(keys, SDL_SCANCODE_RIGHT);
     f.confirm = pressed(keys, SDL_SCANCODE_SPACE) | pressed(keys, SDL_SCANCODE_RETURN);
     f.back = pressed(keys, SDL_SCANCODE_ESCAPE);
 

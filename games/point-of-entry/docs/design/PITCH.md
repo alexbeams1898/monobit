@@ -12,9 +12,9 @@
 
 An action RPG — Zelda-ish combat crossed with Vampire Survivors, in a
 Link-to-the-Past / Mother 1 aesthetic — about a blue-collar exterminator who is
-assigned a job that unearths what is rotting the world. You find the holes the
-vermin are coming through, seal them, and each one opens the way to the next. You
-exterminate, come back up to town, spend, and go deeper. The things you kill get
+assigned a job that unearths what is rotting the world. You find the hole the
+vermin are coming through and you open it up, digging further down after it as it
+gets worse. You exterminate, come back up to town, spend, and go deeper. The things you kill get
 stranger the further down you go: ants, then mice, then things that are neither.
 
 Short — a year or less. Intended as a **showcase / pilot**, not a magnum opus.
@@ -78,13 +78,14 @@ Consequences of framing it this way, all of them good:
   then he is too far in. Nobody ever tells him to.
 
 **There is no pre-existing descent. [SETTLED]** The dungeon is not a place that
-was already there and is being revealed — **you make it as you go.** You find one
-point of entry, you open it up, and it leads to the next. The map GROWS rather than
-unfolds, and every floor exists because you opened the hole that leads to it.
+was already there and is being revealed — **you dig it.** You find the point of
+entry, and then you open the ground around it, further and further down, chasing
+how far the rot goes. The map GROWS rather than unfolds, and every space exists
+because you excavated it.
 
 That answers "how does a basement go sixteen levels down" by dissolving it: it
-doesn't. Each POE is a way through to the next space, and the chain is the
-descent.
+doesn't. There is no basement. There is one crack, and a man who kept opening it
+up until he reached the bottom of what was coming through.
 
 ## The protagonist
 
@@ -147,19 +148,28 @@ image is a man who is now, verifiably, the best exterminator of all time.
 **The point of entry is the spawner.** This is the game's title, its objective,
 and its verb, and they are the same thing.
 
-- A level's goal is not "kill everything" — it is **find and seal the holes they
-  are coming in through.** There may be several per level.
-- Sealing one stops that flow. The floor's pressure drops as you close them, so
-  each level has a **self-balancing difficulty curve inside it**.
-- It makes the swarm *pressure* rather than a checklist. You are doing a job while
-  being attacked, which is exactly the fiction.
-- **It is what an exterminator actually does.** Exclusion work is real: you do not
-  kill your way out, you find how they are getting in and you close it.
-- It escalates perfectly. Early: a crack in a foundation, a gap in a vent. Later:
-  something that is not a hole in any normal sense. **The last one is the source,
-  and the ending is the same verb as the tutorial.**
-- **Sealing a POE opens the way onward.** They are not just spawners to shut off —
-  each one is the passage to the next space. The chain of them IS the descent.
+**THERE IS ONE POINT OF ENTRY.** [SETTLED] Not one per floor — one, for the whole
+job. The house has a leak: a crack, a gap, a cavity. That is the title, and it is
+a single fixed place you keep returning to.
+
+- **You do not descend through floors. You EXCAVATE one wound.** The gadget opens
+  a space adjacent to the crack; that space is a level. Clear it, dig again,
+  open more. The descent is one hole progressively widened, spiralling down and
+  around its own root — not a stack of storeys with holes in them.
+- **This is what the work actually looks like.** You find one entry, then follow
+  it to see how far it goes, and it is always worse than it looked. A dentist
+  opening a cavity, a builder pulling up a floorboard to find the rot runs to the
+  joists. Exclusion work is real: you do not kill your way out, you find how they
+  are getting in and you close it.
+- **A dig brings a wave.** Opening new space releases what was living in it. The
+  swarm is the floor's answer to being disturbed, which is why it arrives when you
+  dig rather than when you walk into a room.
+- **Sealing is the ENDING, not the traversal.** You seal when you reach the
+  nucleus, and that ends the job. The verb that moves you through the game is
+  *digging*; the verb that finishes it is *sealing*, and it is the same verb the
+  tutorial taught.
+- It escalates on its own. Early: a crack in a foundation, a gap in a vent. The
+  deeper the dig, the less the space resembles a house at all.
 
 ### The gadget — why the floors are different every time
 
@@ -185,12 +195,14 @@ This is the load-bearing trick of the whole production model:
 
 ```
 into the house
-  → send the gadget ahead; it clears a space and exposes a point of entry
-     (the floor GENERATES here, once, and stays that way)
-  → hunt and seal the POEs on this floor, under fire; the floor quiets
+  → find the point of entry: one crack, one leak. This is the job.
+  → send the gadget; it opens the space around it
+     (that space GENERATES here, once, and stays that way)
+  → disturbing it releases a swarm — clear it, under fire
   → take what the killing pays, find loot
-  → the sealed POE is the way onward
+  → dig again: deeper, wider, further around the wound
   → rest point: level up, or teleport back to the surface
+  → ...and at the bottom, the nucleus. Sealing it ends the job.
   → town: shop, upgrade gear and materials, unlocks
   → deeper
 ```
@@ -242,6 +254,31 @@ setback is a bad day at work, not a lost run.
 - **Known risk of this control scheme:** decoupled aim makes backing-away-while-
   shooting optimal. Enemy design must answer it — things that close fast, flank,
   or punish standing still.
+
+## Stats [SETTLED in shape]
+
+Five, and no more. A souls sheet in overalls -- every word is real trade
+vocabulary, and the joke is that none of it is a joke:
+
+- **Chemical** -- scales spray/tank tools. The alchemist axis.
+- **Physical** -- scales struck/trapped/heat tools, feeds a little health. The
+  fighter axis. (Heat is officially a physical control method.)
+- **Biological** -- scales organism-based tools, which at depth is a summoner
+  axis the game never has to wink about.
+- **Endurance** -- the one body stat: health and stamina derive from it.
+- **Inspection** -- the finder stat: drops, money, secrets.
+
+**Everything else is DERIVED, nothing else is authored.** Health from
+Endurance (+ a little Physical), stamina from Endurance, defense from level +
+Physical + Endurance, and LEVEL ITSELF is just stat points spent -- there is
+no separate level number to keep in sync. Prison-escape's formula system is
+the reference (its derive-at-load doctrine especially); its formulas get
+heavily simplified, not copied.
+
+**Weapons scale, souls-style.** A tool's config carries per-stat scaling
+grades; `damageOf(tool, stats)` blends them. The wand is the first example:
+a Chemical-scaling stream. A weapon's own properties (Coverage, Precision,
+Purity) are separate from WHO is holding it.
 
 ## The town [SETTLED in shape]
 

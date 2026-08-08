@@ -73,6 +73,12 @@ struct Sprite
     bool flip_x = false;
     bool use_sort_anchor = false;
     float sort_anchor = 0.0f;
+    // Drawn offset from the transform, without moving the entity. For animation a game drives in
+    // code -- a walk bob, a hit shake, a hover -- which must not disturb where the thing actually
+    // IS: collision, depth sorting and the flow field all read the transform, and a creature that
+    // bobbed its way through a wall would be the result of moving it instead.
+    float draw_offset_x = 0.0f;
+    float draw_offset_y = 0.0f;
     // Rotation in radians around the sprite center. Positive = clockwise
     // (screen-space y-down). Defaults to 0 so existing sprites are unaffected.
     float rotation = 0.0f;

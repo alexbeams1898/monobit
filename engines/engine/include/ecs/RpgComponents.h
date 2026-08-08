@@ -155,7 +155,7 @@ struct Poise
 
 // Real resource pool depleted by combat actions + sprint. sprint_locked
 // fires when the bar hits 0; cleared when fully recovered. Forces a full
-// bar before sprinting resumes (the canonical soulslike stamina rule).
+// bar before sprinting resumes -- an emptied bar costs a full recovery, not a sip.
 struct Stamina
 {
     float current = 0.0f;

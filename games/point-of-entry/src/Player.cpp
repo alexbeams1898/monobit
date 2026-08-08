@@ -1,10 +1,12 @@
 #include "Player.h"
 
+#include "Aim.h"
 #include "Capture.h"
 #include "DebugPanel.h"
 #include "Log.h"
 #include "SpriteAnim.h"
 #include "Tools.h"
+#include "Walkable.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "systems/CameraSystem.h"
@@ -38,8 +40,6 @@ entt::entity sPlayer = entt::null;
 // Sub-pixel movement not yet applied, carried between ticks (see stepWhole).
 float sCarryX = 0.0f;
 float sCarryY = 0.0f;
-
-bool walkableAt(const EntityManager& em, float x, float y);
 
 // WASD / arrows -> a direction. Diagonals are not normalised: this is the
 // skeleton, and the feel pass comes with the real movement system.
@@ -81,16 +81,14 @@ void pollDevKeys(const Uint8* keys)
     sPrevPanel = panel;
     sPrevShot = shot;
 
-    // 1..9 pick a tool. Edge-triggered like the rest: holding a number should not re-select
-    // every frame once tools carry state of their own.
-    static bool sPrevNum[9] = {};
-    for (int i = 0; i < 9; ++i)
-    {
-        const bool down = keys[SDL_SCANCODE_1 + i] != 0;
-        if (down && !sPrevNum[i])
-            tools::select(i);
-        sPrevNum[i] = down;
-    }
+    // Q cycles the kit. One key rather than a row of numbered slots: he carries a few tools, not
+    // a hotbar, and a number per tool stops meaning anything the moment the kit is bigger than
+    // the hand can reach.
+    static bool sPrevCycle = false;
+    const bool cycle = keys[SDL_SCANCODE_Q] != 0;
+    if (cycle && !sPrevCycle)
+        tools::next();
+    sPrevCycle = cycle;
 }
 
 // Move `pos` by `amount`, but only ever in WHOLE pixels -- the fraction is carried in
@@ -100,38 +98,25 @@ void pollDevKeys(const Uint8* keys)
 // rounding that every frame gives 1,2,1,2,1,1,2 -- the uneven scroll that reads as lag.
 // Carrying the remainder instead means the position is always an integer AND the average
 // speed is exactly right; the extra pixel simply lands on the tick where the debt comes due.
+// The movement test box: the player's collider, shrunk by an inset on each side. The inset is
+// what stops corner-sticking -- approaching a doorway at a slight angle, the full-size box
+// clips the adjacent wall corner by a pixel and that axis dies even though he is clearly
+// sliding past. Two pixels of forgiveness absorbs the clip; a 2px-smaller box still cannot
+// pass through a full tile of wall.
+constexpr float kMoveInset = 2.0f;
+
 void stepWhole(float& pos, float& carry, float amount, const EntityManager& em, bool horizontal,
-               float otherAxis)
+               float otherAxis, float boxW, float boxH)
 {
     carry += amount;
     const float whole = std::trunc(carry);
     if (whole == 0.0f)
         return;
     carry -= whole;
-    const float want = pos + whole;
-    const bool ok = horizontal ? walkableAt(em, want, otherAxis) : walkableAt(em, otherAxis, want);
-    if (ok)
-        pos = want;
-    else
+    if (!world::stepBlocked(em, pos, whole, horizontal, otherAxis, boxW, boxH))
         carry = 0.0f; // hit a wall -- drop the debt rather than paying it into the wall
 }
 
-// Is the world walkable at this world-space point?
-bool walkableAt(const EntityManager& em, float x, float y)
-{
-    const TileMap& map = em.tile_map;
-    if (map.tile_size <= 0)
-        return true;
-    const int col = static_cast<int>(x) / map.tile_size;
-    const int row = static_cast<int>(y) / map.tile_size;
-    if (col < 0 || row < 0 || col >= map.width || row >= map.height)
-        return false;
-    // Widen BEFORE multiplying, not after: the index is computed in the wider type rather than
-    // overflowing as an int and being widened once the damage is done.
-    const std::size_t index = static_cast<std::size_t>(row) * static_cast<std::size_t>(map.width) +
-                              static_cast<std::size_t>(col);
-    return map.tiles[index].walkable;
-}
 } // namespace
 
 void bind(entt::entity player)
@@ -157,33 +142,48 @@ void update(Engine& /*engine*/, EntityManager& em, double dt)
     readMoveDir(keys, dx, dy);
 
     auto& t = em.registry().get<Transform>(sPlayer);
-    // Face the way he last went horizontally; vertical-only movement leaves it alone.
-    //
-    // Through FacingDirection rather than onto the sprite directly: the sprite's flip is OWNED
-    // by AnimationSystem, which derives it from facing and rewrites it every tick. Setting the
-    // flip here would be overwritten before it was ever drawn.
-    if (dx != 0.0f)
+    // WHERE HE FACES. Spraying, he faces his work -- the aim side wins for as long as the
+    // stream is held, and near-vertical aim keeps whichever side he already had rather than
+    // flickering at the boundary. The moment the trigger releases, facing snaps back to
+    // movement. Through FacingDirection rather than onto the sprite directly: the sprite's
+    // flip is OWNED by AnimationSystem, which rewrites it from facing every tick.
+    auto& facing = em.registry().get_or_emplace<FacingDirection>(sPlayer);
+    if (tools::streaming())
     {
-        auto& facing = em.registry().get_or_emplace<FacingDirection>(sPlayer);
+        if (std::abs(aim::dirX()) > 0.1f)
+        {
+            facing.dx = aim::dirX() < 0.0f ? -1.0f : 1.0f;
+            facing.render_dx = facing.dx;
+        }
+    }
+    else if (dx != 0.0f)
+    {
         facing.dx = dx < 0.0f ? -1.0f : 1.0f;
         facing.render_dx = facing.dx;
     }
 
-    // Walking or standing. The tag names are the art's, straight from the .aseprite timeline.
-    // Art with no "idle" tag yet is normal while a character is being drawn -- standing still
-    // then holds the walk cycle's first frame, which is a rest pose, rather than nothing.
-    if (dx != 0.0f || dy != 0.0f)
-        sprite_anim::play(em, sPlayer, "walk");
-    else
-        sprite_anim::playIfPresent(em, sPlayer, "idle", "walk");
+    // THE WALK IS NOT AN ANIMATION. A character is one drawing, and the gait is the code-driven
+    // hop and sway in WalkBob -- so there is no "walk" tag to play here and drawn walk frames
+    // would fight it, each bobbing the body by a different rule.
+    //
+    // Tags are still the mechanism for poses a drawing cannot express by moving: a swing, a
+    // flinch, a death. Those get played from wherever they happen.
+    sprite_anim::playIfPresent(em, sPlayer, "idle", "idle");
 
     if (dx != 0.0f || dy != 0.0f)
     {
         const float step = debug_panel::walkSpeed() * static_cast<float>(dt);
+        // The body is a box at his FEET, not a point at his middle: the transform sits in the
+        // foot box and the sprite is drawn with its bottom on it (the renderer aligns sprite to
+        // collider), so the torso may overlap a wall ABOVE him -- top-down depth -- but his feet
+        // never enter one.
+        const auto* col = em.registry().try_get<Collider>(sPlayer);
+        const float bw = (col != nullptr ? col->width : 16.0f) - kMoveInset;
+        const float bh = (col != nullptr ? col->height : 12.0f) - kMoveInset;
         // One axis at a time, so walking into a wall at an angle slides along it instead of
         // stopping dead.
-        stepWhole(t.x, sCarryX, dx * step, em, /*horizontal=*/true, t.y);
-        stepWhole(t.y, sCarryY, dy * step, em, /*horizontal=*/false, t.x);
+        stepWhole(t.x, sCarryX, dx * step, em, /*horizontal=*/true, t.y, bw, bh);
+        stepWhole(t.y, sCarryY, dy * step, em, /*horizontal=*/false, t.x, bw, bh);
     }
     else
     {

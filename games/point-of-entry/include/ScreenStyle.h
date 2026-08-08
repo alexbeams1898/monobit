@@ -32,6 +32,10 @@ void init(FontHandle body, FontHandle heading);
 void dim(int windowW, int windowH);
 
 // Shadow-then-text, the legible-over-anything idiom every surface uses.
+// The font the body text is drawn in. Exposed so a caller can MEASURE before drawing -- right
+// aligning is impossible without knowing how wide the string will be.
+int bodyFont();
+
 void text(const std::string& s, float x, float y, const Color& c);
 void textCentered(const std::string& s, float cx, float y, const Color& c);
 void headingCentered(const std::string& s, float cx, float y, const Color& c);

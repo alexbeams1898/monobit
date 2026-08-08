@@ -2,6 +2,9 @@
 
 #include "Engine.h"
 #include "Log.h"
+#include "Player.h"
+#include "Stats.h"
+#include "Tools.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 
@@ -18,8 +21,8 @@ bool sVisible = false;
 // in uneven steps, which reads as lag while nothing is actually late.
 float sWalkSpeed = 120.0f;
 
-// 3x: a 40px character lands around 120 screen pixels, which is roughly the proportion Mother
-// and Pokemon give theirs. At 2x he reads as a distant figure rather than the person you are.
+// 3x: a 40px character lands around 120 screen pixels -- close enough that he reads as the
+// person you are. At 2x he reads as a distant figure being watched instead.
 int sZoom = 3;
 } // namespace
 
@@ -76,6 +79,33 @@ void render(Engine& engine, EntityManager& em)
                             static_cast<int>(em.registry().view<Sprite>().size()));
         ImGui::TextDisabled("map %d x %d @ %dpx", em.tile_map.width, em.tile_map.height,
                             em.tile_map.tile_size);
+
+        // THE SHEET. Sliders rather than a readout, because whether a stat point is worth
+        // feeling is a thing you judge by cranking it mid-swarm -- and every derived number
+        // sits beside it so the formulas are never a mystery while tuning them.
+        if (const entt::entity pl = player::entity();
+            em.registry().valid(pl) && em.registry().all_of<Stats>(pl))
+        {
+            auto& sheet = em.registry().get<Stats>(pl);
+            ImGui::Separator();
+            ImGui::TextUnformatted("Sheet");
+            bool changed = false;
+            changed |= ImGui::SliderInt("chemical", &sheet.chemical, 1, 20);
+            changed |= ImGui::SliderInt("physical", &sheet.physical, 1, 20);
+            changed |= ImGui::SliderInt("biological", &sheet.biological, 1, 20);
+            changed |= ImGui::SliderInt("endurance", &sheet.endurance, 1, 20);
+            changed |= ImGui::SliderInt("inspection", &sheet.inspection, 1, 20);
+            if (changed)
+                stats::applyDerivations(em, pl);
+            ImGui::TextDisabled("level %d   hp %d   stam %.0f   def %d", stats::level(sheet),
+                                stats::maxHealth(sheet), stats::maxStamina(sheet),
+                                stats::defense(sheet));
+            if (!tools::all().empty())
+            {
+                const auto& held = tools::all()[static_cast<size_t>(tools::selected())];
+                ImGui::TextDisabled("%s dmg %.1f", held.name.c_str(), tools::damageOf(held, sheet));
+            }
+        }
 
         ImGui::Separator();
         ImGui::TextDisabled("F12 writes frame.png beside the exe");

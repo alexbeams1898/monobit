@@ -135,3 +135,52 @@ all discarded. The two things that are genuinely, immediately valuable:
    and the gadget gives it a fiction.
 
 Everything else is a week each, and better written knowing what this game is.
+
+## Systems audit, second pass — the RPG layer
+
+What prison-escape actually has, read system by system, ranked by how cleanly
+it ports. "Port" always means rewrite against the reference, never copy.
+
+**The reward loop (death → drop → pickup → level) — ports almost whole.**
+- `DeathSystem`: on death, computes an XP drop (log-scaled by enemy level,
+  penalised when over-levelled), rolls loot-table drops, spawns pickups.
+- `Pickup` + `PickupSystem`: the "souls box" — a dropped entity with an XP
+  value and an auto-collect radius. Tiny, fully generic.
+- `Experience` + `LevelingSystem`: XP overflow → level → stat points.
+- Entanglements are shallow: essence/quality tiers and the wave game-over
+  path stay behind; the shape comes over.
+
+**Stats + formulas — port the MODEL, not the stats.**
+- `Stats{str,dex,end,lck}` + `Body` (what a creature IS: base hp, defense,
+  natural-weapon properties — not levelable) + `FormulaConfig` (every combat
+  formula's tunables in one JSON-loaded struct).
+- The Stats/Body split is the important idea: the exterminator's SKILLS vs a
+  creature's MATERIAL. Point-of-entry wants 3-4 trade-flavoured stats; the
+  machinery is identical, the names are not.
+- **Derived attributes**: entity configs do not author HP — health is derived
+  from stats at load (`applyInitialDerivations`). One source of truth.
+- Lands directly on the seam already built: `damageOf(tool)` etc. in Tools.
+  Only those function bodies change when stats arrive.
+
+**Enemies-from-JSON (`ConfigLoader` + `config/entities/*.json`) — the
+bestiary foundation.** An enemy is a JSON file listing components: stats,
+body, loot, sounds, AI tuning. Ants are currently hardcoded in `emerge()`;
+porting this makes every creature an authored file, which IS the bestiary as
+data. (Prison-escape has no bestiary UI — only a kills counter. A "seen /
+exterminated" record would be new work on top of this.)
+
+**Rest spots — a stub, and a design question.** Prison-escape's bonfire heals
+to full on stand-on, cooldown-gated, nothing else. Trivial to port; what
+resting MEANS here (respawn the swarm? checkpoint? bank the job?) is a design
+decision, not a port.
+
+**Weapon XP — maps to per-TOOL progression.** Kills and hits feed the weapon;
+levels apply stat growth. Fits tools-that-upgrade; entangled with quality
+tiers, so port after items exist.
+
+**Stays behind:** WaveSystem (point-of-entry has its own swarm), SpawnerSystem
+(waves-shaped), attack tokens / parry / dodge / lock-on (a different combat),
+TintSystem's priority model (take it when there is a second reason to tint).
+
+**Recommended order** (each step playable on its own): stats+formula skeleton
+→ reward loop → rest spot → enemies-from-JSON → tool XP.

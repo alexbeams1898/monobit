@@ -10,9 +10,15 @@ add_library(poe-systems STATIC
     src/PauseScreen.cpp
     src/ScreenStyle.cpp
     src/ShellInput.cpp
+    src/Chase.cpp
+    src/Floaters.cpp
+    src/Stats.cpp
+    src/Swarm.cpp
     src/Aim.cpp
     src/Hud.cpp
     src/Tools.cpp
+    src/Walkable.cpp
+    src/WalkBob.cpp
     src/HitArea.cpp
     src/SpriteAnim.cpp
     src/SpriteDef.cpp
@@ -50,3 +56,14 @@ add_custom_target(poe-sync-assets-and-config ALL
     COMMENT "point-of-entry: syncing config/ + assets/"
 )
 add_dependencies(point-of-entry poe-sync-assets-and-config)
+
+# Tests -- link the same poe-systems the game does, so what is tested is what ships.
+add_executable(poe-tests
+    tests/floorgen_test.cpp
+    tests/sprite_anim_test.cpp
+    tests/stats_test.cpp
+)
+target_link_libraries(poe-tests PRIVATE poe-systems Catch2::Catch2WithMain)
+add_test(NAME poe-tests COMMAND poe-tests)
+# Relative paths like "config/floor.json" resolve against the project root.
+set_tests_properties(poe-tests PROPERTIES WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

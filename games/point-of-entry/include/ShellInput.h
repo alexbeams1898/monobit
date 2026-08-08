@@ -15,6 +15,8 @@ struct Frame
 {
     bool up = false;
     bool down = false;
+    bool left = false; // tab switching on tabbed screens
+    bool right = false;
     bool confirm = false;
     bool back = false;
     float mouse_x = 0.0f;

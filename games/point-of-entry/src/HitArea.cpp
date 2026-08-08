@@ -1,6 +1,8 @@
 #include "HitArea.h"
 
 #include "Combat.h"
+#include "Floaters.h"
+#include "Tools.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 
@@ -17,10 +19,43 @@ namespace
 // a kill legible in a crowd where several things are being hit at once.
 constexpr float kHitFlash = 0.12f;
 constexpr float kDeathFlash = 0.22f;
+// A corpse FADES rather than cutting out -- longer than the flash, so a kill pops bright and
+// then ghosts away instead of vanishing between one frame and the next.
+constexpr float kDeathFade = 0.4f;
 
-bool alreadyHit(const HitArea& area, entt::entity target)
+// Has this area already hurt `target`, and is it still too soon to do it again? A one-shot area
+// never re-hits; a stream re-hits on its own interval, which is what makes holding the trigger on
+// something actually kill it.
+bool onCooldownFor(const HitArea& area, entt::entity target)
 {
-    return std::find(area.hit.begin(), area.hit.end(), target) != area.hit.end();
+    for (size_t i = 0; i < area.hit.size(); ++i)
+        if (area.hit[i] == target)
+            return area.rehit <= 0.0f || area.age < area.hit_at[i];
+    return false;
+}
+
+void markHit(HitArea& area, entt::entity target)
+{
+    for (size_t i = 0; i < area.hit.size(); ++i)
+        if (area.hit[i] == target)
+        {
+            area.hit_at[i] = area.age + area.rehit;
+            return;
+        }
+    area.hit.push_back(target);
+    area.hit_at.push_back(area.age + area.rehit);
+}
+
+// Inside the cone? A zero arc means the area is a full circle and everything in range qualifies.
+bool withinArc(const HitArea& area, float dx, float dy)
+{
+    if (area.arc <= 0.0f)
+        return true;
+    const float len = std::sqrt(dx * dx + dy * dy);
+    if (len <= 0.0001f)
+        return true; // standing on top of it counts, whatever the angle says
+    const float dot = (dx * area.dir_x + dy * area.dir_y) / len;
+    return dot >= std::cos(area.arc * 3.14159265f / 180.0f);
 }
 
 // Everything inside the circle that has not been hurt by this area yet. Distance is compared
@@ -30,7 +65,7 @@ void applyDamage(entt::registry& reg, HitArea& area, const Transform& at)
 {
     for (auto [target, t, health] : reg.view<Transform, Health>().each())
     {
-        if (target == area.owner || alreadyHit(area, target))
+        if (target == area.owner || onCooldownFor(area, target))
             continue;
         if (!reg.all_of<Vermin>(target))
             continue;
@@ -41,19 +76,31 @@ void applyDamage(entt::registry& reg, HitArea& area, const Transform& at)
             continue;
         const float dx = t.x - at.x;
         const float dy = t.y - at.y;
-        if (dx * dx + dy * dy > area.radius * area.radius)
+        // Only as far as the front has swept. min() so a long-held stream is simply its full
+        // cone, not an ever-growing one.
+        const float reach =
+            area.expand > 0.0f ? std::min(area.radius, area.age * area.expand) : area.radius;
+        if (dx * dx + dy * dy > reach * reach)
+            continue;
+        if (!withinArc(area, dx, dy))
             continue;
         // Rounded up, so a small area is never a free hit that does nothing at all.
-        health.current -= std::max(1, static_cast<int>(std::lround(area.damage)));
-        area.hit.push_back(target);
+        const int dealt = std::max(1, static_cast<int>(std::lround(area.damage)));
+        health.current -= dealt;
+        markHit(area, target);
+        // The number is how a player tells a good hit from a bad one. A kill is called out in
+        // white so the last hit on a thing does not look like every other hit.
+        const bool fatal = health.current <= 0;
+        floaters::add(t.x, t.y - 6.0f, std::to_string(dealt), fatal ? 1.0f : 0.95f,
+                      fatal ? 1.0f : 0.85f, fatal ? 1.0f : 0.4f);
 
         // A hit flashes white briefly; a KILL flashes hot and holds longer, and the thing stays
         // on screen for it. The two have to look different, or clearing a crowd gives no
         // feedback about what actually died -- which is the only thing the player cares about.
-        const bool killed = health.current <= 0;
+        const bool killed = fatal;
         reg.emplace_or_replace<HitFlash>(target, HitFlash{killed ? kDeathFlash : kHitFlash});
         if (killed)
-            reg.emplace_or_replace<Dying>(target, Dying{kDeathFlash});
+            reg.emplace_or_replace<Dying>(target, Dying{kDeathFade});
     }
 }
 
@@ -66,6 +113,7 @@ void update(EntityManager& em, float dt)
 
     for (auto [entity, area, transform] : reg.view<HitArea, Transform>().each())
     {
+        area.age += dt;
         if (area.speed > 0.0f)
         {
             const float step = area.speed * dt;
@@ -118,11 +166,21 @@ void update(EntityManager& em, float dt)
     for (auto [entity, dying] : reg.view<Dying>().each())
     {
         dying.remaining -= dt;
+        // The body dissolves as the timer runs down; by the time it is destroyed it is already
+        // invisible, so the removal itself can never be seen.
+        if (auto* spr = reg.try_get<Sprite>(entity))
+            spr->alpha = std::max(0.0f, dying.remaining / kDeathFade);
         if (dying.remaining <= 0.0f)
             dead.push_back(entity);
     }
     for (const auto e : dead)
+    {
+        // What he kills goes back in the tank. Here rather than at the moment of the fatal blow:
+        // a thing is only really dead once it has finished dying, and paying at both points would
+        // pay twice.
+        tools::creditKill(em);
         reg.destroy(e);
+    }
 }
 
 } // namespace hit_area

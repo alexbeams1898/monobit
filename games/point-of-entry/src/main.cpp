@@ -1,9 +1,11 @@
 #include "Aim.h"
 #include "AppState.h"
 #include "Capture.h"
+#include "Chase.h"
 #include "Combat.h"
 #include "DebugPanel.h"
 #include "Engine.h"
+#include "Floaters.h"
 #include "FloorGen.h"
 #include "FontManager.h"
 #include "HitArea.h"
@@ -15,12 +17,16 @@
 #include "ShellInput.h"
 #include "SpriteAnim.h"
 #include "SpriteDef.h"
+#include "Stats.h"
+#include "Swarm.h"
 #include "TitleScreen.h"
 #include "Tools.h"
+#include "WalkBob.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "gl/PixelRenderTarget.h"
 #include "systems/AnimationSystem.h"
+#include "systems/FlowFieldSystem.h"
 #include "systems/RenderSystem.h"
 #include "systems/TileMapRenderer.h"
 
@@ -99,19 +105,37 @@ entt::entity spawnBox(EntityManager& em, float x, float y, float size, float r, 
 // flag checked here rather than a separate branch of the shell.
 void gameUpdate(Engine& engine, EntityManager& em, double dt)
 {
-    if (sApp.phase != app::Phase::Playing || sApp.paused)
+    // Entering play swallows whatever the trigger was doing on the menu. Derived from the state
+    // rather than called at each transition -- there are several ways in (take a job, resume,
+    // back out of settings) and one of them would eventually forget.
+    static bool sWasPlaying = false;
+    const bool nowPlaying = sApp.phase == app::Phase::Playing && !sApp.paused;
+    if (nowPlaying && !sWasPlaying)
+        aim::requireFreshPress();
+    sWasPlaying = nowPlaying;
+
+    if (!nowPlaying)
         return;
     // Aim first: everything that fires this tick reads where he is pointing, and a stale
     // cursor would put the shot where he pointed last frame.
     aim::update(engine, em);
     player::update(engine, em, dt);
+    // The field is rebuilt toward the player, then everything reads it -- see Chase.h.
+    const auto& pt = em.registry().get<Transform>(player::entity());
+    FlowFieldSystem::update(em, pt.x, pt.y);
+    chase::update(em, static_cast<float>(dt));
+    swarm::update(em, static_cast<float>(dt));
     tools::update(em, static_cast<float>(dt));
     tools::tickStamina(em, static_cast<float>(dt));
+    tools::tickParticles(em, static_cast<float>(dt));
     hit_area::update(em, static_cast<float>(dt));
+    floaters::update(static_cast<float>(dt));
     // AFTER the movement that chooses which animation plays, so a frame shows the pose that
     // matches where the character now is rather than trailing it by a tick. Paused above, so a
     // character stops mid-stride instead of walking on the spot behind the menu.
     AnimationSystem::update(em, static_cast<float>(dt));
+    // After everything that moves, since the gait is driven by how far things actually went.
+    walk_bob::update(em, static_cast<float>(dt));
 }
 
 void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, float /*alpha*/)
@@ -159,26 +183,21 @@ bool buildWorld(Engine& engine)
         poe::log().error("world: could not build a floor");
         return false;
     }
+    stats::load("config/stats.json");
     tools::load("config/tools.json");
     TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
 
     // Every marker the rooms carried. 'P' is a point of entry -- for now a red box standing in
     // the room, which is enough to prove placement works.
     int poeCount = 0;
+    std::vector<swarm::Seep> seeps;
     for (const auto& m : floor.markers)
         if (m.type == 'P')
         {
+            // Where the chamber leaks. The rot pushes what it is festering up through wherever
+            // the earth is weakest, and the room templates say where that is.
             spawnBox(em, m.x, m.y, kPoeSize, 0.75f, 0.15f, 0.15f);
-            // Something to shoot while the swarm is being built: a handful of stationary
-            // vermin around each hole, enough to prove an area hits many things at once.
-            for (int i = 0; i < 6; ++i)
-            {
-                const float ax = m.x + static_cast<float>((i % 3) - 1) * 26.0f;
-                const float ay = m.y + static_cast<float>((i / 3) - 1) * 26.0f + 40.0f;
-                const entt::entity v = spawnBox(em, ax, ay, 14.0f, 0.35f, 0.65f, 0.3f);
-                em.registry().emplace<Health>(v, Health{12, 12});
-                em.registry().emplace<Vermin>(v, Vermin{4.0f});
-            }
+            seeps.push_back(swarm::Seep{m.x, m.y});
             ++poeCount;
         }
 
@@ -197,10 +216,20 @@ bool buildWorld(Engine& engine)
         // Tags on the timeline become playable animations. Art with none stays a still sprite.
         sprite_anim::attach(em, playerEnt, def);
     }
+    // The foot box. Smaller than the sprite and at its bottom -- the renderer reads this to
+    // draw the sprite standing ON the box, which is what lets his torso overlap walls above
+    // him (top-down depth) while his feet stay out of them.
+    em.registry().emplace<Collider>(playerEnt, Collider{16.0f, 12.0f});
+    // No authored health: the sheet is the only source, and the numbers derive from it.
+    em.registry().emplace<Stats>(playerEnt, stats::playerStart());
+    stats::applyDerivations(em, playerEnt);
     em.registry().emplace<Camera>(playerEnt, Camera{floor.spawn_x, floor.spawn_y});
     player::bind(playerEnt);
     poe::log().info("world: player at ({:.0f},{:.0f}), {} points of entry", floor.spawn_x,
                     floor.spawn_y, poeCount);
+    // Opening the space is what disturbs it. Depth 0 for now; the gadget will carry the real
+    // one when digging exists.
+    swarm::begin(swarm::assaultForDepth("config/swarm.json", 0), seeps);
     sApp.world_built = true;
     return true;
 }
@@ -261,7 +290,15 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     // screen with options, exactly like a menu.
     hud::cursorForPhase(playing && !debug_panel::visible());
     if (playing)
+    {
+        // World-anchored, so it needs the camera the world was drawn with.
+        const auto& cam = em.registry().get<Camera>(player::entity());
+        const float cx = std::round(cam.x);
+        const float cy = std::round(cam.y);
+        hud::renderWorldOverlays(engine, em, cx, cy, debug_panel::zoom());
+        floaters::render(engine, cx, cy, debug_panel::zoom());
         hud::render(engine, em);
+    }
     const int ww = engine.windowWidth();
     const int wh = engine.windowHeight();
 
@@ -299,9 +336,10 @@ void gameRenderUI(Engine& engine, EntityManager& em)
         else if (sApp.paused)
         {
             const pause_screen::Mouse m{in.mouse_x, in.mouse_y, in.clicked};
-            enactPause(engine, pause_screen::step(in.up, in.down, in.confirm, in.back));
+            enactPause(engine,
+                       pause_screen::step(in.up, in.down, in.left, in.right, in.confirm, in.back));
             if (sApp.paused)
-                enactPause(engine, pause_screen::render(m, ww, wh));
+                enactPause(engine, pause_screen::render(em, m, ww, wh));
         }
         break;
     }
