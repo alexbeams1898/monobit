@@ -133,6 +133,14 @@ void begin(const Assault& assault, const std::vector<Seep>& seeps)
         poe::log().warn("swarm: nothing seeps here -- the chamber is inert");
 }
 
+void restart()
+{
+    sWave = 0;
+    sToEmerge = 0;
+    sPhase = sSeeps.empty() ? Phase::Cleared : Phase::Breath;
+    sTimer = sAssault.breath;
+}
+
 void update(EntityManager& em, float dt)
 {
     if (sPhase == Phase::Quiet || sPhase == Phase::Cleared)

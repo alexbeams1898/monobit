@@ -93,3 +93,16 @@ TEST_CASE("an empty pocket buys nothing", "[reward]")
     CHECK_FALSE(reward::spend(em, 0));
     CHECK(em.registry().get<Stats>(p).chemical == 1);
 }
+
+TEST_CASE("the pocket survives death", "[reward]")
+{
+    // Death resets the floor, not the ledger -- what was earned is carried through. The reset
+    // itself lives in the shell; the promise testable here is that nothing in the reward
+    // machinery ties the pocket to being alive.
+    EntityManager em;
+    const entt::entity p = makePlayer(em);
+    reward::credit(em, 300);
+    auto& hp = em.registry().get<Health>(p);
+    hp.current = 0; // dead by any system's standard
+    CHECK(reward::banked(em) == 300);
+}

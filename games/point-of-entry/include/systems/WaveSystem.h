@@ -48,6 +48,10 @@ enum class Phase
 // Begin the assault on this chamber. Called when the space is disturbed.
 void begin(const Assault& assault, const std::vector<Seep>& seeps);
 
+// Start the SAME assault over from the first wave. What dying costs: the chamber floods back
+// to the state the dig left it in.
+void restart();
+
 // Spawn, advance waves, notice when it is over.
 void update(EntityManager& em, float dt);
 

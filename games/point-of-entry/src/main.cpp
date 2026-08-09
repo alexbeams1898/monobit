@@ -2,6 +2,7 @@
 #include "FloorGen.h"
 #include "FontManager.h"
 #include "SpriteDefLoader.h"
+#include "UIRenderer.h"
 #include "ecs/AppState.h"
 #include "ecs/BalanceConfig.h"
 #include "ecs/Components.h"
@@ -13,6 +14,7 @@
 #include "renderers/DebugPanelRenderer.h"
 #include "renderers/FloaterRenderer.h"
 #include "renderers/HudRenderer.h"
+#include "screens/DeathScreen.h"
 #include "screens/PauseScreen.h"
 #include "screens/ScreenInput.h"
 #include "screens/ScreenStyle.h"
@@ -101,6 +103,78 @@ entt::entity spawnBox(EntityManager& em, float x, float y, float size, float r, 
     return e;
 }
 
+// THE DEATH BEAT. No drama and no announcement -- the register is a man who never cracks, so
+// the world simply fades to black, holds one breath while the floor floods back underneath,
+// and fades in again at the way in. The world FREEZES for the duration: watching the swarm
+// keep boiling while you fade would read as the game continuing without you, which is a
+// different (and wrong) statement.
+enum class DeathBeat
+{
+    None,
+    FadeOut,
+    Screen, // the black has settled; death asks what now
+    FadeIn
+};
+DeathBeat sDeathBeat = DeathBeat::None;
+float sDeathTimer = 0.0f;
+constexpr float kDeathFadeOut = 0.7f;
+constexpr float kDeathFadeIn = 0.7f;
+
+// Where this job began: dying puts him back here. Held by the shell because the floor that
+// spawned him is long out of scope by the time he dies on it.
+float sSpawnX = 0.0f;
+float sSpawnY = 0.0f;
+
+// DEATH. The only things it costs are the floor's progress and his position: the swarm floods
+// back, he wakes at the way in, mended -- and the pocket comes with him. The pocket is the
+// POINT of dying being cheap: the walk back to the rest spot is already the tension, and
+// taking the money too would punish the same mistake twice.
+void resetFloor(EntityManager& em)
+{
+    auto& reg = em.registry();
+
+    // The chamber floods back: everything alive, mid-air or mid-dissolve goes, and the assault
+    // starts over from its first breath.
+    std::vector<entt::entity> gone;
+    for (const auto e : reg.view<Vermin>())
+        gone.push_back(e);
+    for (const auto e : reg.view<HitArea>())
+        gone.push_back(e);
+    for (const auto e : reg.view<Particle>())
+        gone.push_back(e);
+    for (const auto e : gone)
+        reg.destroy(e);
+    floaters::clear();
+    swarm::restart();
+
+    // He wakes at the way in, whole: body full, tank full -- the floor is exactly as the dig
+    // left it, except that he remembers.
+    const entt::entity p = player::entity();
+    if (!reg.valid(p))
+        return;
+    auto& t = reg.get<Transform>(p);
+    t.x = sSpawnX;
+    t.y = sSpawnY;
+    reg.get<PreviousTransform>(p) = PreviousTransform{sSpawnX, sSpawnY};
+    // The camera cuts WITH him -- position and history both, or the first unfrozen frame lerps
+    // from wherever he died and the fade-in ends with the world lurching into place. A teleport
+    // is a cut; nothing about it should pan.
+    if (auto* cam = reg.try_get<Camera>(p))
+    {
+        cam->x = sSpawnX;
+        cam->y = sSpawnY;
+        cam->prev_x = sSpawnX;
+        cam->prev_y = sSpawnY;
+    }
+    if (auto* hp = reg.try_get<Health>(p))
+        hp->current = hp->max;
+    if (auto* sta = reg.try_get<Stamina>(p))
+        sta->current = sta->max_stamina;
+    if (auto* charge = reg.try_get<Charge>(p))
+        charge->current = charge->max_charge;
+    poe::log().info("death: the floor floods back");
+}
+
 // The world only ticks while it is being PLAYED: not behind the title, and not behind the
 // pause screen. Pausing is a thing the world does, not a phase the program enters, so it is a
 // flag checked here rather than a separate branch of the shell.
@@ -117,6 +191,29 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
 
     if (!nowPlaying)
         return;
+
+    // The death beat owns the clock while it runs: the world holds its breath, the floor is
+    // flooded back under cover of the black, and play resumes only once the fade-in ends.
+    if (sDeathBeat != DeathBeat::None)
+    {
+        sDeathTimer += static_cast<float>(dt);
+        if (sDeathBeat == DeathBeat::FadeOut && sDeathTimer >= kDeathFadeOut)
+        {
+            // The floor floods back under the black either way -- whichever door he takes out
+            // of the menu, the chamber behind it is already reset.
+            resetFloor(em);
+            sDeathBeat = DeathBeat::Screen;
+            sDeathTimer = 0.0f;
+            death_screen::reset();
+        }
+        else if (sDeathBeat == DeathBeat::FadeIn && sDeathTimer >= kDeathFadeIn)
+        {
+            sDeathBeat = DeathBeat::None;
+            aim::requireFreshPress(); // a trigger held through death is not an order to fire
+        }
+        return;
+    }
+
     // Aim first: everything that fires this tick reads where he is pointing, and a stale
     // cursor would put the shot where he pointed last frame.
     aim::update(engine, em);
@@ -138,6 +235,14 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     AnimationSystem::update(em, static_cast<float>(dt));
     // After everything that moves, since the gait is driven by how far things actually went.
     walk_bob::update(em, static_cast<float>(dt));
+
+    // Last, after every system that could have hurt him this tick.
+    if (const auto* hp = em.registry().try_get<Health>(player::entity());
+        hp != nullptr && hp->current <= 0 && sDeathBeat == DeathBeat::None)
+    {
+        sDeathBeat = DeathBeat::FadeOut;
+        sDeathTimer = 0.0f;
+    }
 }
 
 void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, float /*alpha*/)
@@ -246,6 +351,8 @@ bool buildWorld(Engine& engine)
     // No authored health: the sheet is the only source, and the numbers derive from it.
     em.registry().emplace<Stats>(playerEnt, stats::playerStart());
     stats::applyDerivations(em, playerEnt);
+    sSpawnX = floor.spawn_x;
+    sSpawnY = floor.spawn_y;
     em.registry().emplace<Camera>(playerEnt, Camera{floor.spawn_x, floor.spawn_y});
     player::bind(playerEnt);
     poe::log().info("world: player at ({:.0f},{:.0f}), {} points of entry", floor.spawn_x,
@@ -311,7 +418,7 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     const bool playing = sApp.phase == app::Phase::Playing && !sApp.paused;
     // The dev panel needs a pointer to click, and it opens while playing -- so it counts as a
     // screen with options, exactly like a menu.
-    hud::cursorForPhase(playing && !debug_panel::visible());
+    hud::cursorForPhase(playing && !debug_panel::visible() && sDeathBeat != DeathBeat::Screen);
     if (playing)
     {
         // World-anchored, so it needs the camera the world was drawn with.
@@ -321,6 +428,20 @@ void gameRenderUI(Engine& engine, EntityManager& em)
         hud::renderWorldOverlays(engine, em, cx, cy, debug_panel::zoom());
         floaters::render(engine, cx, cy, debug_panel::zoom());
         hud::render(engine, em);
+
+        // The black, over everything -- the HUD fades with the world.
+        if (sDeathBeat != DeathBeat::None)
+        {
+            float a = 1.0f;
+            if (sDeathBeat == DeathBeat::FadeOut)
+                a = sDeathTimer / kDeathFadeOut;
+            else if (sDeathBeat == DeathBeat::FadeIn)
+                a = 1.0f - sDeathTimer / kDeathFadeIn;
+            // Screen: settled black; the menu draws over it from the shell pass.
+            UIRenderer::drawRect(0.0f, 0.0f, static_cast<float>(engine.windowWidth()),
+                                 static_cast<float>(engine.windowHeight()),
+                                 Color{0.0f, 0.0f, 0.0f, std::min(1.0f, std::max(0.0f, a))});
+        }
     }
     const int ww = engine.windowWidth();
     const int wh = engine.windowHeight();
@@ -351,6 +472,33 @@ void gameRenderUI(Engine& engine, EntityManager& em)
             sApp.phase = sApp.settings_return_to;
         break;
     case app::Phase::Playing:
+        if (sDeathBeat == DeathBeat::Screen)
+        {
+            // Death outranks the pause key: there is nothing to resume to.
+            const death_screen::Mouse m{in.mouse_x, in.mouse_y, in.clicked};
+            death_screen::Action a = death_screen::step(in.up, in.down, in.confirm);
+            if (a == death_screen::Action::None)
+                a = death_screen::render(m, ww, wh);
+            switch (a)
+            {
+            case death_screen::Action::CarryOn:
+                sDeathBeat = DeathBeat::FadeIn;
+                sDeathTimer = 0.0f;
+                break;
+            case death_screen::Action::Leave:
+                sDeathBeat = DeathBeat::None;
+                sApp.world_built = false;
+                sApp.phase = app::Phase::Title;
+                title_screen::reset();
+                break;
+            case death_screen::Action::Quit:
+                engine.requestQuit();
+                break;
+            case death_screen::Action::None:
+                break;
+            }
+            break;
+        }
         if (!sApp.paused && in.back)
         {
             sApp.paused = true;
