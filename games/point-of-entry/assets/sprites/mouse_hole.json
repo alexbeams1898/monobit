@@ -1,0 +1,9 @@
+{
+    "sheet": "assets/sprites/mouse_hole.png",
+    "frame_w": 32,
+    "frame_h": 32,
+    "frames": 1,
+    "durations": [
+        100
+    ]
+}

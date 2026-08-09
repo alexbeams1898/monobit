@@ -8,12 +8,15 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
+#include "ecs/ItemConfig.h"
 #include "gl/PixelRenderTarget.h"
 #include "ops/CaptureUtils.h"
 #include "ops/LogUtils.h"
+#include "ops/NavUtils.h"
 #include "renderers/DebugPanelRenderer.h"
 #include "renderers/FloaterRenderer.h"
 #include "renderers/HudRenderer.h"
+#include "renderers/NotificationRenderer.h"
 #include "screens/DeathScreen.h"
 #include "screens/PauseScreen.h"
 #include "screens/ScreenInput.h"
@@ -26,6 +29,7 @@
 #include "systems/DamageSystem.h"
 #include "systems/FlowFieldSystem.h"
 #include "systems/GaitSystem.h"
+#include "systems/PickupSystem.h"
 #include "systems/PlayerSystem.h"
 #include "systems/RenderSystem.h"
 #include "systems/RewardSystem.h"
@@ -33,7 +37,12 @@
 #include "systems/TileMapRenderer.h"
 #include "systems/WaveSystem.h"
 
+#include <nlohmann/json.hpp>
+
 #include <cmath>
+#include <fstream>
+#include <random>
+#include <unordered_map>
 
 #include <glad/glad.h>
 
@@ -145,6 +154,7 @@ void resetFloor(EntityManager& em)
     for (const auto e : gone)
         reg.destroy(e);
     floaters::clear();
+    notify::clear();
     swarm::restart();
 
     // He wakes at the way in, whole: body full, tank full -- the floor is exactly as the dig
@@ -228,6 +238,7 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     tools::tickParticles(em, static_cast<float>(dt));
     hit_area::update(em, static_cast<float>(dt));
     reward::update(em, static_cast<float>(dt));
+    pickup::update(em);
     floaters::update(static_cast<float>(dt));
     // AFTER the movement that chooses which animation plays, so a frame shows the pose that
     // matches where the character now is rather than trailing it by a tick. Paused above, so a
@@ -291,34 +302,171 @@ bool buildWorld(Engine& engine)
         return false;
     }
     stats::load("config/stats.json");
+    items::load("config/items");
     tools::load("config/tools.json");
     TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
 
     // Every marker the rooms carried. 'P' is a point of entry -- for now a red box standing in
     // the room, which is enough to prove placement works.
+    // WHAT KIND of hole each marker becomes: rolled from the floor's own seed, so a layout is
+    // the same holes every time it is generated. The kinds and their mix live in floor.json;
+    // each kind's file says what it looks like and where it sits (floor pit, or an arch at the
+    // base of a wall). The generator stays agnostic throughout -- letters in, meaning here.
+    struct SeepKind
+    {
+        std::string path;
+        int weight = 1;
+        sprite_def::Def def;
+        bool on_wall = false;
+    };
+    std::vector<SeepKind> kinds;
+    {
+        std::ifstream in("config/floor.json");
+        const nlohmann::json j =
+            in ? nlohmann::json::parse(in, nullptr, /*allow_exceptions=*/false) : nlohmann::json{};
+        if (!j.is_discarded())
+            for (const auto& entry : j.value("seep_types", nlohmann::json::array()))
+            {
+                SeepKind kind;
+                kind.path = entry.value("seep", std::string{});
+                kind.weight = entry.value("weight", 1);
+                std::ifstream sf(kind.path);
+                const nlohmann::json sj =
+                    sf ? nlohmann::json::parse(sf, nullptr, /*allow_exceptions=*/false)
+                       : nlohmann::json{};
+                if (!sj.is_discarded())
+                {
+                    kind.def = sprite_def::load(sj.value("sprite", std::string{}));
+                    kind.on_wall = sj.value("placement", std::string{"floor"}) == "wall";
+                }
+                kinds.push_back(std::move(kind));
+            }
+    }
+
+    // Letters an authored room may PIN to a kind: 'M' says this exact spot is a mouse hole.
+    // Plain 'P' rolls from the floor's mix. Pinned kinds not already in the mix are loaded on
+    // first sight, so a template can place something the floor would never roll.
+    std::unordered_map<char, std::string> pinned;
+    {
+        std::ifstream in("config/floor.json");
+        const nlohmann::json j =
+            in ? nlohmann::json::parse(in, nullptr, /*allow_exceptions=*/false) : nlohmann::json{};
+        if (!j.is_discarded() && j.is_object())
+        {
+            // NAMED, not a temporary: iterating .items() over the value() temporary is
+            // use-after-free -- the copy dies before the loop reads it.
+            const nlohmann::json ms = j.value("marker_seeps", nlohmann::json::object());
+            for (const auto& [letter, path] : ms.items())
+                if (!letter.empty() && path.is_string())
+                    pinned.emplace(letter.front(), path.get<std::string>());
+        }
+    }
+    const auto kindByPath = [&kinds](const std::string& path) -> const SeepKind*
+    {
+        for (const auto& k : kinds)
+            if (k.path == path)
+                return &k;
+        return nullptr;
+    };
+    const auto loadPinnedKind = [&kinds](const std::string& path) -> const SeepKind*
+    {
+        SeepKind kind;
+        kind.path = path;
+        std::ifstream sf(path);
+        const nlohmann::json sj =
+            sf ? nlohmann::json::parse(sf, nullptr, /*allow_exceptions=*/false) : nlohmann::json{};
+        if (!sj.is_discarded())
+        {
+            kind.def = sprite_def::load(sj.value("sprite", std::string{}));
+            kind.on_wall = sj.value("placement", std::string{"floor"}) == "wall";
+        }
+        kinds.push_back(std::move(kind));
+        return &kinds.back();
+    };
+
     int poeCount = 0;
     std::vector<swarm::Seep> seeps;
-    // The hole itself, if it has been drawn; a red box stands in until then. Ground layer: a
-    // hole is IN the floor, so everything that walks draws over it.
-    const sprite_def::Def holeDef = sprite_def::load("assets/sprites/hole.json");
+    std::mt19937 seepRng(floor.seed * 2654435761u + 97u);
+    int totalKindWeight = 0;
+    for (const auto& kind : kinds)
+        totalKindWeight += kind.weight;
     for (const auto& m : floor.markers)
-        if (m.type == 'P')
+    {
+        const auto pin = pinned.find(m.type);
+        if (m.type == 'P' || pin != pinned.end())
         {
-            // Where the chamber leaks. The rot pushes what it is festering up through wherever
-            // the earth is weakest, and the room templates say where that is.
+            const SeepKind* kind = kinds.empty() ? nullptr : &kinds.front();
+            if (pin != pinned.end())
+            {
+                kind = kindByPath(pin->second);
+                if (kind == nullptr)
+                    kind = loadPinnedKind(pin->second);
+            }
+            else if (totalKindWeight > 0)
+            {
+                std::uniform_int_distribution<int> roll(0, totalKindWeight - 1);
+                int ticket = roll(seepRng);
+                for (const auto& k : kinds)
+                {
+                    ticket -= k.weight;
+                    if (ticket < 0)
+                    {
+                        kind = &k;
+                        break;
+                    }
+                }
+            }
+
             const entt::entity hole = spawnBox(em, m.x, m.y, kPoeSize, 0.75f, 0.15f, 0.15f);
-            if (holeDef.ok)
+            // Where creatures actually surface. THE SPAWN MOVES WITH THE ART: a wall-mounted
+            // hole that kept emitting at its distant marker would be scenery beside an
+            // invisible fountain -- the one thing a spawner may never be is somewhere other
+            // than where it spawns.
+            float seepX = m.x;
+            float seepY = m.y;
+            if (kind != nullptr && kind->def.ok)
             {
                 auto& spr = em.registry().get<Sprite>(hole);
-                spr.texture_path = holeDef.sheet;
-                spr.src_w = holeDef.frame_w;
-                spr.src_h = holeDef.frame_h;
+                spr.texture_path = kind->def.sheet;
+                spr.src_w = kind->def.frame_w;
+                spr.src_h = kind->def.frame_h;
                 spr.layer = 1;
                 em.registry().remove<SolidColor>(hole);
+                if (kind->on_wall)
+                {
+                    // An arch at the lower CENTRE of the nearest wall above -- snapped to the
+                    // tile so it reads as architecture, bottom flush with the wall's base so it
+                    // touches the floor it feeds. Creatures surface at its mouth. No wall in
+                    // reach: the art stays a floor pit, better honest than floating.
+                    const auto ts = static_cast<float>(em.tile_map.tile_size);
+                    for (int step = 1; step <= 4; ++step)
+                    {
+                        const float wy = m.y - static_cast<float>(step) * ts;
+                        if (!world::walkable(em, m.x, wy))
+                        {
+                            auto& t = em.registry().get<Transform>(hole);
+                            t.x = std::floor(m.x / ts) * ts + ts * 0.5f;
+                            const float wallBottom = std::floor(wy / ts) * ts + ts;
+                            t.y = wallBottom - static_cast<float>(kind->def.frame_h) * 0.5f;
+                            em.registry().get<Sprite>(hole).layer = 2;
+                            seepX = t.x;
+                            seepY = wallBottom + 8.0f; // the floor at the arch's mouth
+                            break;
+                        }
+                    }
+                }
             }
-            seeps.push_back(swarm::Seep{m.x, m.y});
+            poe::log().info("world: marker '{}' ({:.0f},{:.0f}) -> '{}', art ({:.0f},{:.0f}), "
+                            "spawn ({:.0f},{:.0f})",
+                            std::string(1, m.type), m.x, m.y,
+                            kind != nullptr ? kind->path : "<none>",
+                            em.registry().get<Transform>(hole).x,
+                            em.registry().get<Transform>(hole).y, seepX, seepY);
+            seeps.push_back(
+                swarm::Seep{seepX, seepY, kind != nullptr ? kind->path : std::string{}});
             ++poeCount;
         }
+    }
 
     const entt::entity playerEnt =
         spawnBox(em, floor.spawn_x, floor.spawn_y, kPlayerSize, 0.85f, 0.84f, 0.78f);
@@ -358,8 +506,9 @@ bool buildWorld(Engine& engine)
     poe::log().info("world: player at ({:.0f},{:.0f}), {} points of entry", floor.spawn_x,
                     floor.spawn_y, poeCount);
     // Opening the space is what disturbs it. Depth 0 for now; the gadget will carry the real
-    // one when digging exists.
-    swarm::begin(swarm::assaultForDepth("config/swarm.json", 0), seeps);
+    // one when digging exists -- and with it, the law: proximity to the source dictates
+    // difficulty, and everything downstream reads this one number.
+    swarm::begin("config/swarm.json", seeps, 0);
     sApp.world_built = true;
     return true;
 }

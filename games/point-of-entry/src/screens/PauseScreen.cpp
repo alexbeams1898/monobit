@@ -18,8 +18,8 @@ namespace
 {
 // The tabs. Sheet first: pausing to look at yourself is the common case; the machine's
 // business is one keypress right.
-constexpr std::array<const char*, 2> kTabs{"Sheet", "System"};
-constexpr int kTabCount = 2;
+constexpr std::array<const char*, 3> kTabs{"Sheet", "Satchel", "System"};
+constexpr int kTabCount = 3;
 
 // No Resume row: Esc IS resume, from anywhere on the screen, and a menu entry duplicating the
 // key that opened the menu is noise. Leaving puts you back at the title; quitting closes the
@@ -114,6 +114,32 @@ void renderSheet(EntityManager& em, const Mouse& mouse, float cx, float y)
     }
 }
 
+// What he is carrying: a receipt, not a menu -- name, quality, count. Nothing here is usable
+// yet; using things arrives with crafting.
+void renderSatchel(EntityManager& em, float cx, float y)
+{
+    const float lh = screen_style::lineHeight();
+    const entt::entity pl = player::entity();
+    if (!em.registry().valid(pl) || !em.registry().all_of<Satchel>(pl) ||
+        em.registry().get<Satchel>(pl).items.empty())
+    {
+        screen_style::textCentered("nothing collected", cx, y, screen_style::kTextDim);
+        return;
+    }
+    static constexpr const char* kQuality[4] = {"crude", "standard", "fine", "superior"};
+    float rowY = y;
+    for (const auto& held : em.registry().get<Satchel>(pl).items)
+    {
+        const ItemDef& def = items::get(held.item);
+        screen_style::text(def.name, cx - lh * 7.0f, rowY, screen_style::kText);
+        screen_style::text(kQuality[static_cast<int>(held.quality)], cx + lh * 1.5f, rowY,
+                           screen_style::kTextDim);
+        screen_style::text("x" + std::to_string(held.count), cx + lh * 6.0f, rowY,
+                           screen_style::kTextHot);
+        rowY += lh * 1.4f;
+    }
+}
+
 Action renderSystem(const Mouse& mouse, float cx, float y)
 {
     const float lh = screen_style::lineHeight();
@@ -165,6 +191,8 @@ Action step(bool up, bool down, bool left, bool right, bool confirm, bool back)
         sSpendRequested = confirm;
         return Action::None;
     }
+    if (sTab == 1)
+        return Action::None; // the satchel is a receipt; nothing to choose yet
     if (up)
         sCursor = (sCursor - 1 + kCount) % kCount;
     if (down)
@@ -202,6 +230,11 @@ Action render(EntityManager& em, const Mouse& mouse, int windowW, int windowH)
     if (sTab == 0)
     {
         renderSheet(em, mouse, cx, y);
+        return Action::None;
+    }
+    if (sTab == 1)
+    {
+        renderSatchel(em, cx, y);
         return Action::None;
     }
     return renderSystem(mouse, cx, y);

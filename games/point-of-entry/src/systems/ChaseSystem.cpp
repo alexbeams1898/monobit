@@ -18,30 +18,15 @@ namespace chase
 namespace
 {
 
-// How fast the junk walks, world px/s. Slower than the exterminator, so a swarm is something you
-// can outrun in a straight line and not in a corner -- which is what makes positioning the skill
-// rather than reflexes.
-constexpr float kAntSpeed = 46.0f;
-
 // Contact hurts once every this many seconds. Vermin have no attack: touching you IS the attack,
 // which is what lets hundreds of them exist without hundreds of attack animations.
 constexpr float kTouchInterval = 0.6f;
 constexpr float kTouchRadius = 12.0f;
 
-// THE VIBRATION -- what makes a thing read as an insect rather than a small animal.
-//
-// It GLIDES toward you on a steady heading, and the wrongness is a fast tremor laid over that
-// glide rather than a change of course. That distinction is the whole effect: heading error makes
-// a creature look lost and busy, running about its own business, where a vibration on a straight
-// approach looks like something that has decided about you and is coming.
-//
-// The tremor is applied as a DRAW OFFSET, not as movement -- the body buzzes while the creature
-// itself travels in a straight line. Nudging the position instead would let it shiver through
-// walls and would make the swarm's collision behave as badly as it looks.
-constexpr float kBuzzHz = 21.0f;     // fast enough to read as vibration rather than as wobble
-constexpr float kBuzzAmount = 0.35f; // world px of tremor -- felt more than seen
-constexpr float kDriftHz = 1.7f; // slow lateral float, so the glide is not a ruler-straight line
-constexpr float kDriftAmount = 0.16f;
+// Movement character is the SPECIES' business (see Motion in GameComponents): a tremor makes an
+// insect, a plain glide makes a mammal, and this system applies whatever the creature declared
+// without knowing which is which. The tremor is a DRAW OFFSET, never movement -- the body
+// buzzes while the creature travels straight, so it cannot shiver through a wall.
 
 // Bodies shove each other out of overlap AFTER moving. Nothing
 // ever deflects a creature's heading (steering forces make a swarm swerve and fidget); each one
@@ -214,14 +199,15 @@ void update(EntityManager& em, float dt)
             sk.phase = static_cast<float>(entt::to_integral(entity) % 997) * 0.618f;
         sk.until += dt; // doubles as this creature's own clock
 
-        // A slow lateral float on the approach. Small: enough that a crowd does not converge into
-        // one line, not enough to look like it is wandering.
-        const float drift = std::sin((sk.until + sk.phase) * kDriftHz) * kDriftAmount;
+        const auto& motion = reg.get_or_emplace<Motion>(entity, Motion{});
+        const float drift = std::sin((sk.until + sk.phase) * motion.drift_hz) * motion.drift_amount;
         const float gx = dx - dy * drift;
         const float gy = dy + dx * drift;
 
-        vel.dx = gx * kAntSpeed;
-        vel.dy = gy * kAntSpeed;
+        // Speed is the species' own (see Vermin) -- generally slower than the exterminator in a
+        // straight line, so positioning beats reflexes; a faster species narrows that margin.
+        vel.dx = gx * vermin.speed;
+        vel.dy = gy * vermin.speed;
 
         // Face the way it is actually heading; a creature gliding left while drawn facing right
         // is the moonwalk bug at swarm scale. Vertical-only travel keeps the last side.
@@ -231,8 +217,10 @@ void update(EntityManager& em, float dt)
             facing->render_dx = facing->dx;
         }
 
-        // The tremor. Perpendicular to travel, fast, and drawn rather than moved -- see above.
-        const float buzz = std::sin((sk.until + sk.phase) * kBuzzHz * 6.2831853f) * kBuzzAmount;
+        // The tremor, if this species declared one; zero amount writes a clean zero offset, so
+        // a plain walker is exactly plain rather than carrying a stale buzz from anything.
+        const float buzz =
+            std::sin((sk.until + sk.phase) * motion.buzz_hz * 6.2831853f) * motion.buzz_amount;
         auto& spr = reg.get<Sprite>(entity);
         spr.draw_offset_x = -dy * buzz;
         spr.draw_offset_y = dx * buzz;

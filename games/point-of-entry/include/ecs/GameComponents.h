@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ecs/ItemConfig.h"
+
 #include <vector>
 
 #include <entt/entt.hpp>
@@ -106,10 +108,53 @@ struct Surge
     float remaining = 0.0f;
 };
 
-// Marks the vermin. Areas hurt these; the exterminator is not one.
+// How a species MOVES WRONG, declared in its creature file. All zeros -- the default -- is a
+// plain straight walk: character is opt-in, and a creature that declares nothing gets nothing.
+// buzz is a fast tremor drawn over the glide (insect language); drift is a slow lateral float
+// on the approach so a crowd does not converge into one line.
+struct Motion
+{
+    float buzz_hz = 0.0f;
+    float buzz_amount = 0.0f; // world px, perpendicular to travel, draw-only
+    float drift_hz = 0.0f;
+    float drift_amount = 0.0f;
+};
+
+// What he is carrying. Instances stack by (item, quality) -- a fine flake and a crude flake
+// are different goods and stay different stacks.
+struct Satchel
+{
+    std::vector<ItemInstance> items;
+};
+
+// A thing lying where something died. Collected by WALKING ONTO it -- no magnet: currency is
+// automatic because it is abstract, but goods are picked up by a man bending down, and the
+// difference is the difference between income and work.
+struct ItemDrop
+{
+    ItemInstance contents;
+};
+
+// The species' drop table, riding the creature so death does not need to know species exist.
+struct DropTable
+{
+    std::vector<DropEntry> entries;
+};
+
+// Which hole this creature came out of, so each seep can gate its own next wave on ITS output
+// being dead -- clearing gates progress, per hole, and two holes stagger honestly.
+struct SeepSource
+{
+    int index = 0;
+};
+
+// Marks the vermin. Areas hurt these; the exterminator is not one. The numbers ride the
+// component because they differ per SPECIES, and the systems that read them must not know
+// species exist -- a creature is its config file, nowhere else.
 struct Vermin
 {
     float contact_damage = 0.0f;
+    float speed = 46.0f;
 };
 
 // The exterminator's sheet: five stats, everything else derived.

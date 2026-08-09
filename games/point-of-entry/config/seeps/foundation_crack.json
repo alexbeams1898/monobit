@@ -1,0 +1,7 @@
+{
+    "_comment": "A seep TYPE: what kind of hole this is, what it looks like, and what can come through it. The trade reads the entry to know the pest -- ants fit a 1/25-inch crack -- so the hole declares its own fauna, with weights for the mix and min_wave for when a species joins. The assault (swarm.json) still owns pacing; this owns the WHO.",
+    "sprite": "assets/sprites/hole.json",
+    "creatures": [
+        { "creature": "config/creatures/ant.json", "weight": 10, "min_wave": 1 }
+    ]
+}

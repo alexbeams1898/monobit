@@ -39,6 +39,10 @@ struct Floor
     float spawn_x = 0.0f; // where the player starts -- centre of the first room
     float spawn_y = 0.0f;
     std::vector<Marker> markers;
+    // The seed the ACCEPTED layout was built from (generation may reroll internally). Anything
+    // deriving further per-floor decisions -- which kind of hole each marker becomes -- seeds
+    // from this, so a floor is the same floor every time it is generated.
+    unsigned seed = 0;
     bool ok = false; // false = nothing could be generated (no rooms, bad config)
 };
 

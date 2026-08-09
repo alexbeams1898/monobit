@@ -54,6 +54,15 @@ bool load(const std::string& path)
     sFormulas.scaling.per_point = sc.value("per_point", sFormulas.scaling.per_point);
     const auto& rest = j.value("rest", nlohmann::json::object());
     sFormulas.rest.heal_per_second = rest.value("heal_per_second", sFormulas.rest.heal_per_second);
+    const auto& lt = j.value("loot", nlohmann::json::object());
+    if (lt.contains("quality_thresholds") && lt["quality_thresholds"].is_array() &&
+        lt["quality_thresholds"].size() == 3)
+        for (int i = 0; i < 3; ++i)
+            sFormulas.loot.quality_thresholds[i] = lt["quality_thresholds"][static_cast<size_t>(i)];
+    sFormulas.loot.inspection_chance_scale =
+        lt.value("inspection_chance_scale", sFormulas.loot.inspection_chance_scale);
+    sFormulas.loot.inspection_quality_scale =
+        lt.value("inspection_quality_scale", sFormulas.loot.inspection_quality_scale);
     const auto& r = j.value("reward", nlohmann::json::object());
     sFormulas.reward.xp_base = r.value("xp_base", sFormulas.reward.xp_base);
     sFormulas.reward.xp_growth = r.value("xp_growth", sFormulas.reward.xp_growth);

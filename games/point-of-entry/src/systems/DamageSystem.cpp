@@ -3,12 +3,16 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
+#include "ops/LootOps.h"
 #include "renderers/FloaterRenderer.h"
 #include "systems/CombatSystem.h"
+#include "systems/PickupSystem.h"
+#include "systems/PlayerSystem.h"
 #include "systems/RewardSystem.h"
 
 #include <algorithm>
 #include <cmath>
+#include <random>
 #include <vector>
 
 namespace hit_area
@@ -182,6 +186,18 @@ void update(EntityManager& em, float dt)
         tools::creditKill(em);
         if (const auto* worth = reg.try_get<Worth>(e))
             reward::credit(em, worth->xp);
+        // Goods hit the floor where it died; the roll is the species' table against his
+        // Inspection. One rng for the whole game's drops -- reseeding per kill would make a
+        // wave's loot correlate with its spawn pattern.
+        if (const auto* table = reg.try_get<DropTable>(e))
+            if (const auto* t = reg.try_get<Transform>(e))
+            {
+                static std::mt19937 sRng{std::random_device{}()};
+                const auto* sheet = reg.try_get<Stats>(player::entity());
+                const int insp = sheet != nullptr ? sheet->inspection : 1;
+                for (const auto& inst : loot::roll(table->entries, insp, sRng))
+                    pickup::spawnDrop(em, t->x, t->y, inst);
+            }
         reg.destroy(e);
     }
 }

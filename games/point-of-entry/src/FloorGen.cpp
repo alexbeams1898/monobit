@@ -350,6 +350,7 @@ Floor generateOnce(EntityManager& em, const Config& cfg, const std::vector<Room>
                    unsigned seed)
 {
     Floor out;
+    out.seed = seed;
     std::mt19937 rng(seed);
 
     // Solid to begin with; rooms and corridors carve into it.

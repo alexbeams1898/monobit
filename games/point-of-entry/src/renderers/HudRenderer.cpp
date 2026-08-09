@@ -5,6 +5,7 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
+#include "renderers/NotificationRenderer.h"
 #include "screens/ScreenStyle.h"
 #include "systems/AimSystem.h"
 #include "systems/CombatSystem.h"
@@ -253,8 +254,9 @@ void render(Engine& engine, EntityManager& em)
 
     waveState(engine, em);
 
-    // BOTTOM LEFT: what is in his hand.
+    // BOTTOM LEFT: what is in his hand, and the acquisition feed above it.
     equipped(engine, em);
+    notify::render(engine, dt);
 
     // BOTTOM RIGHT: the pocket, in a box, with the gain pumping into it.
     tickPump(reward::banked(em), dt);

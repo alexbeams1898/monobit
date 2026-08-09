@@ -1,0 +1,25 @@
+{
+    "_comment": "A creature is a FILE. Everything the waves need to field one lives here -- adding a species to the bestiary is writing one of these plus a drawing, never touching code. min_wave is when it starts appearing; weight is its share of the mix among everything eligible. movement declares the species' character -- the ant's tremor is insect language; a file that omits the block walks plainly.",
+    "sprite": "assets/sprites/ant.json",
+    "health": 7,
+    "contact_damage": 4,
+    "speed": 46.0,
+    "xp": 2,
+    "scale": 0.75,
+    "min_wave": 1,
+    "weight": 10,
+    "movement": {
+        "buzz_hz": 21.0,
+        "buzz_amount": 0.35,
+        "drift_hz": 1.7,
+        "drift_amount": 0.16
+    },
+    "drops": [
+        {
+            "item": "config/items/materials/chitin_flake.json",
+            "min": 1,
+            "max": 1,
+            "chance": 0.02
+        }
+    ]
+}

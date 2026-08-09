@@ -1,4 +1,7 @@
 #include "FloorGen.h"
+#include "ecs/Components.h"
+#include "ecs/GameComponents.h"
+#include "systems/WaveSystem.h"
 #include "ecs/EntityManager.h"
 
 #include <nlohmann/json.hpp>
@@ -171,5 +174,76 @@ TEST_CASE("spawner markers keep their distances", "[floorgen]")
                 CHECK(dx * dx + dy * dy >= ts * ts);
             }
         }
+    }
+}
+
+TEST_CASE("every seep and creature file parses and keeps its promises", "[bestiary]")
+{
+    // The bestiary is data, so a typo in a file is a content bug the compiler cannot see. The
+    // seep files are the roster now: every kind the floor can open must parse, and every
+    // creature any of them names must exist, parse, name real art, and carry sane numbers.
+    std::ifstream fin("config/floor.json");
+    REQUIRE(fin.good());
+    const nlohmann::json floorCfg = nlohmann::json::parse(fin);
+    std::vector<std::string> creaturePaths;
+    const auto kinds = floorCfg.value("seep_types", nlohmann::json::array());
+    REQUIRE(!kinds.empty());
+    for (const auto& kind : kinds)
+    {
+        INFO(kind.value("seep", std::string{}));
+        CHECK(kind.value("weight", 0) > 0);
+        std::ifstream sf(kind.value("seep", std::string{}));
+        REQUIRE(sf.good());
+        const nlohmann::json sj = nlohmann::json::parse(sf, nullptr, false);
+        REQUIRE_FALSE(sj.is_discarded());
+        const auto fauna = sj.value("creatures", nlohmann::json::array());
+        CHECK(!fauna.empty()); // a hole nothing comes through is set dressing, not a seep
+        for (const auto& entry : fauna)
+        {
+            CHECK(entry.value("weight", 0) > 0);
+            creaturePaths.push_back(entry.value("creature", std::string{}));
+        }
+    }
+    for (const auto& path : creaturePaths)
+    {
+        INFO(path);
+        std::ifstream f(path);
+        REQUIRE(f.good());
+        const nlohmann::json j = nlohmann::json::parse(f, nullptr, false);
+        REQUIRE_FALSE(j.is_discarded());
+        CHECK(j.value("health", 0) > 0);
+        CHECK(j.value("contact_damage", 0.0f) > 0.0f);
+        CHECK(j.value("speed", 0.0f) > 0.0f);
+        CHECK(j.value("xp", 0) > 0);
+        std::ifstream art(j.value("sprite", std::string{}));
+        CHECK(art.good()); // the drawing it names must exist
+    }
+}
+
+TEST_CASE("what emerges can actually move", "[bestiary]")
+{
+    // A rewrite of the emergence code once dropped Velocity, leaving every creature a statue --
+    // the systems that move things view <Transform, Velocity, Vermin>, and an entity missing
+    // any of them silently falls out of the world's attention. This pins the component recipe
+    // by running the real machinery: begin an assault, tick until something surfaces, and
+    // demand it carries everything the movement pipeline needs.
+    EntityManager em;
+    em.tile_map.tile_size = 32;
+    em.tile_map.width = 10;
+    em.tile_map.height = 10;
+    em.tile_map.tiles.assign(100, TileMap::Tile{0, true});
+
+    swarm::begin("config/swarm.json",
+                 {swarm::Seep{160.0f, 160.0f, "config/seeps/foundation_crack.json"}}, 0);
+    for (int i = 0; i < 600 && em.registry().view<Vermin>().size() == 0; ++i)
+        swarm::update(em, 0.016f);
+    REQUIRE(em.registry().view<Vermin>().size() > 0);
+    for (const auto e : em.registry().view<Vermin>())
+    {
+        CHECK(em.registry().all_of<Velocity>(e));
+        CHECK(em.registry().all_of<Transform>(e));
+        CHECK(em.registry().all_of<Health>(e));
+        CHECK(em.registry().all_of<Worth>(e));
+        CHECK(em.registry().all_of<SeepSource>(e));
     }
 }

@@ -14,10 +14,14 @@ add_library(poe-systems STATIC
     src/systems/ChaseSystem.cpp
     src/renderers/FloaterRenderer.cpp
     src/systems/RewardSystem.cpp
+    src/ecs/ItemConfig.cpp
+    src/ops/LootOps.cpp
+    src/systems/PickupSystem.cpp
     src/ecs/BalanceConfig.cpp
     src/systems/WaveSystem.cpp
     src/systems/AimSystem.cpp
     src/renderers/HudRenderer.cpp
+    src/renderers/NotificationRenderer.cpp
     src/systems/CombatSystem.cpp
     src/ops/NavUtils.cpp
     src/systems/GaitSystem.cpp
@@ -63,6 +67,7 @@ add_dependencies(point-of-entry poe-sync-assets-and-config)
 add_executable(poe-tests
     tests/floorgen_test.cpp
     tests/sprite_anim_test.cpp
+    tests/loot_test.cpp
     tests/reward_test.cpp
     tests/stats_test.cpp
 )

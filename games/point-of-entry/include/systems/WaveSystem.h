@@ -5,62 +5,49 @@
 
 class EntityManager;
 
-// What comes up out of the ground, and when.
+// The holes, each running its OWN program.
 //
-// Everything in this game festers up from the rot below and pushes through wherever the earth is
-// weakest. A dug chamber has SEEPS -- the places it comes through -- authored as markers in the
-// room templates, so where a floor bleeds is level data rather than a rule in code.
+// A seep is not a lottery ticket -- it is a typed entry point (config/seeps/) declaring what
+// can come through it, how its waves run, and what it looks like. Every seep on the floor
+// schedules independently, so pressure arrives staggered from different bearings and no single
+// held cone answers the floor.
 //
-// The swarm arrives in WAVES rather than all at once: a wave is a breath, and the gap between
-// them is when the player moves, reloads his nerve, and looks at the bar. Clear every wave and
-// the space is his; until then it is not.
+// THE LAW OF DEPTH: proximity to the source dictates difficulty. Depth is the only dial --
+// it scales wave sizes through the assault curves, JUICES what emerges (the same species,
+// multiplied), and past a species' threshold sends its evolved form instead. All of it reads
+// one config surface (swarm.json curves + creature files); nothing scales per-case.
 namespace swarm
 {
 
-// Where a chamber leaks. Placed from a room marker; enemies emerge here.
+// One placed hole: where, and what KIND (a seep file path).
 struct Seep
 {
     float x = 0.0f;
     float y = 0.0f;
+    std::string type;
 };
 
-// How a floor's assault is shaped. Read from config, scaled by depth -- the same numbers
-// growing is what makes a deeper dig worse without authoring each one by hand.
-struct Assault
-{
-    int waves = 3;
-    int per_wave = 6;      // at the first wave; each is bigger than the last
-    float growth = 1.4f;   // multiplier per wave
-    float spacing = 0.25f; // seconds between individual arrivals within a wave
-    float breath = 3.0f;   // seconds of quiet between waves
-};
-
-// Where the fight is up to. One per dug chamber, not one per game.
+// Where the whole floor's fight is up to -- the aggregate over every seep's own program.
 enum class Phase
 {
-    Quiet,    // nothing has been disturbed yet
-    Emerging, // a wave is coming up out of the ground
-    Fighting, // everything in this wave is out; kill it
-    Breath,   // wave cleared, the next is gathering
-    Cleared,  // the whole assault is done -- the space is yours
+    Quiet,    // nothing disturbed yet
+    Emerging, // at least one hole is producing
+    Fighting, // everything scheduled is out; kill it
+    Breath,   // every hole is between waves
+    Cleared,  // every program finished and everything dead
 };
 
-// Begin the assault on this chamber. Called when the space is disturbed.
-void begin(const Assault& assault, const std::vector<Seep>& seeps);
+// Begin the floor's assault: each seep starts its own program, shaped by depth.
+void begin(const std::string& configPath, const std::vector<Seep>& seeps, int depth);
 
-// Start the SAME assault over from the first wave. What dying costs: the chamber floods back
-// to the state the dig left it in.
+// The same floor over again -- what dying costs.
 void restart();
 
-// Spawn, advance waves, notice when it is over.
 void update(EntityManager& em, float dt);
 
 Phase phase();
-int waveNumber();
-int totalWaves();
+int waveNumber(); // the furthest wave any hole has reached
+int totalWaves(); // the longest program on the floor
 int remaining(const EntityManager& em);
-
-// Load the assault shape for a given depth. Deeper is worse, from one set of curves.
-Assault assaultForDepth(const std::string& configPath, int depth);
 
 } // namespace swarm

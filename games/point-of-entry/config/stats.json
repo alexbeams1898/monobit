@@ -32,5 +32,14 @@
     },
     "rest": {
         "heal_per_second": 15.0
+    },
+    "loot": {
+        "quality_thresholds": [
+            20.0,
+            38.0,
+            48.0
+        ],
+        "inspection_chance_scale": 0.06,
+        "inspection_quality_scale": 1.5
     }
 }

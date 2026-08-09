@@ -48,6 +48,14 @@ struct Formulas
     } rest;
     struct
     {
+        // Quality score cutoffs (0-50 roll + Inspection's nudge): below [0] crude, then
+        // standard, then fine; past [2] superior.
+        float quality_thresholds[3] = {20.0f, 38.0f, 48.0f};
+        float inspection_chance_scale = 0.06f; // drop chance, multiplicative per point
+        float inspection_quality_scale = 1.5f; // score points added per Inspection point
+    } loot;
+    struct
+    {
         int xp_base = 40;        // price of the first point
         float xp_growth = 1.35f; // each point costs this much more
     } reward;

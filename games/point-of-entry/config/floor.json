@@ -1,5 +1,5 @@
 {
-    "_comment": "Floor layout (see include/FloorGen.h). The floor is a grid of tiles that starts solid; rooms from config/rooms/*.room are stamped into it and connected with corridors. room_attempts is how many placements are tried before giving up, room_target how many are wanted. corridor_half: a corridor is (2*half + 1) tiles wide. tile_size 32 against the 1280x720 internal render gives 40x22 tiles on screen -- the close, room-at-a-time framing this game wants -- while the buffer still upscales by a clean integer. Chunkiness comes from the TILE, not from starving the framebuffer. SIZE: a dug chamber is one fight, not a level -- about two screens across, so the swarm finds you rather than you hunting it through empty corridor. The gadget will scale this with depth. spaced_markers: placement rules for marker letters that are SPAWNERS -- they keep a minimum distance from the spawn (nobody should surface next to the way in) and from each other; a marker violating the rule is dropped, but a floor always keeps at least one (the farthest from the spawn), because a chamber with nothing seeping is not a chamber.",
+    "_comment": "Floor layout (see include/FloorGen.h). The floor is a grid of tiles that starts solid; rooms from config/rooms/*.room are stamped into it and connected with corridors. room_attempts is how many placements are tried before giving up, room_target how many are wanted. corridor_half: a corridor is (2*half + 1) tiles wide. tile_size 32 against the 1280x720 internal render gives 40x22 tiles on screen -- the close, room-at-a-time framing this game wants -- while the buffer still upscales by a clean integer. Chunkiness comes from the TILE, not from starving the framebuffer. SIZE: a dug chamber is one fight, not a level -- about two screens across, so the swarm finds you rather than you hunting it through empty corridor. The gadget will scale this with depth. spaced_markers: placement rules for marker letters that are SPAWNERS -- they keep a minimum distance from the spawn (nobody should surface next to the way in) and from each other; a marker violating the rule is dropped, but a floor always keeps at least one (the farthest from the spawn), because a chamber with nothing seeping is not a chamber. seep_types: what kinds of hole this floor can open -- one is rolled per spawner marker, deterministically from the floor's seed, so a layout is the same holes every time it is generated. marker_seeps pins a letter to a seep kind -- an authored room can say THIS spot is a mouse hole; plain P still rolls from seep_types.",
     "width": 34,
     "height": 26,
     "tile_size": 32,
@@ -19,9 +19,22 @@
         }
     },
     "spaced_markers": {
-        "types": "P",
+        "types": "PM",
         "min_from_spawn_tiles": 6,
         "min_apart_tiles": 5,
         "min_count": 2
+    },
+    "seep_types": [
+        {
+            "seep": "config/seeps/foundation_crack.json",
+            "weight": 6
+        },
+        {
+            "seep": "config/seeps/gnaw_hole.json",
+            "weight": 4
+        }
+    ],
+    "marker_seeps": {
+        "M": "config/seeps/gnaw_hole.json"
     }
 }

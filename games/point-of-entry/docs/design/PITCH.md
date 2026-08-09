@@ -255,6 +255,25 @@ setback is a bad day at work, not a lost run.
   shooting optimal. Enemy design must answer it — things that close fast, flank,
   or punish standing still.
 
+## THE LAW OF DEPTH: proximity to the source dictates difficulty [SETTLED]
+
+One axis, physically meaningful: the deeper the dig, the closer to the source,
+the worse everything gets -- and that is the ONLY difficulty dial the game has.
+Not a level number wearing a costume: proximity is a fact about where you are
+standing, and the fiction and the difficulty curve are the same object.
+
+What proximity drives (all through one formula surface, never per-case):
+
+- What a seep produces, and how hard its waves press.
+- How JUICED what emerges is -- the same species, scaled.
+- When a species' EVOLVED form starts coming through instead. Evolution is
+  bestiary data: a creature file pointing at its worse self.
+
+(Authorial note, unlocked: the working idea for the source is industrial -- a
+spill, not a god -- which keeps the horror OSHA-shaped. Whether that is ever
+CONFIRMED to the player must be reconciled with "What the game refuses to
+explain"; rumor-and-evidence, never a document.)
+
 ## Stats [SETTLED in shape]
 
 Five, and no more. A souls sheet in overalls -- every word is real trade
@@ -279,6 +298,30 @@ heavily simplified, not copied.
 grades; `damageOf(tool, stats)` blends them. The wand is the first example:
 a Chemical-scaling stream. A weapon's own properties (Coverage, Precision,
 Purity) are separate from WHO is holding it.
+
+## Rank [SETTLED in shape]
+
+**The exterminator has a RANK, and it is never stored -- always computed**, the
+same doctrine as level: derived from checkable facts (stat minimums, the shape
+of the spread, per-species kill tallies, jobs completed), so it can never
+disagree with the record that should explain it.
+
+The ladder is loosely traced from the real credentialing of the trade --
+supervised apprenticeship, per-category exams, verified field experience,
+board certification -- without being slavish about it. Working names, one word
+each, LESS descriptive as they climb (which is exactly how real credentials
+read from outside):
+
+  Apprentice -> Technician -> Applicator -> Associate -> Board
+
+- Rungs check different KINDS of fact: early ones check totals, the
+  Applicator tier checks the spread's shape per discipline (the real thing has
+  an exam per category), the top tiers check the record -- verified kills,
+  which is also the bestiary's data.
+- **Rank gates gear and unlocks** -- the trade's own logic: an apprentice may
+  not handle restricted chemicals, and the game never has to invent a reason.
+- The deadpan: the descent counts toward his verified field experience, and he
+  is aware of this.
 
 ## The town [SETTLED in shape]
 
