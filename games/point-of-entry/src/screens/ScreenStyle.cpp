@@ -2,12 +2,16 @@
 
 #include "FontManager.h"
 
+#include <algorithm>
+#include <cmath>
+
 namespace screen_style
 {
 namespace
 {
 FontHandle sBody = -1;
 FontHandle sHeading = -1;
+FontHandle sDisplay = -1;
 
 // How much wider than the text a menu row's hit area is, so the mouse does not have to land
 // on a glyph. A fraction of the line height, to scale with the font.
@@ -19,6 +23,89 @@ void init(FontHandle body, FontHandle heading)
 {
     sBody = body;
     sHeading = heading;
+}
+
+Color withAlpha(const Color& c, float a)
+{
+    return Color{c.r, c.g, c.b, a};
+}
+
+Color black(float a)
+{
+    return Color{0.0f, 0.0f, 0.0f, a};
+}
+
+int sScale = 1;
+
+int uiScale()
+{
+    return sScale;
+}
+
+float pad(int units)
+{
+    return static_cast<float>(units * 4 * sScale);
+}
+
+void textRight(const std::string& s, float xRight, float y, const Color& c)
+{
+    text(s, xRight - UIRenderer::measureText(sBody, s).width, y, c);
+}
+
+void textInBox(const std::string& s, const Rect& box, const Color& c, bool alignRight)
+{
+    const auto size = UIRenderer::measureText(sBody, s);
+    const float x =
+        alignRight ? box.x + box.w - pad(2) - size.width : box.x + (box.w - size.width) * 0.5f;
+    const float y = box.y + (box.h - size.height) * 0.5f;
+    text(s, x, y, c);
+}
+
+float pageHeadingY(int windowH)
+{
+    return static_cast<float>(windowH) * 0.22f;
+}
+
+float pageContentY(int windowH)
+{
+    return pageHeadingY(windowH) + lineHeight() * 2.4f;
+}
+
+float pageRowH()
+{
+    return lineHeight() * 1.6f;
+}
+
+float titleY(int windowH)
+{
+    return static_cast<float>(windowH) * 0.26f;
+}
+
+float titleMenuY(int windowH)
+{
+    return static_cast<float>(windowH) * 0.62f;
+}
+
+void displayCentered(const std::string& s, float cx, float y, const Color& c)
+{
+    if (sDisplay < 0)
+        return;
+    const float w = UIRenderer::measureText(sDisplay, s).width;
+    UIRenderer::drawText(sDisplay, s, cx - w * 0.5f + 2.0f, y + 2.0f, kShadow);
+    UIRenderer::drawText(sDisplay, s, cx - w * 0.5f, y, c);
+}
+
+void initFonts(int windowH)
+{
+    // 16/32 px at 720; whole multiples above. round() rather than floor so 1080p lands on 2x
+    // rather than starving at 1x.
+    const int k = std::max(1, static_cast<int>(std::lround(static_cast<float>(windowH) / 720.0f)));
+    sScale = k;
+    const float body = static_cast<float>(16 * k);
+    const float heading = static_cast<float>(32 * k);
+    init(FontManager::loadFont("assets/fonts/VT323-Regular.ttf", body),
+         FontManager::loadFont("assets/fonts/VT323-Regular.ttf", heading));
+    sDisplay = FontManager::loadFont("assets/fonts/VT323-Regular.ttf", static_cast<float>(48 * k));
 }
 
 float lineHeight()

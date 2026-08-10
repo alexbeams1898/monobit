@@ -4,6 +4,7 @@
 #include "ecs/GameComponents.h"
 #include "systems/PlayerSystem.h"
 #include "systems/RewardSystem.h"
+#include "systems/ThermosSystem.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <entt/entt.hpp>
@@ -105,4 +106,37 @@ TEST_CASE("the pocket survives death", "[reward]")
     auto& hp = em.registry().get<Health>(p);
     hp.current = 0; // dead by any system's standard
     CHECK(reward::banked(em) == 300);
+}
+
+TEST_CASE("the thermos rations, refuses waste, and refills on rest", "[thermos]")
+{
+    EntityManager em;
+    const entt::entity p = makePlayer(em);
+    thermos::load("config/stats.json");
+    REQUIRE(thermos::sipsLeft() == thermos::sipsMax());
+
+    // A sip at full health and full stamina is refused -- the flask does not waste.
+    CHECK_FALSE(thermos::sip(em));
+    CHECK(thermos::sipsLeft() == thermos::sipsMax());
+
+    // Hurt, a sip heals and costs a charge.
+    auto& hp = em.registry().get<Health>(p);
+    hp.current = 1;
+    CHECK(thermos::sip(em));
+    CHECK(em.registry().get<Health>(p).current > 1);
+    CHECK(thermos::sipsLeft() == thermos::sipsMax() - 1);
+
+    // Drain it dry: an empty flask does nothing however hurt he is.
+    for (int i = 0; i < 20; ++i)
+    {
+        em.registry().get<Health>(p).current = 1;
+        thermos::sip(em);
+    }
+    em.registry().get<Health>(p).current = 1;
+    CHECK_FALSE(thermos::sip(em));
+
+    // Resting refills and mends in one act.
+    thermos::rest(em);
+    CHECK(thermos::sipsLeft() == thermos::sipsMax());
+    CHECK(em.registry().get<Health>(p).current == em.registry().get<Health>(p).max);
 }

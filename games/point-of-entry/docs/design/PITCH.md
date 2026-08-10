@@ -299,6 +299,33 @@ grades; `damageOf(tool, stats)` blends them. The wand is the first example:
 a Chemical-scaling stream. A weapon's own properties (Coverage, Precision,
 Purity) are separate from WHO is holding it.
 
+## THE MECHANIC DOCTRINE [SETTLED]
+
+Every core mechanic is the TRADE and the MAN at once -- ranks, stats, healing,
+resting, crafting, all of it. If a mechanic cannot be named in the register of
+a man doing pest-control work, it is wearing the wrong clothes and gets
+redesigned until it can. This is the generator for everything below.
+
+## The thermos, the staging area, the bench [SETTLED in shape]
+
+- **Healing is his THERMOS.** Charges-and-refill, the genre's flask exactly --
+  but it is a man taking his break, because breaks are part of a properly run
+  job. His one visible ritual, identical at every depth. The field has no other
+  heal, which is what makes sips worth rationing.
+- **WHAT FILLS IT IS CHOSEN at the staging area** -- coffee, soup, whatever the
+  fills on hand allow. A build choice dressed as lunch planning: fills are
+  FILES, each with its own effects, and later the bench adulterates them.
+- **The rest spot is the STAGING AREA** -- the trade term for where the kit is
+  set down on a job site. Resting is an ACT: full heal, thermos refilled,
+  points sold. Nothing heals passively by standing around.
+- **Crafting: DELIBERATELY UNCOMMITTED, and the most cuttable system on the
+  board.** If it exists at all it is FORMULATION at the bench -- materials +
+  recipe -> mixed chemicals, input quality shaping output -- but the game does
+  not need it to ship: materials already earn their place through selling,
+  rank requirements and gear gating. If built, the smallest possible version
+  (a handful of recipes, no trees, no discovery system). A pilot dies of
+  scope, not of missing features.
+
 ## Rank [SETTLED in shape]
 
 **The exterminator has a RANK, and it is never stored -- always computed**, the

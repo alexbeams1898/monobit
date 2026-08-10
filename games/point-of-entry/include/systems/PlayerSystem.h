@@ -22,6 +22,9 @@ void bind(entt::entity player);
 // rather than searching the registry for whoever looks like a player.
 entt::entity entity();
 
+// True once per E press: the interact edge, consumed by whoever acts on it.
+bool consumeInteract();
+
 // WASD against the tile map. Per-frame; wired to Engine::setGameUpdate.
 void update(Engine& engine, EntityManager& em, double dt);
 

@@ -32,6 +32,9 @@ struct State
     // Whether the pause screen is up. Layered over Playing, so it is a flag rather than a
     // phase -- the world is still loaded, it is simply not ticking.
     bool paused = false;
+    // The staging screen is open (world frozen, transactions on offer). A sibling of paused,
+    // not a tab of it: the staging area is a PLACE with its own screen.
+    bool staging = false;
 };
 
 } // namespace app

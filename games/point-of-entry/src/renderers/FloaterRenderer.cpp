@@ -17,7 +17,7 @@ struct Floater
     float x = 0.0f; // world
     float y = 0.0f;
     float age = 0.0f;
-    float r = 1.0f, g = 1.0f, b = 1.0f;
+    Color color;
     std::string text;
 };
 
@@ -32,11 +32,11 @@ constexpr size_t kMaxFloaters = 64;
 
 } // namespace
 
-void add(float worldX, float worldY, const std::string& text, float r, float g, float b)
+void add(float worldX, float worldY, const std::string& text, const Color& c)
 {
     if (sFloaters.size() >= kMaxFloaters)
         sFloaters.erase(sFloaters.begin());
-    sFloaters.push_back(Floater{worldX, worldY, 0.0f, r, g, b, text});
+    sFloaters.push_back(Floater{worldX, worldY, 0.0f, c, text});
 }
 
 void update(float dt)
@@ -62,7 +62,7 @@ void render(Engine& engine, float camX, float camY, int zoom)
         const float rise = kRise * (1.0f - (1.0f - t) * (1.0f - t));
         const float sx = (f.x - (camX - halfW)) * z;
         const float sy = (f.y - rise - (camY - halfH)) * z;
-        screen_style::textCentered(f.text, sx, sy, Color{f.r, f.g, f.b, 1.0f - t});
+        screen_style::textCentered(f.text, sx, sy, screen_style::withAlpha(f.color, 1.0f - t));
     }
 }
 

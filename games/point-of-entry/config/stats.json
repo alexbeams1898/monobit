@@ -30,9 +30,6 @@
         "xp_base": 40,
         "xp_growth": 1.35
     },
-    "rest": {
-        "heal_per_second": 15.0
-    },
     "loot": {
         "quality_thresholds": [
             20.0,
@@ -41,5 +38,12 @@
         ],
         "inspection_chance_scale": 0.06,
         "inspection_quality_scale": 1.5
+    },
+    "thermos": {
+        "sips": 4,
+        "fills": [
+            "config/fills/coffee.json",
+            "config/fills/soup.json"
+        ]
     }
 }

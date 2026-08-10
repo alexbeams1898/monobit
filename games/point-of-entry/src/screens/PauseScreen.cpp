@@ -6,6 +6,7 @@
 #include "systems/CombatSystem.h"
 #include "systems/PlayerSystem.h"
 #include "systems/RewardSystem.h"
+#include "systems/ThermosSystem.h"
 
 #include <array>
 #include <string>
@@ -57,13 +58,8 @@ void renderSheet(EntityManager& em, const Mouse& mouse, float cx, float y)
         screen_style::textCentered("no job underway", cx, y, screen_style::kTextDim);
         return;
     }
-    if (sSpendRequested)
-    {
-        reward::spend(em, sStatCursor);
-        sSpendRequested = false;
-    }
     const auto& s = em.registry().get<Stats>(pl);
-    const bool spendable = reward::atRest(em) && reward::banked(em) >= reward::costOfNext(em);
+    const bool spendable = false; // the sheet is a READOUT; points change hands at the staging
 
     const float rowH = lh * 1.5f;
     const int values[5] = {s.chemical, s.physical, s.biological, s.endurance, s.inspection};
@@ -82,17 +78,10 @@ void renderSheet(EntityManager& em, const Mouse& mouse, float cx, float y)
         statRow(names[i], values[i], cx, rowY, spendable && i == sStatCursor, spendable);
     }
 
-    // The purse and the price, always; the sales pitch only where points are actually sold.
-    if (spendable)
-        screen_style::textCentered("banked " + std::to_string(reward::banked(em)) +
-                                       "   next point " + std::to_string(reward::costOfNext(em)) +
-                                       " -- confirm or click to buy",
-                                   cx, y - lh * 1.3f, screen_style::kAccent);
-    else
-        screen_style::textCentered("banked " + std::to_string(reward::banked(em)) +
-                                       "   next point " + std::to_string(reward::costOfNext(em)) +
-                                       (reward::atRest(em) ? "" : "   (sold at the rest spot)"),
-                                   cx, y - lh * 1.3f, screen_style::kTextDim);
+    screen_style::textCentered("banked " + std::to_string(reward::banked(em)) + "   next point " +
+                                   std::to_string(reward::costOfNext(em)) +
+                                   "   (sold at the staging area)",
+                               cx, y - lh * 1.3f, screen_style::kTextDim);
 
     // The derived line: what the five above actually buy. Shown so the sheet teaches its own
     // formulas -- raise Endurance and watch which numbers move.
@@ -143,7 +132,7 @@ void renderSatchel(EntityManager& em, float cx, float y)
 Action renderSystem(const Mouse& mouse, float cx, float y)
 {
     const float lh = screen_style::lineHeight();
-    const float rowH = lh * 1.6f;
+    const float rowH = screen_style::pageRowH();
 
     // Hover before the draw, so the highlight matches the mouse this frame.
     Action committed = Action::None;
@@ -181,16 +170,7 @@ Action step(bool up, bool down, bool left, bool right, bool confirm, bool back)
     if (right)
         sTab = (sTab + 1) % kTabCount;
     if (sTab == 0)
-    {
-        // The sheet only answers the keys while there is something to spend; spending itself
-        // happens in render's frame, where the world is in reach.
-        if (up)
-            sStatCursor = (sStatCursor - 1 + 5) % 5;
-        if (down)
-            sStatCursor = (sStatCursor + 1) % 5;
-        sSpendRequested = confirm;
-        return Action::None;
-    }
+        return Action::None; // the sheet is a readout
     if (sTab == 1)
         return Action::None; // the satchel is a receipt; nothing to choose yet
     if (up)
@@ -208,7 +188,7 @@ Action render(EntityManager& em, const Mouse& mouse, int windowW, int windowH)
 
     const float cx = static_cast<float>(windowW) * 0.5f;
     const float lh = screen_style::lineHeight();
-    float y = static_cast<float>(windowH) * 0.2f;
+    float y = screen_style::pageHeadingY(windowH);
 
     screen_style::headingCentered("PAUSED", cx, y, screen_style::kText);
     y += lh * 2.0f;

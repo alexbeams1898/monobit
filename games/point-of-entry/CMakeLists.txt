@@ -9,11 +9,13 @@ add_library(poe-systems STATIC
     src/renderers/DebugPanelRenderer.cpp
     src/screens/DeathScreen.cpp
     src/screens/PauseScreen.cpp
+    src/screens/StagingScreen.cpp
     src/screens/ScreenStyle.cpp
     src/screens/ScreenInput.cpp
     src/systems/ChaseSystem.cpp
     src/renderers/FloaterRenderer.cpp
     src/systems/RewardSystem.cpp
+    src/systems/ThermosSystem.cpp
     src/ecs/ItemConfig.cpp
     src/ops/LootOps.cpp
     src/systems/PickupSystem.cpp
@@ -22,6 +24,7 @@ add_library(poe-systems STATIC
     src/systems/AimSystem.cpp
     src/renderers/HudRenderer.cpp
     src/renderers/NotificationRenderer.cpp
+    src/renderers/PromptRenderer.cpp
     src/systems/CombatSystem.cpp
     src/ops/NavUtils.cpp
     src/systems/GaitSystem.cpp

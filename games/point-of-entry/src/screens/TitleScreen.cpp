@@ -61,16 +61,16 @@ Action render(const Mouse& mouse, bool has_save, int windowW, int windowH)
 
     const float cx = static_cast<float>(windowW) * 0.5f;
     const float lh = screen_style::lineHeight();
-    float y = static_cast<float>(windowH) * 0.30f;
-
-    screen_style::headingCentered("POINT OF ENTRY", cx, y, screen_style::kText);
-    y += lh * 4.0f;
+    // The genre's title shape: the name large in the upper third, the menu low.
+    screen_style::displayCentered("POINT OF ENTRY", cx, screen_style::titleY(windowH),
+                                  screen_style::kText);
+    float y = screen_style::titleMenuY(windowH);
 
     // Hover resolves BEFORE anything is drawn, so the highlight matches where the mouse is
     // this frame rather than lagging it by one. The rows are a fixed stride, so where each
     // one will land is known without drawing it first.
     Action committed = Action::None;
-    const float rowH = lh * 1.6f;
+    const float rowH = screen_style::pageRowH();
     for (int i = 0; i < kCount; ++i)
     {
         if (!enabled(i, has_save))

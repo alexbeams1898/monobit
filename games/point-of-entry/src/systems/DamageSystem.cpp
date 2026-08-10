@@ -5,6 +5,7 @@
 #include "ecs/GameComponents.h"
 #include "ops/LootOps.h"
 #include "renderers/FloaterRenderer.h"
+#include "screens/ScreenStyle.h"
 #include "systems/CombatSystem.h"
 #include "systems/PickupSystem.h"
 #include "systems/PlayerSystem.h"
@@ -96,8 +97,8 @@ void applyDamage(entt::registry& reg, HitArea& area, const Transform& at)
         // The number is how a player tells a good hit from a bad one. A kill is called out in
         // white so the last hit on a thing does not look like every other hit.
         const bool fatal = health.current <= 0;
-        floaters::add(t.x, t.y - 6.0f, std::to_string(dealt), fatal ? 1.0f : 0.95f,
-                      fatal ? 1.0f : 0.85f, fatal ? 1.0f : 0.4f);
+        floaters::add(t.x, t.y - 6.0f, std::to_string(dealt),
+                      fatal ? screen_style::kCallout : screen_style::kDamage);
 
         // A hit flashes white briefly; a KILL flashes hot and holds longer, and the thing stays
         // on screen for it. The two have to look different, or clearing a crowd gives no

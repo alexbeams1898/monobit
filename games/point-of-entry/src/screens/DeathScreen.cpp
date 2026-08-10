@@ -33,12 +33,12 @@ Action render(const Mouse& mouse, int windowW, int windowH)
 {
     const float cx = static_cast<float>(windowW) * 0.5f;
     const float lh = screen_style::lineHeight();
-    const float y = static_cast<float>(windowH) * 0.42f;
+    const float y = screen_style::pageContentY(windowH) + lh * 2.0f;
 
     // No heading. The black and the menu ARE the statement; anything written above them would
     // be the game editorialising about a man who does not.
     Action committed = Action::None;
-    const float rowH = lh * 1.6f;
+    const float rowH = screen_style::pageRowH();
     for (int i = 0; i < kCount; ++i)
     {
         const float rowY = y + rowH * static_cast<float>(i);

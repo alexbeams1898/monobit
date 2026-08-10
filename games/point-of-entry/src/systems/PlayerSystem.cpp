@@ -9,7 +9,9 @@
 #include "systems/AimSystem.h"
 #include "systems/CameraSystem.h"
 #include "systems/CombatSystem.h"
+#include "systems/RewardSystem.h"
 #include "systems/SpriteAnimSystem.h"
+#include "systems/ThermosSystem.h"
 
 #include <SDL.h>
 
@@ -26,6 +28,8 @@ namespace
 // makes the world scroll in uneven steps and reads as lag while nothing is late.
 
 entt::entity sPlayer = entt::null;
+EntityManager* sEm = nullptr;  // for the key handlers; set every update
+bool sInteractPressed = false; // an unconsumed E edge
 
 // ONE DRAWING, FLIPPED -- the whole game's sprite convention. A character is drawn once and
 // mirrored to face the other way; there is no back sprite and no up/down pose. It is what
@@ -89,6 +93,22 @@ void pollDevKeys(const Uint8* keys)
     if (cycle && !sPrevCycle)
         tools::next();
     sPrevCycle = cycle;
+
+    // R drinks; E rests at the staging area. Edge-triggered like everything else here.
+    static bool sPrevSip = false;
+    const bool sipKey = keys[SDL_SCANCODE_R] != 0;
+    if (sipKey && !sPrevSip)
+        thermos::sip(*sEm);
+    sPrevSip = sipKey;
+
+    // SPACE is the interact key -- the thumb's key, always under the hand. The edge is RECORDED
+    // here and consumed by the shell, which knows what is in reach and what interacting means;
+    // this file only knows a key went down.
+    static bool sPrevInteract = false;
+    const bool interactKey = keys[SDL_SCANCODE_SPACE] != 0;
+    if (interactKey && !sPrevInteract)
+        sInteractPressed = true;
+    sPrevInteract = interactKey;
 }
 
 // Move `pos` by `amount`, but only ever in WHOLE pixels -- the fraction is carried in
@@ -129,11 +149,19 @@ entt::entity entity()
     return sPlayer;
 }
 
+bool consumeInteract()
+{
+    const bool was = sInteractPressed;
+    sInteractPressed = false;
+    return was;
+}
+
 void update(Engine& /*engine*/, EntityManager& em, double dt)
 {
     if (!em.registry().valid(sPlayer))
         return;
 
+    sEm = &em;
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
     pollDevKeys(keys);
 

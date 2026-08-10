@@ -49,20 +49,10 @@ void update(EntityManager& em, float dt)
     if (!reg.valid(p))
         return;
 
-    // Resting mends him -- slowly, and only while he stands there. The fractional remainder is
-    // carried so a heal smaller than one hit point per frame still adds up.
-    if (atRest(em))
-    {
-        static float sHealCarry = 0.0f;
-        sHealCarry += stats::formulas().rest.heal_per_second * dt;
-        const int whole = static_cast<int>(sHealCarry);
-        if (whole > 0)
-        {
-            sHealCarry -= static_cast<float>(whole);
-            if (auto* hp = reg.try_get<Health>(p))
-                hp->current = std::min(hp->max, hp->current + whole);
-        }
-    }
+    // No passive mend: healing in the field is the thermos, and resting is an ACT (see
+    // ThermosSystem::rest). Standing near the kit heals nothing by itself.
+    (void)dt;
+    (void)p;
 }
 
 int banked(const EntityManager& em)

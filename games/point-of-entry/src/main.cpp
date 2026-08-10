@@ -17,10 +17,12 @@
 #include "renderers/FloaterRenderer.h"
 #include "renderers/HudRenderer.h"
 #include "renderers/NotificationRenderer.h"
+#include "renderers/PromptRenderer.h"
 #include "screens/DeathScreen.h"
 #include "screens/PauseScreen.h"
 #include "screens/ScreenInput.h"
 #include "screens/ScreenStyle.h"
+#include "screens/StagingScreen.h"
 #include "screens/TitleScreen.h"
 #include "systems/AimSystem.h"
 #include "systems/AnimationSystem.h"
@@ -34,6 +36,7 @@
 #include "systems/RenderSystem.h"
 #include "systems/RewardSystem.h"
 #include "systems/SpriteAnimSystem.h"
+#include "systems/ThermosSystem.h"
 #include "systems/TileMapRenderer.h"
 #include "systems/WaveSystem.h"
 
@@ -182,6 +185,7 @@ void resetFloor(EntityManager& em)
         sta->current = sta->max_stamina;
     if (auto* charge = reg.try_get<Charge>(p))
         charge->current = charge->max_charge;
+    thermos::rest(em); // he wakes as if he had taken his break -- flask full
     poe::log().info("death: the floor floods back");
 }
 
@@ -194,7 +198,7 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // rather than called at each transition -- there are several ways in (take a job, resume,
     // back out of settings) and one of them would eventually forget.
     static bool sWasPlaying = false;
-    const bool nowPlaying = sApp.phase == app::Phase::Playing && !sApp.paused;
+    const bool nowPlaying = sApp.phase == app::Phase::Playing && !sApp.paused && !sApp.staging;
     if (nowPlaying && !sWasPlaying)
         aim::requireFreshPress();
     sWasPlaying = nowPlaying;
@@ -228,6 +232,34 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // cursor would put the shot where he pointed last frame.
     aim::update(engine, em);
     player::update(engine, em, dt);
+
+    // THE STAGING AREA, the reference's interaction shape: in range, either Space (the interact
+    // key) or a click ON the spot itself. Interacting IS resting -- heal, refill, and the staging
+    // menu opens where you choose the brew. The click is swallowed so putting the kit down
+    // never doubles as a trigger pull.
+    if (reward::atRest(em))
+    {
+        prompt::offer("Rest");
+        bool clickedSpot = false;
+        if (aim::firePressed())
+            for (const auto [e, t, spot] : em.registry().view<Transform, RestSpot>().each())
+            {
+                const float dx = aim::worldX() - t.x;
+                const float dy = aim::worldY() - t.y;
+                if (dx * dx + dy * dy < spot.radius * spot.radius)
+                    clickedSpot = true;
+            }
+        if (player::consumeInteract() || clickedSpot)
+        {
+            thermos::rest(em);
+            sApp.staging = true;
+            staging_screen::reset();
+            aim::requireFreshPress();
+            return;
+        }
+    }
+    else
+        player::consumeInteract(); // a Space pressed in the field means nothing yet -- drop it
     // The field is rebuilt toward the player, then everything reads it -- see Chase.h.
     const auto& pt = em.registry().get<Transform>(player::entity());
     FlowFieldSystem::update(em, pt.x, pt.y);
@@ -302,6 +334,7 @@ bool buildWorld(Engine& engine)
         return false;
     }
     stats::load("config/stats.json");
+    thermos::load("config/stats.json");
     items::load("config/items");
     tools::load("config/tools.json");
     TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
@@ -564,7 +597,7 @@ void enactPause(Engine& engine, pause_screen::Action a)
 // flag on Playing rather than a phase, because the world is still loaded behind it.
 void gameRenderUI(Engine& engine, EntityManager& em)
 {
-    const bool playing = sApp.phase == app::Phase::Playing && !sApp.paused;
+    const bool playing = sApp.phase == app::Phase::Playing && !sApp.paused && !sApp.staging;
     // The dev panel needs a pointer to click, and it opens while playing -- so it counts as a
     // screen with options, exactly like a menu.
     hud::cursorForPhase(playing && !debug_panel::visible() && sDeathBeat != DeathBeat::Screen);
@@ -589,7 +622,7 @@ void gameRenderUI(Engine& engine, EntityManager& em)
             // Screen: settled black; the menu draws over it from the shell pass.
             UIRenderer::drawRect(0.0f, 0.0f, static_cast<float>(engine.windowWidth()),
                                  static_cast<float>(engine.windowHeight()),
-                                 Color{0.0f, 0.0f, 0.0f, std::min(1.0f, std::max(0.0f, a))});
+                                 screen_style::black(std::min(1.0f, std::max(0.0f, a))));
         }
     }
     const int ww = engine.windowWidth();
@@ -621,6 +654,16 @@ void gameRenderUI(Engine& engine, EntityManager& em)
             sApp.phase = sApp.settings_return_to;
         break;
     case app::Phase::Playing:
+        if (sApp.staging)
+        {
+            const staging_screen::Mouse m{in.mouse_x, in.mouse_y, in.clicked};
+            staging_screen::Action a = staging_screen::step(in.up, in.down, in.confirm, in.back);
+            if (a == staging_screen::Action::None)
+                a = staging_screen::render(em, m, ww, wh);
+            if (a == staging_screen::Action::Close)
+                sApp.staging = false;
+            break;
+        }
         if (sDeathBeat == DeathBeat::Screen)
         {
             // Death outranks the pause key: there is nothing to resume to.
@@ -704,17 +747,9 @@ int main(int argc, char* argv[])
     // with no HUD yet hits it immediately, and every diagnostic still reads as correct.
     glDisable(GL_DEPTH_TEST);
 
-    // The shell's two type sizes, scaled off the window so the menus read the same on any
-    // display. Loaded here rather than per-screen so both surfaces share one face.
-    {
-        const float s = static_cast<float>(engine.windowHeight());
-        const FontHandle body = FontManager::loadFont("assets/fonts/placeholder.ttf", s * 0.022f);
-        const FontHandle heading =
-            FontManager::loadFont("assets/fonts/placeholder.ttf", s * 0.045f);
-        poe::log().info("boot: fonts body={} heading={} (size {:.1f}/{:.1f})", body, heading,
-                        s * 0.022f, s * 0.045f);
-        screen_style::init(body, heading);
-    }
+    // The one face at its two ladder sizes -- ScreenStyle owns fonts and the integer scale
+    // (see check_design.py for the standards this keeps).
+    screen_style::initFonts(engine.windowHeight());
 
     auto& em = engine.entityManager();
 

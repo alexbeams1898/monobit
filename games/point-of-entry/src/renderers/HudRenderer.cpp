@@ -6,11 +6,13 @@
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
 #include "renderers/NotificationRenderer.h"
+#include "renderers/PromptRenderer.h"
 #include "screens/ScreenStyle.h"
 #include "systems/AimSystem.h"
 #include "systems/CombatSystem.h"
 #include "systems/PlayerSystem.h"
 #include "systems/RewardSystem.h"
+#include "systems/ThermosSystem.h"
 #include "systems/WaveSystem.h"
 
 #include <SDL.h>
@@ -26,9 +28,20 @@ namespace hud
 namespace
 {
 
-constexpr float kBarW = 200.0f;
-constexpr float kBarH = 11.0f;
-constexpr float kMargin = 18.0f;
+// Shell metrics in UNITS, resolved through the ladder -- the bars and margins grow with the
+// type instead of drifting away from it at higher scales.
+float barW()
+{
+    return screen_style::pad(25);
+}
+float barH()
+{
+    return screen_style::pad(1) + 2.0f;
+}
+float margin()
+{
+    return screen_style::pad(4);
+}
 
 // THE PUMP. Kills do not tick the total directly: each one lands in a "+N" that floats above
 // the box and keeps accumulating while the killing continues; once it has been quiet for a
@@ -85,7 +98,7 @@ void reticle(int mouseX, int mouseY)
     constexpr float kArm = 7.0f;
     constexpr float kGap = 3.0f;
     constexpr float kThick = 2.0f;
-    constexpr Color c{0.95f, 0.95f, 0.9f, 0.9f};
+    constexpr Color c = screen_style::kReticle;
     UIRenderer::drawRect(x - kGap - kArm, y - kThick * 0.5f, kArm, kThick, c);
     UIRenderer::drawRect(x + kGap, y - kThick * 0.5f, kArm, kThick, c);
     UIRenderer::drawRect(x - kThick * 0.5f, y - kGap - kArm, kThick, kArm, c);
@@ -104,8 +117,8 @@ void healthBar(const EntityManager& em, float x, float y)
     if (hp.max <= 0)
         return;
     const float frac = std::max(0.0f, static_cast<float>(hp.current) / static_cast<float>(hp.max));
-    UIRenderer::drawRect(x - 1.0f, y - 1.0f, kBarW + 2.0f, kBarH + 2.0f, Color{0, 0, 0, 0.7f});
-    UIRenderer::drawRect(x, y, kBarW * frac, kBarH, Color{0.75f, 0.2f, 0.18f, 0.95f});
+    UIRenderer::drawRect(x - 1.0f, y - 1.0f, barW() + 2.0f, barH() + 2.0f, screen_style::kBarBack);
+    UIRenderer::drawRect(x, y, barW() * frac, barH(), screen_style::kHealth);
 }
 
 // The bar goes red while it is refusing to fire, so an empty bar explains itself rather than
@@ -121,12 +134,12 @@ void staminaBar(const EntityManager& em, float x, float y)
         return;
 
     const float frac = sta.current / sta.max_stamina;
-    UIRenderer::drawRect(x - 1.0f, y - 1.0f, kBarW + 2.0f, kBarH + 2.0f, Color{0, 0, 0, 0.7f});
+    UIRenderer::drawRect(x - 1.0f, y - 1.0f, barW() + 2.0f, barH() + 2.0f, screen_style::kBarBack);
     // Amber while spending, green once it is recovering -- the colour says WHY a shot did not
     // come out, which an empty bar alone does not.
     const bool spent = sta.recovery_timer > 0.0f;
-    const Color fill = spent ? Color{0.85f, 0.6f, 0.25f, 0.95f} : Color{0.45f, 0.8f, 0.35f, 0.95f};
-    UIRenderer::drawRect(x, y, kBarW * frac, kBarH, fill);
+    const Color fill = spent ? screen_style::kStaminaSpent : screen_style::kStaminaFresh;
+    UIRenderer::drawRect(x, y, barW() * frac, barH(), fill);
 }
 
 // What the floor is doing, top-centre where the eye goes when things change. A wave count is the
@@ -139,20 +152,20 @@ void waveState(Engine& engine, const EntityManager& em)
     const swarm::Phase p = swarm::phase();
     if (p == swarm::Phase::Cleared)
     {
-        screen_style::headingCentered("CLEAR", cx, kMargin * 2.0f, screen_style::kTextHot);
+        screen_style::headingCentered("CLEAR", cx, margin() * 2.0f, screen_style::kTextHot);
         return;
     }
     if (p == swarm::Phase::Breath)
     {
         screen_style::headingCentered("wave " + std::to_string(swarm::waveNumber() + 1) +
                                           " incoming",
-                                      cx, kMargin * 2.0f, screen_style::kAccent);
+                                      cx, margin() * 2.0f, screen_style::kAccent);
         return;
     }
     screen_style::textCentered("wave " + std::to_string(swarm::waveNumber()) + " of " +
                                    std::to_string(swarm::totalWaves()) + "   " +
                                    std::to_string(swarm::remaining(em)) + " left",
-                               cx, kMargin * 2.0f, screen_style::kText);
+                               cx, margin() * 2.0f, screen_style::kText);
 }
 
 // NOTE: hit areas are NOT drawn. The hitbox and the effect are separate objects on purpose --
@@ -174,7 +187,7 @@ void equipped(Engine& engine, const EntityManager& em)
     const auto& held = kit[static_cast<size_t>(tools::selected())];
 
     const auto bottom = static_cast<float>(engine.windowHeight());
-    const float nameY = bottom - kMargin - 42.0f;
+    const float nameY = bottom - margin() - screen_style::pageRowH() - screen_style::lineHeight();
 
     const auto& reg = em.registry();
     const entt::entity p = player::entity();
@@ -192,14 +205,11 @@ void equipped(Engine& engine, const EntityManager& em)
     // Amber under a quarter: the tank running low is the thing that decides whether to keep
     // spraying or go earn some back, and it must be noticeable without being read.
     const bool low = max > 0.0f && cur / max < 0.25f;
-    screen_style::text(held.name, kMargin, nameY, screen_style::kTextDim);
-    screen_style::text(ammo, kMargin, nameY + 20.0f,
+    screen_style::text(held.name, margin(), nameY, screen_style::kTextDim);
+    screen_style::text(ammo, margin(), nameY + screen_style::pageRowH(),
                        low ? screen_style::kAccent : screen_style::kTextHot);
     if (kit.size() > 1)
-        screen_style::text(
-            "Q",
-            kMargin + UIRenderer::measureText(screen_style::bodyFont(), held.name).width + 10.0f,
-            nameY, screen_style::kTextDim);
+        screen_style::textRight("Q", margin() + barW(), nameY, screen_style::kTextDim);
 }
 
 // A sliver over each hurt creature. Shown only once something has been hit: a swarm of full bars
@@ -222,8 +232,8 @@ void enemyBars(Engine& engine, const EntityManager& em, float camX, float camY, 
             std::max(0.0f, static_cast<float>(hp.current) / static_cast<float>(hp.max));
         const float sx = (t.x - (camX - halfW)) * z - kW * 0.5f;
         const float sy = (t.y - 8.0f - (camY - halfH)) * z;
-        UIRenderer::drawRect(sx - 1.0f, sy - 1.0f, kW + 2.0f, kH + 2.0f, Color{0, 0, 0, 0.75f});
-        UIRenderer::drawRect(sx, sy, kW * frac, kH, Color{0.8f, 0.25f, 0.2f, 0.95f});
+        UIRenderer::drawRect(sx - 1.0f, sy - 1.0f, kW + 2.0f, kH + 2.0f, screen_style::kBarBack);
+        UIRenderer::drawRect(sx, sy, kW * frac, kH, screen_style::kHealth);
     }
 }
 
@@ -248,42 +258,50 @@ void render(Engine& engine, EntityManager& em)
         sLastTicks == 0 ? 0.0f : std::min(0.1f, static_cast<float>(now - sLastTicks) / 1000.0f);
     sLastTicks = now;
 
-    // TOP LEFT: the body. Health over stamina, the reading order of every game in this shape.
-    healthBar(em, kMargin, kMargin);
-    staminaBar(em, kMargin, kMargin + kBarH + 6.0f);
+    // TOP LEFT: the body. Health over stamina, the reading order of every game in this shape;
+    // the thermos count under them -- the flask lives with the body it mends.
+    healthBar(em, margin(), margin());
+    staminaBar(em, margin(), margin() + barH() + 6.0f);
+    {
+        const auto& fill = thermos::fills();
+        const std::string label = fill.empty()
+                                      ? std::string{"thermos"}
+                                      : fill[static_cast<std::size_t>(thermos::fillIndex())].name;
+        screen_style::text(label + "  " + std::to_string(thermos::sipsLeft()) + "/" +
+                               std::to_string(thermos::sipsMax()) + "  (R)",
+                           margin(), margin() + barH() * 2.0f + 14.0f,
+                           thermos::sipsLeft() > 0 ? screen_style::kText : screen_style::kAccent);
+    }
 
     waveState(engine, em);
 
     // BOTTOM LEFT: what is in his hand, and the acquisition feed above it.
     equipped(engine, em);
     notify::render(engine, dt);
+    prompt::render(engine);
 
     // BOTTOM RIGHT: the pocket, in a box, with the gain pumping into it.
     tickPump(reward::banked(em), dt);
-    const auto right = static_cast<float>(engine.windowWidth()) - kMargin;
-    const auto bottom = static_cast<float>(engine.windowHeight()) - kMargin;
-    constexpr float kBoxW = 150.0f;
-    constexpr float kBoxH = 32.0f;
-    const float bx = right - kBoxW;
-    const float by = bottom - kBoxH;
-    // A bordered box: frame first, then the inset field.
-    UIRenderer::drawRect(bx - 1.0f, by - 1.0f, kBoxW + 2.0f, kBoxH + 2.0f,
-                         Color{0.75f, 0.72f, 0.62f, 0.55f});
-    UIRenderer::drawRect(bx, by, kBoxW, kBoxH, Color{0.05f, 0.05f, 0.06f, 0.85f});
-    const std::string total = std::to_string(reward::banked(em) - sPending);
-    const float totalW = UIRenderer::measureText(screen_style::bodyFont(), total).width;
-    screen_style::text(total, bx + kBoxW - 10.0f - totalW, by + kBoxH * 0.5f - 8.0f,
-                       screen_style::kText);
+    const auto right = static_cast<float>(engine.windowWidth()) - margin();
+    const auto bottom = static_cast<float>(engine.windowHeight()) - margin();
+    const float boxW = screen_style::pad(19);
+    const float boxH = screen_style::lineHeight() + screen_style::pad(2);
+    const float bx = right - boxW;
+    const float by = bottom - boxH;
+    // A bordered box: frame first, then the inset field. Text through the idioms -- true
+    // vertical centring from real metrics, padding in units.
+    UIRenderer::drawRect(bx - 1.0f, by - 1.0f, boxW + 2.0f, boxH + 2.0f, screen_style::kPanelEdge);
+    UIRenderer::drawRect(bx, by, boxW, boxH, screen_style::kPanel);
+    screen_style::textInBox(std::to_string(reward::banked(em) - sPending),
+                            screen_style::Rect{bx, by, boxW, boxH}, screen_style::kText,
+                            /*alignRight=*/true);
 
+    // GREEN, not the accent red: this is income, and red is the game's alarm colour -- a gain
+    // painted like a warning reads as something being taken.
     if (sPending > 0)
-    {
-        const std::string gain = "+" + std::to_string(sPending);
-        const float gainW = UIRenderer::measureText(screen_style::bodyFont(), gain).width;
-        // GREEN, not the accent red: this is income, and red is the game's alarm colour --
-        // a gain painted like a warning reads as something being taken.
-        screen_style::text(gain, bx + kBoxW - 10.0f - gainW, by - 22.0f,
-                           Color{0.55f, 0.85f, 0.4f, 1.0f});
-    }
+        screen_style::textRight("+" + std::to_string(sPending), bx + boxW - screen_style::pad(2),
+                                by - screen_style::lineHeight() - screen_style::pad(1),
+                                screen_style::kGain);
 }
 
 void cursorForPhase(bool playing)

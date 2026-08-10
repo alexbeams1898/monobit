@@ -44,10 +44,6 @@ struct Formulas
     } scaling;
     struct
     {
-        float heal_per_second = 15.0f; // standing at a rest spot mends him, slowly
-    } rest;
-    struct
-    {
         // Quality score cutoffs (0-50 roll + Inspection's nudge): below [0] crude, then
         // standard, then fine; past [2] superior.
         float quality_thresholds[3] = {20.0f, 38.0f, 48.0f};

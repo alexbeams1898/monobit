@@ -52,8 +52,6 @@ bool load(const std::string& path)
         d.value("endurance_scale", sFormulas.defense.endurance_scale);
     const auto& sc = j.value("scaling", nlohmann::json::object());
     sFormulas.scaling.per_point = sc.value("per_point", sFormulas.scaling.per_point);
-    const auto& rest = j.value("rest", nlohmann::json::object());
-    sFormulas.rest.heal_per_second = rest.value("heal_per_second", sFormulas.rest.heal_per_second);
     const auto& lt = j.value("loot", nlohmann::json::object());
     if (lt.contains("quality_thresholds") && lt["quality_thresholds"].is_array() &&
         lt["quality_thresholds"].size() == 3)

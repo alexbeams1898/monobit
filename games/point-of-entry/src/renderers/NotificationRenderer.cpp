@@ -57,8 +57,8 @@ void render(Engine& engine, float dt)
 
     // Bottom-left, stacked upward above the tool block; newest nearest the tool.
     const float lh = screen_style::lineHeight();
-    const float x = 18.0f;
-    float y = static_cast<float>(engine.windowHeight()) - 118.0f;
+    const float x = screen_style::pad(4);
+    float y = static_cast<float>(engine.windowHeight()) - screen_style::pad(4) - lh * 3.6f;
     for (auto it = sNotes.rbegin(); it != sNotes.rend(); ++it)
     {
         const float alpha = std::min(1.0f, it->life / kFadeTail);

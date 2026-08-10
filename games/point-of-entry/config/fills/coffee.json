@@ -1,0 +1,6 @@
+{
+    "_comment": "A fill is what the thermos holds -- chosen at the staging area, a build choice dressed as lunch planning. heal per sip; stamina restored per sip alongside.",
+    "name": "Coffee",
+    "heal": 25,
+    "stamina": 40.0
+}

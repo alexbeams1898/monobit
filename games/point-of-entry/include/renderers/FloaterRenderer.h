@@ -1,5 +1,7 @@
 #pragma once
 
+#include "UIRenderer.h"
+
 #include <string>
 
 class Engine;
@@ -16,9 +18,9 @@ class EntityManager;
 namespace floaters
 {
 
-// Spawn one at a world position. Colour is the caller's business -- a kill reads differently
-// from a graze, and neither is this system's decision.
-void add(float worldX, float worldY, const std::string& text, float r, float g, float b);
+// Spawn one at a world position. Colour is the caller's business (a palette constant -- a kill
+// reads differently from a graze, and neither is this system's decision).
+void add(float worldX, float worldY, const std::string& text, const Color& c);
 
 void update(float dt);
 
