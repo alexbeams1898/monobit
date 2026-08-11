@@ -90,6 +90,20 @@ struct RestSpot
     float radius = 40.0f;
 };
 
+// The authored world's way down: standing in range offers Descend, and
+// interacting generates the floor below. Placed by the map, not the code.
+// A site may also LEAK -- one creature every `interval` seconds, the first
+// true point of entry showing what it is. They accumulate until he leaves
+// the room (an area swap destroys everything but him).
+struct DigSite
+{
+    float radius = 40.0f;
+    int depth = 0;       // the floor this site opens into
+    std::string trickle; // creature file it leaks; empty = quiet
+    float interval = 8.0f;
+    float timer = 0.0f;
+};
+
 // What a creature pays when it dies. On the creature, not in a table here -- the config that
 // spawns it says what it is worth.
 struct Worth

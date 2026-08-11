@@ -31,6 +31,11 @@ entt::entity sPlayer = entt::null;
 EntityManager* sEm = nullptr;  // for the key handlers; set every update
 bool sInteractPressed = false; // an unconsumed E edge
 
+// What he pressed this tick, for consumers that care about intent rather
+// than achieved movement (doors against walls).
+float sIntentX = 0.0f;
+float sIntentY = 0.0f;
+
 // ONE DRAWING, FLIPPED -- the whole game's sprite convention. A character is drawn once and
 // mirrored to face the other way; there is no back sprite and no up/down pose. It is what
 // makes a bestiary running from ants to demons affordable: every new creature is one
@@ -156,6 +161,12 @@ bool consumeInteract()
     return was;
 }
 
+void moveIntent(float& dx, float& dy)
+{
+    dx = sIntentX;
+    dy = sIntentY;
+}
+
 void update(Engine& /*engine*/, EntityManager& em, double dt)
 {
     if (!em.registry().valid(sPlayer))
@@ -168,6 +179,8 @@ void update(Engine& /*engine*/, EntityManager& em, double dt)
     float dx = 0.0f;
     float dy = 0.0f;
     readMoveDir(keys, dx, dy);
+    sIntentX = dx;
+    sIntentY = dy;
 
     auto& t = em.registry().get<Transform>(sPlayer);
     // WHERE HE FACES. Spraying, he faces his work -- the aim side wins for as long as the
@@ -208,6 +221,27 @@ void update(Engine& /*engine*/, EntityManager& em, double dt)
         const auto* col = em.registry().try_get<Collider>(sPlayer);
         const float bw = (col != nullptr ? col->width : 16.0f) - kMoveInset;
         const float bh = (col != nullptr ? col->height : 12.0f) - kMoveInset;
+        // FULL-SPEED WALL SLIDE. A normalised diagonal into a wall would creep
+        // along it at 70% -- the blocked axis still owns its share of the
+        // stride. The wall absorbs that share instead: one axis blocked, the
+        // free axis takes the whole stride.
+        if (dx != 0.0f && dy != 0.0f)
+        {
+            const bool xBlocked =
+                !world::boxFree(em, t.x + (dx < 0.0f ? -1.0f : 1.0f), t.y, bw, bh);
+            const bool yBlocked =
+                !world::boxFree(em, t.x, t.y + (dy < 0.0f ? -1.0f : 1.0f), bw, bh);
+            if (yBlocked && !xBlocked)
+            {
+                dx = dx < 0.0f ? -1.0f : 1.0f;
+                dy = 0.0f;
+            }
+            else if (xBlocked && !yBlocked)
+            {
+                dy = dy < 0.0f ? -1.0f : 1.0f;
+                dx = 0.0f;
+            }
+        }
         // One axis at a time, so walking into a wall at an angle slides along it instead of
         // stopping dead.
         stepWhole(t.x, sCarryX, dx * step, em, /*horizontal=*/true, t.y, bw, bh);

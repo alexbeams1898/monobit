@@ -10,6 +10,7 @@
 #include "systems/WaveSystem.h"
 
 #include <algorithm>
+#include <cctype>
 #include <unordered_map>
 #include <vector>
 
@@ -20,8 +21,9 @@ namespace travel
 namespace
 {
 
-// A door of the CURRENT area, in world space. The strip is the authored tile.
-struct Door
+// A warp of the CURRENT level, in world space -- a doorway, a staircase,
+// whatever the tiles under it look like. The strip is the authored entity.
+struct Warp
 {
     float x = 0.0f; // rect top-left
     float y = 0.0f;
@@ -29,22 +31,38 @@ struct Door
     float h = 0.0f;
     std::string id;
     std::string target;
+    std::string facing; // the cardinal you step out along when arriving here
 };
+
+// A facing name -> unit direction. Unknown/empty = (0,0), which gates nothing.
+void facingVec(const std::string& facing, float& dx, float& dy)
+{
+    dx = 0.0f;
+    dy = 0.0f;
+    if (facing == "north")
+        dy = -1.0f;
+    else if (facing == "south")
+        dy = 1.0f;
+    else if (facing == "east")
+        dx = 1.0f;
+    else if (facing == "west")
+        dx = -1.0f;
+}
 
 constexpr float kFade = 0.35f; // seconds each way; the cut hides under it
 
 std::string sWorldPath;                                  // the scanned .ldtk project
-std::unordered_map<std::string, std::string> sDoorIndex; // door id -> level
-std::vector<Door> sDoors;                                // doors of the current level
-float sStartX = 0.0f; // where player_start put him, for doorless entries
+std::unordered_map<std::string, std::string> sWarpIndex; // warp id -> level
+std::vector<Warp> sWarps;                                // warps of the current level
+float sStartX = 0.0f; // where player_start put him, for warpless entries
 float sStartY = 0.0f;
 bool sHaveStart = false;
 std::string sCurrent;
 
-// The latch: disarmed on arrival, re-armed only once the body is clear of
-// every door -- the doormat he lands on must not bounce him straight back.
-bool sArmed = true;
-
+// No arrival latch: the exit-line trigger makes bounce-back structurally
+// impossible. Arriving, you stand on the FACING side of the strip -- holding
+// your walk direction crosses the facing edge, which never fires; only a
+// deliberate walk back out the far side does.
 enum class Phase
 {
     None,
@@ -54,31 +72,41 @@ enum class Phase
 Phase sPhase = Phase::None;
 float sTimer = 0.0f;
 std::string sPendingArea;
-std::string sPendingDoor;
+std::string sPendingWarp;
 
-// The body's half-extents for door tests -- the foot box the world collides.
-constexpr float kBodyHalfW = 8.0f;
-constexpr float kBodyHalfH = 6.0f;
-
-void collectDoor(const area::Object& o)
+void collectWarp(const area::Object& o)
 {
-    Door d;
-    d.x = o.x - o.w * 0.5f;
-    d.y = o.y - o.h * 0.5f;
-    d.w = o.w;
-    d.h = o.h;
-    d.id = o.props.value("id", std::string{});
-    d.target = o.props.value("target", std::string{});
-    if (d.id.empty() || d.target.empty())
+    Warp w;
+    w.x = o.x - o.w * 0.5f;
+    w.y = o.y - o.h * 0.5f;
+    w.w = o.w;
+    w.h = o.h;
+    w.id = o.props.value("id", std::string{});
+    w.target = o.props.value("target", std::string{});
+    // The map's Facing enum capitalizes (the editor's identifier rules);
+    // normalized once, here, at the boundary.
+    if (o.props.contains("facing") && o.props["facing"].is_string())
     {
-        poe::log().error("travel: a door needs both 'id' and 'target' ({}, {})", o.x, o.y);
+        w.facing = o.props["facing"].get<std::string>();
+        std::transform(w.facing.begin(), w.facing.end(), w.facing.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    }
+    if (w.id.empty() || w.target.empty())
+    {
+        poe::log().error("travel: a warp needs both 'id' and 'target' ({}, {})", o.x, o.y);
         return;
     }
-    sDoors.push_back(std::move(d));
+    if (w.facing != "north" && w.facing != "south" && w.facing != "east" && w.facing != "west")
+    {
+        poe::log().error("travel: warp '{}' needs a facing (north/south/east/west) -- refused",
+                         w.id);
+        return;
+    }
+    sWarps.push_back(std::move(w));
 }
 
 // Everything except the player goes. His components -- stats, health, the
-// pocket -- are him, and they walk through doors intact.
+// pocket -- are him, and they walk through warps intact.
 void clearWorld(EntityManager& em)
 {
     auto& reg = em.registry();
@@ -112,14 +140,25 @@ void placePlayer(EntityManager& em, float x, float y)
     }
 }
 
-bool applyArea(Engine& engine, EntityManager& em, const area::Data& d, const std::string& doorId)
+// Warpless entry into a level with no start: the first open floor tile. Only
+// dev jumps take this path -- play always arrives through a warp.
+void firstWalkable(const EntityManager& em, float& x, float& y)
 {
-    auto& reg = em.registry();
-    const entt::entity p = player::entity();
-    const float px = reg.valid(p) ? reg.get<Transform>(p).x : 0.0f;
-    const float py = reg.valid(p) ? reg.get<Transform>(p).y : 0.0f;
+    const auto& map = em.tile_map;
+    const auto ts = static_cast<float>(map.tile_size);
+    for (int row = 0; row < map.height; ++row)
+        for (int col = 0; col < map.width; ++col)
+            if (map.at(col, row).walkable)
+            {
+                x = static_cast<float>(col) * ts + ts * 0.5f;
+                y = static_cast<float>(row) * ts + ts * 0.5f;
+                return;
+            }
+}
 
-    sDoors.clear();
+bool applyArea(Engine& engine, EntityManager& em, const area::Data& d, const std::string& warpId)
+{
+    sWarps.clear();
     sHaveStart = false;
     clearWorld(em);
     if (!area::build(em, d))
@@ -129,22 +168,31 @@ bool applyArea(Engine& engine, EntityManager& em, const area::Data& d, const std
     em.flow_field.last_player_row = -1;
     swarm::begin("config/swarm.json", {}, 0); // authored places press nothing on him -- yet
 
-    float ax = sHaveStart ? sStartX : px;
-    float ay = sHaveStart ? sStartY : py;
-    if (!doorId.empty())
+    float ax = sStartX;
+    float ay = sStartY;
+    if (!sHaveStart)
+        firstWalkable(em, ax, ay);
+    if (!warpId.empty())
     {
-        const auto it = std::find_if(sDoors.begin(), sDoors.end(),
-                                     [&doorId](const Door& dr) { return dr.id == doorId; });
-        if (it != sDoors.end())
+        const auto it = std::find_if(sWarps.begin(), sWarps.end(),
+                                     [&warpId](const Warp& wr) { return wr.id == warpId; });
+        if (it != sWarps.end())
         {
             ax = it->x + it->w * 0.5f;
             ay = it->y + it->h * 0.5f;
+            // The mirror of the exit line: you vanished crossing the far
+            // edge, so you appear HALFWAY into the facing side of the block,
+            // still in the passage, stepping out of it.
+            float fx = 0.0f;
+            float fy = 0.0f;
+            facingVec(it->facing, fx, fy);
+            ax += fx * it->w * 0.25f;
+            ay += fy * it->h * 0.25f;
         }
         else
-            poe::log().error("travel: '{}' has no door '{}' -- using its start", d.name, doorId);
+            poe::log().error("travel: '{}' has no warp '{}' -- using its start", d.name, warpId);
     }
     placePlayer(em, ax, ay);
-    sArmed = false; // he is standing on the doormat; clear of it re-arms
     sCurrent = d.name;
     poe::log().info("travel: entered '{}' at ({:.0f},{:.0f})", d.name, ax, ay);
     return true;
@@ -154,8 +202,8 @@ bool applyArea(Engine& engine, EntityManager& em, const area::Data& d, const std
 
 void init()
 {
-    area::registerBuilder("door",
-                          [](EntityManager& /*em*/, const area::Object& o) { collectDoor(o); });
+    area::registerBuilder("warp",
+                          [](EntityManager& /*em*/, const area::Object& o) { collectWarp(o); });
     area::registerBuilder("player_start",
                           [](EntityManager& /*em*/, const area::Object& o)
                           {
@@ -168,7 +216,7 @@ void init()
 void scan(const std::string& ldtkPath)
 {
     sWorldPath = ldtkPath;
-    sDoorIndex.clear();
+    sWarpIndex.clear();
     for (const auto& lvl : area::levels(ldtkPath))
     {
         const area::Data d = area::loadLevel(ldtkPath, lvl);
@@ -176,26 +224,26 @@ void scan(const std::string& ldtkPath)
             continue;
         for (const auto& o : d.objects)
         {
-            if (o.type != "door")
+            if (o.type != "warp")
                 continue;
             const std::string id = o.props.value("id", std::string{});
             if (id.empty())
                 continue;
-            if (const auto [it, inserted] = sDoorIndex.emplace(id, lvl); !inserted)
-                poe::log().error("travel: door id '{}' declared in both '{}' and '{}'", id,
+            if (const auto [it, inserted] = sWarpIndex.emplace(id, lvl); !inserted)
+                poe::log().error("travel: warp id '{}' declared in both '{}' and '{}'", id,
                                  it->second, lvl);
         }
     }
-    poe::log().info("travel: {} door(s) indexed", sDoorIndex.size());
+    poe::log().info("travel: {} warp(s) indexed", sWarpIndex.size());
 }
 
 bool enter(Engine& engine, EntityManager& em, const std::string& level,
-           const std::string& arriveAtDoor)
+           const std::string& arriveAtWarp)
 {
     const area::Data d = area::loadLevel(sWorldPath, level);
     if (!d.ok)
         return false; // the world he is standing in stays as it was
-    return applyArea(engine, em, d, arriveAtDoor);
+    return applyArea(engine, em, d, arriveAtWarp);
 }
 
 void update(Engine& engine, EntityManager& em, float dt)
@@ -206,8 +254,8 @@ void update(Engine& engine, EntityManager& em, float dt)
         if (sTimer >= kFade)
         {
             // Full black: the safe point. Nothing is mid-tick and nothing shows.
-            if (!enter(engine, em, sPendingArea, sPendingDoor))
-                poe::log().error("travel: door '{}' leads nowhere", sPendingDoor);
+            if (!enter(engine, em, sPendingArea, sPendingWarp))
+                poe::log().error("travel: warp '{}' leads nowhere", sPendingWarp);
             sPhase = Phase::FadeIn;
             sTimer = 0.0f;
         }
@@ -221,7 +269,7 @@ void update(Engine& engine, EntityManager& em, float dt)
         return;
     }
 
-    if (sDoors.empty())
+    if (sWarps.empty())
         return;
     auto& reg = em.registry();
     const entt::entity p = player::entity();
@@ -230,30 +278,28 @@ void update(Engine& engine, EntityManager& em, float dt)
     const auto& t = reg.get<Transform>(p);
     const auto& prev = reg.get<PreviousTransform>(p);
 
-    if (!sArmed)
-    {
-        // Re-arm only once the body is clear of every door.
-        bool onAny = false;
-        for (const auto& d : sDoors)
-            if (t.x + kBodyHalfW > d.x && t.x - kBodyHalfW < d.x + d.w && t.y + kBodyHalfH > d.y &&
-                t.y - kBodyHalfH < d.y + d.h)
-                onAny = true;
-        sArmed = !onAny;
-        return;
-    }
+    // The test runs on the INTENDED path: where he is stands plus where he is
+    // pressing, carried half a tile. A wall can stop his feet short of a
+    // threshold set into it, but not his intent to walk through.
+    float ix = 0.0f;
+    float iy = 0.0f;
+    player::moveIntent(ix, iy);
+    constexpr float kReach = 16.0f;
+    const float ex = t.x + ix * kReach;
+    const float ey = t.y + iy * kReach;
 
-    for (const auto& d : sDoors)
+    for (const auto& d : sWarps)
     {
-        if (!sweptHit(prev.x, prev.y, t.x, t.y, kBodyHalfW, kBodyHalfH, d.x, d.y, d.w, d.h))
+        if (!crossesExit(prev.x, prev.y, ex, ey, d.x, d.y, d.w, d.h, d.facing))
             continue;
-        const auto it = sDoorIndex.find(d.target);
-        if (it == sDoorIndex.end())
+        const auto it = sWarpIndex.find(d.target);
+        if (it == sWarpIndex.end())
         {
-            poe::log().error("travel: door '{}' targets unknown door '{}'", d.id, d.target);
+            poe::log().error("travel: warp '{}' targets unknown warp '{}'", d.id, d.target);
             return;
         }
         sPendingArea = it->second;
-        sPendingDoor = d.target;
+        sPendingWarp = d.target;
         sPhase = Phase::FadeOut;
         sTimer = 0.0f;
         return;
@@ -279,63 +325,70 @@ const std::string& currentArea()
     return sCurrent;
 }
 
-std::vector<std::string> doorIds()
+std::vector<std::string> warpIds()
 {
     std::vector<std::string> ids;
-    ids.reserve(sDoorIndex.size());
-    for (const auto& [id, file] : sDoorIndex)
+    ids.reserve(sWarpIndex.size());
+    for (const auto& [id, file] : sWarpIndex)
         ids.push_back(id);
     std::sort(ids.begin(), ids.end());
     return ids;
 }
 
-bool jumpToDoor(Engine& engine, EntityManager& em, const std::string& doorId)
+bool jumpToWarp(Engine& engine, EntityManager& em, const std::string& warpId)
 {
-    const auto it = sDoorIndex.find(doorId);
-    if (it == sDoorIndex.end())
+    const auto it = sWarpIndex.find(warpId);
+    if (it == sWarpIndex.end())
         return false;
-    return enter(engine, em, it->second, doorId);
+    return enter(engine, em, it->second, warpId);
 }
 
 void reset()
 {
-    sDoors.clear();
+    sWarps.clear();
     sCurrent.clear();
     sHaveStart = false;
-    sArmed = true;
     sPhase = Phase::None;
     sTimer = 0.0f;
 }
 
-bool sweptHit(float prevX, float prevY, float curX, float curY, float halfW, float halfH, float rx,
-              float ry, float rw, float rh)
+void leaveAuthored()
 {
-    // Slab test of the segment against the rect grown by the body's half
-    // extents -- a fast tick cannot step over a thin strip the way a point
-    // sample would.
-    const float minX = rx - halfW;
-    const float minY = ry - halfH;
-    const float maxX = rx + rw + halfW;
-    const float maxY = ry + rh + halfH;
-    const float dx = curX - prevX;
-    const float dy = curY - prevY;
+    sWarps.clear();
+    sCurrent.clear();
+    sHaveStart = false;
+}
 
-    float t0 = 0.0f;
-    float t1 = 1.0f;
-    const auto clip = [&t0, &t1](float p, float q)
+bool crossesExit(float prevX, float prevY, float curX, float curY, float rx, float ry, float rw,
+                 float rh, const std::string& facing)
+{
+    float fx = 0.0f;
+    float fy = 0.0f;
+    facingVec(facing, fx, fy);
+    if (fy != 0.0f)
     {
-        // p = -d (entering) or d (leaving); q = distance to the slab plane.
-        if (p == 0.0f)
-            return q >= 0.0f; // parallel: inside the slab or never
-        const float r = q / p;
-        if (p < 0.0f)
-            t0 = std::max(t0, r);
-        else
-            t1 = std::min(t1, r);
-        return t0 <= t1;
-    };
-    return clip(-dx, prevX - minX) && clip(dx, maxX - prevX) && clip(-dy, prevY - minY) &&
-           clip(dy, maxY - prevY);
+        // Facing north: you leave moving south, out through the south edge.
+        const float line = (fy < 0.0f) ? ry + rh : ry;
+        const bool crossed =
+            (fy < 0.0f) ? (prevY < line && curY >= line) : (prevY > line && curY <= line);
+        const float dy = curY - prevY;
+        if (!crossed || dy == 0.0f)
+            return false;
+        const float x = prevX + (curX - prevX) * ((line - prevY) / dy);
+        return x >= rx && x <= rx + rw;
+    }
+    if (fx != 0.0f)
+    {
+        const float line = (fx < 0.0f) ? rx + rw : rx;
+        const bool crossed =
+            (fx < 0.0f) ? (prevX < line && curX >= line) : (prevX > line && curX <= line);
+        const float dx = curX - prevX;
+        if (!crossed || dx == 0.0f)
+            return false;
+        const float y = prevY + (curY - prevY) * ((line - prevX) / dx);
+        return y >= ry && y <= ry + rh;
+    }
+    return false; // unreachable through a loaded warp -- facings are required
 }
 
 } // namespace travel

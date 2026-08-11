@@ -61,6 +61,12 @@ Data loadLevel(const std::string& ldtkPath, const std::string& level = {});
 // or unparseable file.
 std::vector<std::string> levels(const std::string& ldtkPath);
 
+// The level holding THE PlayerStart -- there is exactly one in the project,
+// and it is where a new game wakes. One authored fact, in the map, no config
+// twin to drift. Empty when no level has one (the caller falls back to the
+// generated floor).
+std::string startLevel(const std::string& ldtkPath);
+
 // The registry: build() hands each object to the builder registered for its
 // type. Unknown types are logged errors -- an authored thing silently not
 // existing is the failure mode this loader exists to prevent.

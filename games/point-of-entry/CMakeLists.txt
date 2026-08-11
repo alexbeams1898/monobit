@@ -7,7 +7,6 @@ project(PointOfEntry VERSION 0.1.0 LANGUAGES C CXX)
 add_library(poe-systems STATIC
     src/ops/CaptureUtils.cpp
     src/renderers/DebugPanelRenderer.cpp
-    src/screens/DeathScreen.cpp
     src/screens/PauseScreen.cpp
     src/screens/StagingScreen.cpp
     src/screens/ScreenStyle.cpp
@@ -35,6 +34,7 @@ add_library(poe-systems STATIC
     src/FloorGen.cpp
     src/AreaLoader.cpp
     src/ops/SpawnUtils.cpp
+    src/ops/ZoneUtils.cpp
     src/ops/AreaBuildOps.cpp
     src/systems/TravelSystem.cpp
     src/systems/PlayerSystem.cpp

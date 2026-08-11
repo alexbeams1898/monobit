@@ -16,12 +16,12 @@
 #include "ops/LogUtils.h"
 #include "ops/NavUtils.h"
 #include "ops/SpawnUtils.h"
+#include "ops/ZoneUtils.h"
 #include "renderers/DebugPanelRenderer.h"
 #include "renderers/FloaterRenderer.h"
 #include "renderers/HudRenderer.h"
 #include "renderers/NotificationRenderer.h"
 #include "renderers/PromptRenderer.h"
-#include "screens/DeathScreen.h"
 #include "screens/PauseScreen.h"
 #include "screens/ScreenInput.h"
 #include "screens/ScreenStyle.h"
@@ -95,16 +95,15 @@ constexpr float kVoidB = 0.06f;
 constexpr float kPlayerSize = 28.0f;
 constexpr float kPoeSize = 32.0f;
 
-// THE DEATH BEAT. No drama and no announcement -- the register is a man who never cracks, so
-// the world simply fades to black, holds one breath while the floor floods back underneath,
-// and fades in again at the way in. The world FREEZES for the duration: watching the swarm
-// keep boiling while you fade would read as the game continuing without you, which is a
-// different (and wrong) statement.
+// THE DEATH BEAT. No drama, no announcement, no question -- the register is a
+// man who never cracks, so the world fades to black and he is simply home,
+// whole. The game never explains how he got there. The world FREEZES for the
+// duration: watching the swarm keep boiling while you fade would read as the
+// game continuing without you, which is a different (and wrong) statement.
 enum class DeathBeat
 {
     None,
     FadeOut,
-    Screen, // the black has settled; death asks what now
     FadeIn
 };
 DeathBeat sDeathBeat = DeathBeat::None;
@@ -117,48 +116,119 @@ constexpr float kDeathFadeIn = 0.7f;
 float sSpawnX = 0.0f;
 float sSpawnY = 0.0f;
 
-// DEATH. The only things it costs are the floor's progress and his position: the swarm floods
-// back, he wakes at the way in, mended -- and the pocket comes with him. The pocket is the
-// POINT of dying being cheap: the walk back to the rest spot is already the tension, and
-// taking the money too would punish the same mistake twice.
-void resetFloor(EntityManager& em)
+// Opening a floor from the authored world (the dig site) and from the title
+// (the fallback with no map) share one generator.
+bool generateFloor(Engine& engine, int depth);
+
+// A teleport is a cut: position, interpolation history, and the camera's
+// history all move together, or the first frame after the cut smears.
+void cutPlayerTo(EntityManager& em, float x, float y)
 {
     auto& reg = em.registry();
-
-    // The chamber floods back: everything alive, mid-air or mid-dissolve goes, and the assault
-    // starts over from its first breath.
-    std::vector<entt::entity> gone;
-    for (const auto e : reg.view<Vermin>())
-        gone.push_back(e);
-    for (const auto e : reg.view<HitArea>())
-        gone.push_back(e);
-    for (const auto e : reg.view<Particle>())
-        gone.push_back(e);
-    for (const auto e : gone)
-        reg.destroy(e);
-    floaters::clear();
-    notify::clear();
-    swarm::restart();
-
-    // He wakes at the way in, whole: body full, tank full -- the floor is exactly as the dig
-    // left it, except that he remembers.
     const entt::entity p = player::entity();
     if (!reg.valid(p))
         return;
     auto& t = reg.get<Transform>(p);
-    t.x = sSpawnX;
-    t.y = sSpawnY;
-    reg.get<PreviousTransform>(p) = PreviousTransform{sSpawnX, sSpawnY};
-    // The camera cuts WITH him -- position and history both, or the first unfrozen frame lerps
-    // from wherever he died and the fade-in ends with the world lurching into place. A teleport
-    // is a cut; nothing about it should pan.
+    t.x = x;
+    t.y = y;
+    reg.get<PreviousTransform>(p) = PreviousTransform{x, y};
     if (auto* cam = reg.try_get<Camera>(p))
     {
-        cam->x = sSpawnX;
-        cam->y = sSpawnY;
-        cam->prev_x = sSpawnX;
-        cam->prev_y = sSpawnY;
+        cam->x = x;
+        cam->y = y;
+        cam->prev_x = x;
+        cam->prev_y = y;
     }
+}
+
+// The exterminator himself, created once and carried through every world he
+// enters. No-op when he already exists -- his sheet and pocket are him.
+void ensurePlayer(EntityManager& em, float x, float y)
+{
+    if (em.registry().valid(player::entity()))
+        return;
+    const entt::entity playerEnt = spawn::box(em, x, y, kPlayerSize, 0.85f, 0.84f, 0.78f);
+    // Real art, if the pipeline has produced any. No def means the placeholder
+    // box stands in, loudly (SpriteDef::load logs).
+    if (const sprite_def::Def def = sprite_def::load("assets/sprites/player.json"); def.ok)
+    {
+        auto& spr = em.registry().get<Sprite>(playerEnt);
+        spr.texture_path = def.sheet;
+        spr.src_w = def.frame_w;
+        spr.src_h = def.frame_h;
+        em.registry().remove<SolidColor>(playerEnt);
+        sprite_anim::attach(em, playerEnt, def);
+    }
+    // The foot box. Smaller than the sprite and at its bottom, so his torso
+    // may overlap walls above him (top-down depth) while his feet stay out.
+    em.registry().emplace<Collider>(playerEnt, Collider{16.0f, 12.0f});
+    // No authored health: the sheet is the only source, and the numbers derive from it.
+    em.registry().emplace<Stats>(playerEnt, stats::playerStart());
+    stats::applyDerivations(em, playerEnt);
+    // The tank is part of the man, not a side effect of the first shot -- it
+    // must read true on the HUD in places where the trigger never fires.
+    em.registry().emplace<Charge>(playerEnt,
+                                  Charge{tools::chargeTuning().max, tools::chargeTuning().max});
+    em.registry().emplace<Camera>(playerEnt, Camera{x, y});
+    player::bind(playerEnt);
+}
+
+void loadConfigs()
+{
+    stats::load("config/stats.json");
+    thermos::load("config/stats.json");
+    items::load("config/items");
+    tools::load("config/tools.json");
+}
+
+// The dig site in reach, if any.
+entt::entity digSiteInRange(EntityManager& em)
+{
+    auto& reg = em.registry();
+    const entt::entity p = player::entity();
+    if (!reg.valid(p))
+        return entt::null;
+    const auto& pt = reg.get<Transform>(p);
+    for (const auto [e, t, site] : reg.view<Transform, DigSite>().each())
+    {
+        const float dx = pt.x - t.x;
+        const float dy = pt.y - t.y;
+        if (dx * dx + dy * dy < site.radius * site.radius)
+            return e;
+    }
+    return entt::null;
+}
+
+// DEATH. It costs the floor's progress and the walk back down -- nothing
+// else. He wakes at home, whole, the pocket with him; the pocket is the POINT
+// of dying being cheap: the walk back down is already the tension, and taking
+// the money too would punish the same mistake twice.
+void deathReturn(Engine& engine, EntityManager& em)
+{
+    auto& reg = em.registry();
+    floaters::clear();
+    notify::clear();
+
+    const std::string start = area::startLevel("assets/maps/world.ldtk");
+    if (start.empty() || !travel::enter(engine, em, start))
+    {
+        // No authored home: the old behavior, the floor flooding back under him.
+        std::vector<entt::entity> gone;
+        for (const auto e : reg.view<Vermin>())
+            gone.push_back(e);
+        for (const auto e : reg.view<HitArea>())
+            gone.push_back(e);
+        for (const auto e : reg.view<Particle>())
+            gone.push_back(e);
+        for (const auto e : gone)
+            reg.destroy(e);
+        swarm::restart();
+        cutPlayerTo(em, sSpawnX, sSpawnY);
+    }
+
+    const entt::entity p = player::entity();
+    if (!reg.valid(p))
+        return;
     if (auto* hp = reg.try_get<Health>(p))
         hp->current = hp->max;
     if (auto* sta = reg.try_get<Stamina>(p))
@@ -166,7 +236,7 @@ void resetFloor(EntityManager& em)
     if (auto* charge = reg.try_get<Charge>(p))
         charge->current = charge->max_charge;
     thermos::rest(em); // he wakes as if he had taken his break -- flask full
-    poe::log().info("death: the floor floods back");
+    poe::log().info("death: he wakes at home");
 }
 
 // The world only ticks while it is being PLAYED: not behind the title, and not behind the
@@ -193,12 +263,10 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
         sDeathTimer += static_cast<float>(dt);
         if (sDeathBeat == DeathBeat::FadeOut && sDeathTimer >= kDeathFadeOut)
         {
-            // The floor floods back under the black either way -- whichever door he takes out
-            // of the menu, the chamber behind it is already reset.
-            resetFloor(em);
-            sDeathBeat = DeathBeat::Screen;
+            // Full black: he goes home under it, no questions asked.
+            deathReturn(engine, em);
+            sDeathBeat = DeathBeat::FadeIn;
             sDeathTimer = 0.0f;
-            death_screen::reset();
         }
         else if (sDeathBeat == DeathBeat::FadeIn && sDeathTimer >= kDeathFadeIn)
         {
@@ -252,6 +320,19 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
             return;
         }
     }
+    else if (const entt::entity dig = digSiteInRange(em); dig != entt::null)
+    {
+        // THE WAY DOWN. Descending is a deliberate act, never a walk-on: you
+        // do not fall into the wound by accident.
+        prompt::offer("Descend");
+        if (player::consumeInteract())
+        {
+            const int depth = em.registry().get<DigSite>(dig).depth;
+            generateFloor(engine, depth);
+            aim::requireFreshPress();
+            return;
+        }
+    }
     else
         player::consumeInteract(); // a Space pressed in the field means nothing yet -- drop it
     // The field is rebuilt toward the player, then everything reads it -- see Chase.h.
@@ -259,7 +340,25 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     FlowFieldSystem::update(em, pt.x, pt.y);
     chase::update(em, static_cast<float>(dt));
     swarm::update(em, static_cast<float>(dt));
-    tools::update(em, static_cast<float>(dt));
+
+    // THE FIRST POINT OF ENTRY LEAKS. A dig site with a trickle lets one
+    // through every so often; they accumulate until he leaves the room.
+    for (const auto [e, t, site] : em.registry().view<Transform, DigSite>().each())
+    {
+        if (site.trickle.empty())
+            continue;
+        site.timer += static_cast<float>(dt);
+        if (site.timer >= site.interval)
+        {
+            site.timer = 0.0f;
+            swarm::spawnOne(em, site.trickle, t.x, t.y);
+        }
+    }
+
+    // THE TRADE HAS ITS PLACE: the weapon fires only where vermin can reach
+    // him. At the bar he is a man carrying equipment, not a man spraying it.
+    if (zone::combat(em))
+        tools::update(em, static_cast<float>(dt));
     tools::tickStamina(em, static_cast<float>(dt));
     tools::tickParticles(em, static_cast<float>(dt));
     hit_area::update(em, static_cast<float>(dt));
@@ -314,12 +413,30 @@ void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, 
     capture::writeIfRequested(engine.windowWidth(), engine.windowHeight());
 }
 
-// Build the house. Not done at boot: the title must be able to greet you without a floor
-// existing, and a new job should be a NEW house rather than the one generated at startup.
-bool buildWorld(Engine& engine)
+// Open a generated floor at `depth` -- from a dig site in the authored world,
+// or from the title as the no-map fallback. The player walks in if he exists;
+// he is created standing at the way in if not.
+bool generateFloor(Engine& engine, int depth)
 {
     auto& em = engine.entityManager();
-    em.registry().clear(); // a previous job's world, if any
+    auto& reg = em.registry();
+    // The world he came from goes; he does not. Doors from the authored level
+    // he left stop existing with it.
+    travel::leaveAuthored();
+    if (reg.valid(player::entity()))
+    {
+        std::vector<entt::entity> gone;
+        for (const auto e : reg.view<Transform>())
+            if (e != player::entity())
+                gone.push_back(e);
+        for (const auto e : gone)
+            reg.destroy(e);
+    }
+    else
+        reg.clear();
+    // The tile vocabulary is the floor's own: the authored tileset must not
+    // bleed into the dug chamber.
+    em.tile_config = TileConfig{};
 
     const floorgen::Floor floor = floorgen::generate(em, "config/floor.json", "config/rooms");
     if (!floor.ok)
@@ -327,11 +444,9 @@ bool buildWorld(Engine& engine)
         poe::log().error("world: could not build a floor");
         return false;
     }
-    stats::load("config/stats.json");
-    thermos::load("config/stats.json");
-    items::load("config/items");
-    tools::load("config/tools.json");
     TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
+    em.flow_field.last_player_col = -1;
+    em.flow_field.last_player_row = -1;
 
     // Every marker the rooms carried. 'P' is a point of entry -- for now a red box standing in
     // the room, which is enough to prove placement works.
@@ -495,25 +610,8 @@ bool buildWorld(Engine& engine)
         }
     }
 
-    const entt::entity playerEnt =
-        spawn::box(em, floor.spawn_x, floor.spawn_y, kPlayerSize, 0.85f, 0.84f, 0.78f);
-    // Real art, if the pipeline has produced any. The frame size comes from the def rather
-    // than a constant here -- the same number written twice is the same number drifting.
-    // No def means the placeholder box stands in, loudly (SpriteDef::load logs).
-    if (const sprite_def::Def def = sprite_def::load("assets/sprites/player.json"); def.ok)
-    {
-        auto& spr = em.registry().get<Sprite>(playerEnt);
-        spr.texture_path = def.sheet;
-        spr.src_w = def.frame_w;
-        spr.src_h = def.frame_h;
-        em.registry().remove<SolidColor>(playerEnt);
-        // Tags on the timeline become playable animations. Art with none stays a still sprite.
-        sprite_anim::attach(em, playerEnt, def);
-    }
-    // The foot box. Smaller than the sprite and at its bottom -- the renderer reads this to
-    // draw the sprite standing ON the box, which is what lets his torso overlap walls above
-    // him (top-down depth) while his feet stay out of them.
-    em.registry().emplace<Collider>(playerEnt, Collider{16.0f, 12.0f});
+    ensurePlayer(em, floor.spawn_x, floor.spawn_y);
+    cutPlayerTo(em, floor.spawn_x, floor.spawn_y);
     // The rest spot: at the way in. A pale ring of floor where the kit is set down -- the only
     // place points are sold, so the walk back to it with a full pocket is the loop's tension.
     {
@@ -522,22 +620,39 @@ bool buildWorld(Engine& engine)
         em.registry().emplace<RestSpot>(spot, RestSpot{40.0f});
         em.registry().get<Sprite>(spot).layer = 1; // ground marking, under everything that walks
     }
-
-    // No authored health: the sheet is the only source, and the numbers derive from it.
-    em.registry().emplace<Stats>(playerEnt, stats::playerStart());
-    stats::applyDerivations(em, playerEnt);
     sSpawnX = floor.spawn_x;
     sSpawnY = floor.spawn_y;
-    em.registry().emplace<Camera>(playerEnt, Camera{floor.spawn_x, floor.spawn_y});
-    player::bind(playerEnt);
-    poe::log().info("world: player at ({:.0f},{:.0f}), {} points of entry", floor.spawn_x,
-                    floor.spawn_y, poeCount);
-    // Opening the space is what disturbs it. Depth 0 for now; the gadget will carry the real
-    // one when digging exists -- and with it, the law: proximity to the source dictates
-    // difficulty, and everything downstream reads this one number.
-    swarm::begin("config/swarm.json", seeps, 0);
+    poe::log().info("world: player at ({:.0f},{:.0f}), {} points of entry, depth {}", floor.spawn_x,
+                    floor.spawn_y, poeCount, depth);
+    // Opening the space is what disturbs it. The dig site carries the depth,
+    // and with it the law: proximity to the source dictates difficulty --
+    // everything downstream reads this one number.
+    swarm::begin("config/swarm.json", seeps, depth);
     sApp.world_built = true;
     return true;
+}
+
+// A new job from the title. The authored world is home when the map declares
+// a start; the bare generated floor stays as the fallback while it does not.
+bool buildWorld(Engine& engine)
+{
+    auto& em = engine.entityManager();
+    em.registry().clear(); // a previous job's world -- and its man; a new job is a new sheet
+    loadConfigs();
+    if (const std::string start = area::startLevel("assets/maps/world.ldtk"); !start.empty())
+    {
+        ensurePlayer(em, 0.0f, 0.0f);
+        if (travel::enter(engine, em, start))
+        {
+            const auto& t = em.registry().get<Transform>(player::entity());
+            sSpawnX = t.x;
+            sSpawnY = t.y;
+            sApp.world_built = true;
+            return true;
+        }
+        poe::log().error("world: start level '{}' failed to load -- generating instead", start);
+    }
+    return generateFloor(engine, 0);
 }
 
 // What the shell does with what a screen reported.
@@ -595,7 +710,7 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     const bool playing = sApp.phase == app::Phase::Playing && !sApp.paused && !sApp.staging;
     // The dev panel needs a pointer to click, and it opens while playing -- so it counts as a
     // screen with options, exactly like a menu.
-    hud::cursorForPhase(playing && !debug_panel::visible() && sDeathBeat != DeathBeat::Screen);
+    hud::cursorForPhase(playing && !debug_panel::visible());
     if (playing)
     {
         // World-anchored, so it needs the camera the world was drawn with.
@@ -609,12 +724,8 @@ void gameRenderUI(Engine& engine, EntityManager& em)
         // The black, over everything -- the HUD fades with the world.
         if (sDeathBeat != DeathBeat::None)
         {
-            float a = 1.0f;
-            if (sDeathBeat == DeathBeat::FadeOut)
-                a = sDeathTimer / kDeathFadeOut;
-            else if (sDeathBeat == DeathBeat::FadeIn)
-                a = 1.0f - sDeathTimer / kDeathFadeIn;
-            // Screen: settled black; the menu draws over it from the shell pass.
+            const float a = (sDeathBeat == DeathBeat::FadeOut) ? sDeathTimer / kDeathFadeOut
+                                                               : 1.0f - sDeathTimer / kDeathFadeIn;
             UIRenderer::drawRect(0.0f, 0.0f, static_cast<float>(engine.windowWidth()),
                                  static_cast<float>(engine.windowHeight()),
                                  screen_style::black(std::min(1.0f, std::max(0.0f, a))));
@@ -662,34 +773,6 @@ void gameRenderUI(Engine& engine, EntityManager& em)
                 a = staging_screen::render(em, m, ww, wh);
             if (a == staging_screen::Action::Close)
                 sApp.staging = false;
-            break;
-        }
-        if (sDeathBeat == DeathBeat::Screen)
-        {
-            // Death outranks the pause key: there is nothing to resume to.
-            const death_screen::Mouse m{in.mouse_x, in.mouse_y, in.clicked};
-            death_screen::Action a = death_screen::step(in.up, in.down, in.confirm);
-            if (a == death_screen::Action::None)
-                a = death_screen::render(m, ww, wh);
-            switch (a)
-            {
-            case death_screen::Action::CarryOn:
-                sDeathBeat = DeathBeat::FadeIn;
-                sDeathTimer = 0.0f;
-                break;
-            case death_screen::Action::Leave:
-                sDeathBeat = DeathBeat::None;
-                sApp.world_built = false;
-                sApp.phase = app::Phase::Title;
-                travel::reset();
-                title_screen::reset();
-                break;
-            case death_screen::Action::Quit:
-                engine.requestQuit();
-                break;
-            case death_screen::Action::None:
-                break;
-            }
             break;
         }
         if (!sApp.paused && in.back)

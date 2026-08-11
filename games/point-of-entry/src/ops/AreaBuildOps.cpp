@@ -23,6 +23,34 @@ void registerAll()
                               em.registry().get<Sprite>(spot).layer = 1;
                           });
 
+    // The way down. Visible as whatever art the entity names (the hole,
+    // eventually); a dark pit box until then.
+    area::registerBuilder(
+        "dig_site",
+        [](EntityManager& em, const area::Object& o)
+        {
+            const entt::entity e = spawn::box(em, o.x, o.y, 32.0f, 0.10f, 0.08f, 0.10f);
+            em.registry().get<Sprite>(e).layer = 1;
+            if (const sprite_def::Def def =
+                    sprite_def::load(o.props.value("sprite", std::string{}));
+                def.ok)
+            {
+                auto& spr = em.registry().get<Sprite>(e);
+                spr.texture_path = def.sheet;
+                spr.src_w = def.frame_w;
+                spr.src_h = def.frame_h;
+                em.registry().remove<SolidColor>(e);
+            }
+            DigSite site;
+            site.depth = o.props.value("depth", 0);
+            // The map names the CREATURE; where the bestiary
+            // lives is the code's business.
+            if (const auto name = o.props.value("trickle", std::string{}); !name.empty())
+                site.trickle = "config/creatures/" + name + ".json";
+            site.interval = o.props.value("interval", site.interval);
+            em.registry().emplace<DigSite>(e, site);
+        });
+
     // A prop: sprite art when the file names some, a sized box when it does
     // not, and a foot collider when it declares itself solid.
     area::registerBuilder("prop",

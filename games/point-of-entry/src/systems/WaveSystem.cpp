@@ -233,7 +233,7 @@ const Creature* pickCreature(const ActiveSeep& seep, unsigned n)
     return &sCreatures[chosen];
 }
 
-void emerge(EntityManager& em, const ActiveSeep& seep, int seepIndex, const Creature& kind)
+void emerge(EntityManager& em, float atX, float atY, int seepIndex, const Creature& kind)
 {
     auto& reg = em.registry();
     const entt::entity e = reg.create();
@@ -243,13 +243,13 @@ void emerge(EntityManager& em, const ActiveSeep& seep, int seepIndex, const Crea
     const float angle = n * 2.39996f; // golden angle: successive spawns never line up
     const float spread = 2.0f + std::fmod(n, 5.0f) * 1.5f;
     Transform t{};
-    t.x = seep.at.x + std::cos(angle) * spread;
-    t.y = seep.at.y + std::sin(angle) * spread;
+    t.x = atX + std::cos(angle) * spread;
+    t.y = atY + std::sin(angle) * spread;
     // Nothing materialises inside a wall; the seep itself is floor by generation's guarantee.
     if (!world::boxFree(em, t.x, t.y, 3.0f, 3.0f))
     {
-        t.x = seep.at.x;
-        t.y = seep.at.y;
+        t.x = atX;
+        t.y = atY;
     }
     t.scale = kind.scale;
     reg.emplace<Transform>(e, t);
@@ -371,6 +371,15 @@ void restart()
     }
 }
 
+void spawnOne(EntityManager& em, const std::string& creaturePath, float x, float y)
+{
+    const std::size_t idx = loadCreature(creaturePath);
+    if (idx == static_cast<std::size_t>(-1))
+        return;
+    // Belongs to no seep's kill gate -- the trickle answers to no wave clock.
+    emerge(em, x, y, -1, sCreatures[idx]);
+}
+
 void update(EntityManager& em, float dt)
 {
     // Every hole on its own clock, but CLEARING gates each: a seep's breath toward its next
@@ -388,7 +397,7 @@ void update(EntityManager& em, float dt)
             {
                 if (const Creature* kind = pickCreature(seep, sSpawnCounter); kind != nullptr)
                 {
-                    emerge(em, seep, i, *kind);
+                    emerge(em, seep.at.x, seep.at.y, i, *kind);
                     if (seep.to_emerge == countForWave(seep.program, seep.wave))
                         poe::log().info("swarm:   seep[{}] first emergence at ({:.0f},{:.0f})", i,
                                         seep.at.x, seep.at.y);

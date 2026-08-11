@@ -119,10 +119,10 @@ void render(Engine& engine, EntityManager& em)
             for (const auto& lvl : area::levels("assets/maps/world.ldtk"))
                 if (ImGui::Selectable((lvl + "##level").c_str()))
                     travel::enter(engine, em, lvl);
-            ImGui::TextUnformatted("Doors");
-            for (const auto& id : travel::doorIds())
-                if (ImGui::Selectable((id + "##door").c_str()))
-                    travel::jumpToDoor(engine, em, id);
+            ImGui::TextUnformatted("Warps");
+            for (const auto& id : travel::warpIds())
+                if (ImGui::Selectable((id + "##warp").c_str()))
+                    travel::jumpToWarp(engine, em, id);
         }
 
         ImGui::Separator();

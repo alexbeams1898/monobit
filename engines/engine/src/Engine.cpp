@@ -579,6 +579,12 @@ void Engine::swapBuffers()
 
 void Engine::shutdown()
 {
+    // Hide the window before any teardown: audio/GL/window destruction takes
+    // long enough to read as a hang with a fullscreen window still up. Hidden
+    // first, the desktop is back instantly and the cleanup runs unseen.
+    if (window)
+        SDL_HideWindow(window);
+
     // ImGui first — its OpenGL3 backend frees GPU resources, so it must
     // run while the GL context is still alive. Subsequent shutdowns can
     // safely no-op when called twice (e.g. dtor after explicit shutdown).

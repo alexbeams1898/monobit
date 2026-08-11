@@ -5,6 +5,7 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
+#include "ops/ZoneUtils.h"
 #include "renderers/NotificationRenderer.h"
 #include "renderers/PromptRenderer.h"
 #include "screens/ScreenStyle.h"
@@ -148,6 +149,10 @@ void staminaBar(const EntityManager& em, float x, float y)
 // the only moment the player gets to breathe too.
 void waveState(Engine& engine, const EntityManager& em)
 {
+    // Wave arithmetic belongs to dug floors; the basement's leak is not a
+    // wave and must not read as one.
+    if (!zone::dug())
+        return;
     const auto cx = static_cast<float>(engine.windowWidth()) * 0.5f;
     const swarm::Phase p = swarm::phase();
     if (p == swarm::Phase::Cleared)
@@ -209,17 +214,23 @@ void equipped(Engine& engine, const EntityManager& em)
     const float by = bottom - margin() - boxH;
     screen_style::panel(screen_style::Rect{bx, by, boxW, boxH});
 
-    // Amber under a quarter: the tank running low is the thing that decides whether to keep
-    // spraying or go earn some back, and it must be noticeable without being read.
+    // STOWED outside a combat zone: the whole box goes quiet -- the kit is
+    // carried here, not drawn. Amber under a quarter otherwise: the tank
+    // running low decides whether to keep spraying or go earn some back.
+    const bool live = zone::combat(em);
     const bool low = max > 0.0f && cur / max < 0.25f;
-    screen_style::textInBox(held.name, screen_style::Rect{bx, by, boxW, rowH},
-                            screen_style::kTextDim, /*alignRight=*/false);
-    screen_style::textInBox(ammo, screen_style::Rect{bx, by + rowH, boxW, rowH},
-                            low ? screen_style::kAccent : screen_style::kTextHot,
+    const Color nameCol =
+        live ? screen_style::kTextDim : screen_style::withAlpha(screen_style::kTextDim, 0.45f);
+    const Color ammoCol = !live ? screen_style::withAlpha(screen_style::kTextDim, 0.45f)
+                          : low ? screen_style::kAccent
+                                : screen_style::kTextHot;
+    screen_style::textInBox(held.name, screen_style::Rect{bx, by, boxW, rowH}, nameCol,
+                            /*alignRight=*/false);
+    screen_style::textInBox(ammo, screen_style::Rect{bx, by + rowH, boxW, rowH}, ammoCol,
                             /*alignRight=*/false);
     if (kit.size() > 1)
         screen_style::textInBox("Q", screen_style::Rect{bx, by, boxW - screen_style::pad(1), rowH},
-                                screen_style::kTextDim, /*alignRight=*/true);
+                                nameCol, /*alignRight=*/true);
 }
 
 // A sliver over each hurt creature. Shown only once something has been hit: a swarm of full bars

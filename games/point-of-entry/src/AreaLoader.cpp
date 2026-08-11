@@ -196,7 +196,11 @@ void parseEntities(const nlohmann::json& level, Data& d)
         for (const auto& fi : e.value("fieldInstances", nlohmann::json::array()))
         {
             const std::string key = fi.value("__identifier", std::string{});
-            if (!key.empty() && fi.contains("__value"))
+            // A field left empty in the editor arrives as null -- it does not
+            // exist. Letting nulls through makes every consumer's
+            // value(key, default) a live grenade (null is present, so the
+            // default never applies and the type assert throws).
+            if (!key.empty() && fi.contains("__value") && !fi.at("__value").is_null())
                 o.props[key] = fi.at("__value");
         }
         d.objects.push_back(std::move(o));
@@ -237,6 +241,23 @@ Data loadLevel(const std::string& ldtkPath, const std::string& level)
     parseEntities(*lvl, d);
     d.ok = true;
     return d;
+}
+
+std::string startLevel(const std::string& ldtkPath)
+{
+    const nlohmann::json j = parseFile(ldtkPath);
+    if (!j.is_object())
+        return {};
+    for (const auto& l : j.value("levels", nlohmann::json::array()))
+    {
+        const nlohmann::json* layer = findLayer(l, "Entities");
+        if (layer == nullptr)
+            continue;
+        for (const auto& e : layer->value("entityInstances", nlohmann::json::array()))
+            if (e.value("__identifier", std::string{}) == "PlayerStart")
+                return l.value("identifier", std::string{});
+    }
+    return {};
 }
 
 std::vector<std::string> levels(const std::string& ldtkPath)

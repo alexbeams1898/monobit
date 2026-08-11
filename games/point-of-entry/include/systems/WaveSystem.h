@@ -43,6 +43,10 @@ void begin(const std::string& configPath, const std::vector<Seep>& seeps, int de
 // The same floor over again -- what dying costs.
 void restart();
 
+// One creature out of a hole, outside any wave program -- what a dig site
+// leaks in the authored world. The full emergence recipe, at current depth.
+void spawnOne(EntityManager& em, const std::string& creaturePath, float x, float y);
+
 void update(EntityManager& em, float dt);
 
 Phase phase();

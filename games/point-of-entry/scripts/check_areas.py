@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """Map lint: the LDtk project's door contract, enforced by machine.
 
-Doors are the only cross-level references in the map, so they are where
+Warps are the only cross-level references in the map, so they are where
 authoring can silently break: a renamed id leaves its partner pointing at
-nothing, and the game only finds out when a player walks into the doorway.
+nothing, and the game only finds out when a player walks into the passage.
 
 Errors (exit 1):
-  - a Door without both `id` and `target`
-  - two Doors sharing an id
-  - a `target` naming no door in the project
+  - a Warp without `id`, `target`, or a valid `facing`
+  - two Warps sharing an id
+  - a `target` naming no warp in the project
+  - more than one PlayerStart (it IS the game's start)
 
 Warnings (exit 0):
   - a one-way passage (A targets B, but B does not target A)
-  - a level with no PlayerStart (doorless entry lands wherever he stood)
+  - no PlayerStart anywhere
 
 A missing project file passes with a note -- the map simply has not been
 authored yet.
@@ -54,31 +55,40 @@ def main() -> int:
 
     errors: list[str] = []
     warnings: list[str] = []
-    doors: dict[str, dict] = {}  # id -> {level, target}
+    warps: dict[str, dict] = {}  # id -> {level, target}
+    starts: list[str] = []  # levels holding a PlayerStart (the game's one start)
 
     for level in project.get("levels") or []:
         name = level.get("identifier", "?")
-        for door in entities(level, "Door"):
-            did = field(door, "id")
-            target = field(door, "target")
-            if not did or not target:
-                errors.append(f"{name}: a Door needs both 'id' and 'target'")
+        for _ in entities(level, "PlayerStart"):
+            starts.append(name)
+        for warp in entities(level, "Warp"):
+            wid = field(warp, "id")
+            target = field(warp, "target")
+            if not wid or not target:
+                errors.append(f"{name}: a Warp needs both 'id' and 'target'")
                 continue
-            if did in doors:
-                errors.append(f"door id '{did}' declared in both "
-                              f"'{doors[did]['level']}' and '{name}'")
+            if field(warp, "facing").lower() not in ("north", "south", "east", "west"):
+                errors.append(f"{name}: warp '{wid}' needs a facing "
+                              f"(north/south/east/west)")
+            if wid in warps:
+                errors.append(f"warp id '{wid}' declared in both "
+                              f"'{warps[wid]['level']}' and '{name}'")
                 continue
-            doors[did] = {"level": name, "target": target}
-        if not entities(level, "PlayerStart"):
-            warnings.append(f"{name}: no PlayerStart -- doorless entry lands "
-                            f"wherever he already stood")
+            warps[wid] = {"level": name, "target": target}
+    # PlayerStart IS the game's start, so the project carries exactly one.
+    if len(starts) > 1:
+        errors.append(f"more than one PlayerStart in the project: {', '.join(starts)}")
+    elif not starts:
+        warnings.append("no PlayerStart anywhere -- the game falls back to a "
+                        "generated floor")
 
-    for did, d in doors.items():
-        if d["target"] not in doors:
-            errors.append(f"door '{did}' targets '{d['target']}', which no "
+    for wid, w in warps.items():
+        if w["target"] not in warps:
+            errors.append(f"warp '{wid}' targets '{w['target']}', which no "
                           f"level declares")
-        elif doors[d["target"]]["target"] != did:
-            warnings.append(f"one-way passage: '{did}' -> '{d['target']}', "
+        elif warps[w["target"]]["target"] != wid:
+            warnings.append(f"one-way passage: '{wid}' -> '{w['target']}', "
                             f"but not back")
 
     for w in warnings:

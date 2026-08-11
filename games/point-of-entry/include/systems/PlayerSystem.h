@@ -25,6 +25,11 @@ entt::entity entity();
 // True once per E press: the interact edge, consumed by whoever acts on it.
 bool consumeInteract();
 
+// The direction he is PRESSING this tick, normalized; zero when idle. Doors
+// read this because a wall can stop his feet short of a threshold, but not
+// his intent to walk through it.
+void moveIntent(float& dx, float& dy);
+
 // WASD against the tile map. Per-frame; wired to Engine::setGameUpdate.
 void update(Engine& engine, EntityManager& em, double dt);
 

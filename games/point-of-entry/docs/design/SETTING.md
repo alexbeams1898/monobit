@@ -83,8 +83,9 @@ The game stacks vertically in a single landmark building:
   He never acknowledges nearly dying. The game never explains how he got
   home — comfort the first time, quietly the scariest thing in the game by
   the tenth, at zero scene cost.
-- OPEN: whether bed-wake fully replaces the current floor-reset death, or the
-  floor reset stays and the bed frames only opening/NG+.
+- Settled in v1: death IS the ride home -- fade to black, wake at the
+  apartment, whole, no asking screen. The dungeon floor and its progress are
+  simply gone. (The literal bed shot arrives with the apartment's art.)
 
 ## The cat
 
