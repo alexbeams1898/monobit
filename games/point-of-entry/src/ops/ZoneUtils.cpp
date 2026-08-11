@@ -7,17 +7,17 @@
 namespace zone
 {
 
-bool dug()
-{
-    return travel::currentArea().empty();
-}
-
 bool combat(const EntityManager& em)
 {
-    if (dug())
+    // Generated space -- the dig itself -- is always the trade's ground.
+    if (travel::currentArea().empty())
         return true;
-    const auto view = em.registry().view<const DigSite>();
-    return view.begin() != view.end();
+    // Only an OPEN hole lets vermin reach him -- a sealed dig site is
+    // furniture, and the weapon stays stowed beside it.
+    for (const auto [e, site] : em.registry().view<const DigSite>().each())
+        if (site.open && !site.trickle.empty())
+            return true;
+    return false;
 }
 
 } // namespace zone

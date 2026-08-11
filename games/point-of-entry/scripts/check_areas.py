@@ -98,7 +98,7 @@ def main() -> int:
         for e in errors:
             print(f"  {e}")
         return 1
-    print(f"check_areas: clean ({len(doors)} door(s))")
+    print(f"check_areas: clean ({len(warps)} warp(s))")
     return 0
 
 

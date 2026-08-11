@@ -305,7 +305,8 @@ int livingFrom(const EntityManager& em, int seepIndex)
 
 } // namespace
 
-void begin(const std::string& configPath, const std::vector<Seep>& seeps, int depth)
+void begin(const std::string& configPath, const std::vector<Seep>& seeps, int depth,
+           const std::vector<bool>& cleared)
 {
     sDepth = depth;
     sCreatures.clear();
@@ -352,6 +353,11 @@ void begin(const std::string& configPath, const std::vector<Seep>& seeps, int de
         sSeeps.push_back(std::move(active));
     }
     restart();
+    // Spent holes stay spent across visits -- the source does not re-press a
+    // hole whose assault it already exhausted.
+    for (std::size_t i = 0; i < sSeeps.size() && i < cleared.size(); ++i)
+        if (cleared[i])
+            sSeeps[i].done = true;
     poe::log().info("swarm: {} seep(s) at depth {}", sSeeps.size(), depth);
     for (std::size_t i = 0; i < sSeeps.size(); ++i)
         poe::log().info("swarm:   seep[{}] at ({:.0f},{:.0f}) type '{}' ({} fauna)", i,
@@ -369,6 +375,13 @@ void restart()
         seep.emerging = false;
         seep.done = seep.program.entries.empty();
     }
+}
+
+bool seepCleared(const EntityManager& em, int seepIndex)
+{
+    if (seepIndex < 0 || seepIndex >= static_cast<int>(sSeeps.size()))
+        return false;
+    return sSeeps[static_cast<std::size_t>(seepIndex)].done && livingFrom(em, seepIndex) == 0;
 }
 
 void spawnOne(EntityManager& em, const std::string& creaturePath, float x, float y)

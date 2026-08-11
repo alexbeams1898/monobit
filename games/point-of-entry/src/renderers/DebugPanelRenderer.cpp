@@ -26,7 +26,14 @@ float sWalkSpeed = 120.0f;
 // 3x: a 40px character lands around 120 screen pixels -- close enough that he reads as the
 // person you are. At 2x he reads as a distant figure being watched instead.
 int sZoom = 3;
+
+bool sShowHitAreas = false;
 } // namespace
+
+bool showHitAreas()
+{
+    return sShowHitAreas;
+}
 
 void toggle()
 {
@@ -74,6 +81,7 @@ void render(Engine& engine, EntityManager& em)
             poe::log().info("view: zoom {}x", sZoom);
         ImGui::TextDisabled("internal %d x %d", engine.windowWidth() / sZoom,
                             engine.windowHeight() / sZoom);
+        ImGui::Checkbox("show hit areas", &sShowHitAreas);
 
         ImGui::Separator();
         ImGui::TextUnformatted("World");

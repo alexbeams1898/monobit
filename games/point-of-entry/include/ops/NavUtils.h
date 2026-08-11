@@ -25,3 +25,17 @@ bool stepBlocked(const EntityManager& em, float& pos, float delta, bool horizont
                  float w, float h);
 
 } // namespace world
+
+// Angles. Config authors in degrees (an arc is a number a person can picture); the math runs in
+// radians, and this is the one crossing point.
+namespace geom
+{
+
+constexpr float kPi = 3.14159265f;
+
+constexpr float degToRad(float deg)
+{
+    return deg * kPi / 180.0f;
+}
+
+} // namespace geom

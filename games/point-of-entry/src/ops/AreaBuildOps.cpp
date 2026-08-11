@@ -6,6 +6,7 @@
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
 #include "ops/SpawnUtils.h"
+#include "systems/DescentSystem.h"
 
 namespace area_build
 {
@@ -19,7 +20,7 @@ void registerAll()
                           {
                               const entt::entity spot =
                                   spawn::box(em, o.x, o.y + 8.0f, 22.0f, 0.30f, 0.42f, 0.40f);
-                              em.registry().emplace<RestSpot>(spot, RestSpot{40.0f});
+                              em.registry().emplace<RestSpot>(spot, RestSpot{16.0f});
                               em.registry().get<Sprite>(spot).layer = 1;
                           });
 
@@ -48,6 +49,9 @@ void registerAll()
             if (const auto name = o.props.value("trickle", std::string{}); !name.empty())
                 site.trickle = "config/creatures/" + name + ".json";
             site.interval = o.props.value("interval", site.interval);
+            site.open = descent::rootOpened();
+            site.spawn_x = o.x;
+            site.spawn_y = o.y;
             em.registry().emplace<DigSite>(e, site);
         });
 

@@ -5,6 +5,7 @@
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
 #include "ops/LogUtils.h"
+#include "ops/NavUtils.h"
 #include "systems/AimSystem.h"
 #include "systems/DamageSystem.h"
 #include "systems/PlayerSystem.h"
@@ -26,18 +27,42 @@ std::vector<float> sCooldowns; // time left before each tool is ready, parallel 
 int sSelected = 0;
 
 ChargeTuning sCharge;
-entt::entity sStream = entt::null; // the live stream area, while a trigger is held
-float sEmit = 0.0f;                // droplet emission accumulator
+float sEmit = 0.0f; // droplet emission accumulator
 unsigned sDropSeed = 0;
 
-// Where the wand's nozzle is, in front of him. Short: this places the ORIGIN of the spray, and
-// the cone widens from there.
-constexpr float kNozzle = 10.0f;
-constexpr float kDropletsPerSecond = 90.0f;
-// How fast the DAMAGING front sweeps out from the nozzle, as a fraction of the cone radius per
-// second. Slightly behind the fastest droplets, so nothing ever dies where no spray has visibly
-// arrived -- the kill rides the picture.
-constexpr float kSprayFront = 1.6f;
+// How the spray LOOKS -- emission, flight, dispersal. All of it presentation: damage rides the
+// cone, not these. Loaded from the config's "spray" block; these are the fallbacks.
+struct SprayTuning
+{
+    float droplets_per_second = 90.0f;
+    // Droplet flight speed, as fractions of the cone radius per second: base plus per-droplet
+    // variance.
+    float speed_base = 1.5f;
+    float speed_var = 0.9f;
+    float spread_inside = 0.82f; // fraction of the damaging arc the droplets fan across
+    float lifetime_base = 0.85f;
+    float lifetime_var = 0.3f;
+    float grow_to = 2.6f; // end scale as a droplet disperses
+    float drag = 2.2f;    // per-second velocity decay in flight
+};
+SprayTuning sSpray;
+
+// How fast the damaging front sweeps outward, DERIVED from the fastest droplet -- the kill
+// rides the tip of the visible wave, and one number cannot drift from the other because there
+// is only one number.
+float sprayFront()
+{
+    return sSpray.speed_base + sSpray.speed_var;
+}
+
+// The live stream area, if any. Found by tag rather than held in a handle: a world swap
+// destroys everything but him, and a handle would outlive its entity.
+entt::entity streamEntity(entt::registry& reg)
+{
+    for (const auto e : reg.view<StreamHead>())
+        return e;
+    return entt::null;
+}
 
 Reach parseReach(const std::string& text)
 {
@@ -107,8 +132,20 @@ bool load(const std::string& path)
     }
 
     const auto& ch = j.value("charge", nlohmann::json::object());
-    sCharge.max = ch.value("max", 100.0f);
-    sCharge.per_kill = ch.value("per_kill", 6.0f);
+    const ChargeTuning chargeDefaults{};
+    sCharge.max = ch.value("max", chargeDefaults.max);
+    sCharge.per_kill = ch.value("per_kill", chargeDefaults.per_kill);
+
+    const auto& sp = j.value("spray", nlohmann::json::object());
+    const SprayTuning sprayDefaults{};
+    sSpray.droplets_per_second = sp.value("droplets_per_second", sprayDefaults.droplets_per_second);
+    sSpray.speed_base = sp.value("speed_base", sprayDefaults.speed_base);
+    sSpray.speed_var = sp.value("speed_var", sprayDefaults.speed_var);
+    sSpray.spread_inside = sp.value("spread_inside", sprayDefaults.spread_inside);
+    sSpray.lifetime_base = sp.value("lifetime_base", sprayDefaults.lifetime_base);
+    sSpray.lifetime_var = sp.value("lifetime_var", sprayDefaults.lifetime_var);
+    sSpray.grow_to = sp.value("grow_to", sprayDefaults.grow_to);
+    sSpray.drag = sp.value("drag", sprayDefaults.drag);
 
     for (const auto& t : j.value("tools", nlohmann::json::array()))
     {
@@ -158,19 +195,43 @@ void next()
         sSelected = (sSelected + 1) % static_cast<int>(sTools.size());
 }
 
-bool streaming()
+bool streaming(EntityManager& em)
 {
-    return sStream != entt::null;
+    return streamEntity(em.registry()) != entt::null;
+}
+
+void holster(EntityManager& em)
+{
+    auto& reg = em.registry();
+    for (const auto e : reg.view<StreamHead>())
+        reg.destroy(e);
 }
 
 namespace
 {
+
+// The fields every area shares, whatever its reach. Requires a Stats sheet on the owner --
+// every fire path bails before calling this.
+HitArea makeArea(entt::registry& reg, const Tool& tool, entt::entity owner)
+{
+    HitArea area;
+    area.owner = owner;
+    area.radius = radiusOf(tool);
+    area.damage = damageOf(tool, reg.get<Stats>(owner));
+    area.arc = tool.arc;
+    return area;
+}
 
 // Put an area into the world. Adjacent areas land beside him and sit still; thrown ones start
 // close and travel. Both are the same component -- see HitArea.h.
 void spawnArea(EntityManager& em, entt::entity owner, const Tool& tool, float px, float py)
 {
     auto& reg = em.registry();
+    if (reg.try_get<Stats>(owner) == nullptr)
+    {
+        poe::log().error("combat: firing owner has no stats sheet -- shot dropped");
+        return;
+    }
     const entt::entity e = reg.create();
     const float dx = aim::dirX();
     const float dy = aim::dirY();
@@ -180,11 +241,7 @@ void spawnArea(EntityManager& em, entt::entity owner, const Tool& tool, float px
     t.y = py + dy * tool.offset;
     reg.emplace<Transform>(e, t);
 
-    HitArea area;
-    area.radius = radiusOf(tool);
-    area.damage = damageOf(tool, reg.get_or_emplace<Stats>(owner, Stats{}));
-    area.owner = owner;
-    area.arc = tool.arc;
+    HitArea area = makeArea(reg, tool, owner);
     area.dir_x = dx;
     area.dir_y = dy;
     // A one-shot area still has to live long enough to be resolved once, so an unauthored linger
@@ -192,8 +249,6 @@ void spawnArea(EntityManager& em, entt::entity owner, const Tool& tool, float px
     area.remaining = tool.linger > 0.0f ? tool.linger : 0.0001f;
     if (tool.reach == Reach::Thrown)
     {
-        area.dir_x = dx;
-        area.dir_y = dy;
         area.speed = tool.speed;
         area.range_left = tool.range;
     }
@@ -222,9 +277,9 @@ void spawnDroplet(EntityManager& em, float x, float y, float dx, float dy, const
 
     // Spread slightly INSIDE the damaging arc, so what you see is never wider than what kills --
     // a droplet drawn past the edge of the cone is a lie about reach.
-    const float spread = tool.arc * 0.82f * 3.14159265f / 180.0f;
+    const float spread = geom::degToRad(tool.arc * sSpray.spread_inside);
     const float a = std::atan2(dy, dx) + r1 * spread;
-    const float speed = tool.radius * (1.5f + r2 * 0.9f);
+    const float speed = tool.radius * (sSpray.speed_base + r2 * sSpray.speed_var);
 
     Transform t{};
     t.x = x;
@@ -243,9 +298,9 @@ void spawnDroplet(EntityManager& em, float x, float y, float dx, float dy, const
     // life it is), which is what disperses -- a droplet that stayed the same size would read as a
     // bullet. Lifetime is set so it dies about where the cone stops hurting.
     Particle p;
-    p.lifetime = (tool.radius / speed) * (0.85f + r2 * 0.3f);
+    p.lifetime = (tool.radius / speed) * (sSpray.lifetime_base + r2 * sSpray.lifetime_var);
     p.start_scale = 1.0f;
-    p.end_scale = 2.6f;
+    p.end_scale = sSpray.grow_to;
     reg.emplace<Particle>(e, p);
 }
 
@@ -255,43 +310,53 @@ void spawnDroplet(EntityManager& em, float x, float y, float dx, float dy, const
 void tickStream(EntityManager& em, const Tool& tool, entt::entity owner, float dt)
 {
     auto& reg = em.registry();
-    auto& charge = reg.get_or_emplace<Charge>(owner, Charge{sCharge.max, sCharge.max});
-    auto& sta = reg.get_or_emplace<Stamina>(owner, Stamina{});
+    auto* charge = reg.try_get<Charge>(owner);
+    auto* sta = reg.try_get<Stamina>(owner);
+    if (charge == nullptr || sta == nullptr || reg.try_get<Stats>(owner) == nullptr)
+    {
+        poe::log().error("combat: stream owner is missing charge, stamina or stats -- not firing");
+        return;
+    }
     // Both meters gate a held stream, and they say different things: an empty tank means he has
     // not killed enough, an empty body means he has been leaning on the trigger too long.
-    const bool wants = aim::firing() && charge.current > 0.0f && sta.current > 0.0f;
+    const bool wants = aim::firing() && charge->current > 0.0f && sta->current > 0.0f;
 
+    entt::entity stream = streamEntity(reg);
     if (!wants)
     {
-        if (reg.valid(sStream))
-            reg.destroy(sStream);
-        sStream = entt::null;
+        // Release DETACHES the burst rather than cutting it: the front
+        // finishes its sweep to the rim and the area retires itself. A click
+        // is a complete fire; chemical does not vanish mid-air on mouse-up.
+        if (reg.valid(stream))
+        {
+            auto& area = reg.get<HitArea>(stream);
+            const float total = area.expand > 0.0f ? area.radius / area.expand : 0.0f;
+            area.remaining = std::max(0.05f, total - area.age);
+            reg.remove<StreamHead>(stream); // a detached burst is no longer the held stream
+        }
         return;
     }
 
-    charge.current = std::max(0.0f, charge.current - tool.charge * dt);
-    sta.current = std::max(0.0f, sta.current - staminaOf(tool) * dt);
-    sta.recovery_timer = stats::formulas().stamina.recovery_delay;
+    charge->current = std::max(0.0f, charge->current - tool.charge * dt);
+    sta->current = std::max(0.0f, sta->current - staminaOf(tool) * dt);
+    sta->recovery_timer = stats::formulas().stamina.recovery_delay;
 
     const auto& pt = reg.get<Transform>(owner);
     const float dx = aim::dirX();
     const float dy = aim::dirY();
-    if (!reg.valid(sStream))
+    if (!reg.valid(stream))
     {
-        sStream = reg.create();
-        HitArea area;
-        area.owner = owner;
-        area.radius = radiusOf(tool);
-        area.damage = damageOf(tool, reg.get_or_emplace<Stats>(owner, Stats{}));
-        area.arc = tool.arc;
+        stream = reg.create();
+        HitArea area = makeArea(reg, tool, owner);
         // Damage lands on a tick rather than continuously, so a number appears at a readable rate
         // instead of once a frame.
         area.rehit = std::max(0.05f, tool.cooldown);
-        area.expand = kSprayFront * radiusOf(tool);
+        area.expand = sprayFront() * radiusOf(tool);
         area.remaining = 3600.0f; // held areas are retired by releasing, not by expiring
-        reg.emplace<HitArea>(sStream, area);
-        reg.emplace<Transform>(sStream, Transform{});
-        reg.emplace<PreviousTransform>(sStream, PreviousTransform{});
+        reg.emplace<HitArea>(stream, area);
+        reg.emplace<Transform>(stream, Transform{});
+        reg.emplace<PreviousTransform>(stream, PreviousTransform{});
+        reg.emplace<StreamHead>(stream);
     }
 
     // Follow the wand every frame: the cone is anchored ON HIM and swings with the cursor, which
@@ -300,19 +365,19 @@ void tickStream(EntityManager& em, const Tool& tool, entt::entity owner, float d
     // The apex sits at the player rather than out along the aim: spray leaves a nozzle and widens
     // as it travels, so a cone starting a body-length away reads as a floating wedge rather than
     // as something he is doing. Offset is the nozzle position only -- a short step, not a gap.
-    auto& area = reg.get<HitArea>(sStream);
+    auto& area = reg.get<HitArea>(stream);
     area.dir_x = dx;
     area.dir_y = dy;
-    auto& t = reg.get<Transform>(sStream);
-    t.x = pt.x + dx * kNozzle;
-    t.y = pt.y + dy * kNozzle;
-    reg.get<PreviousTransform>(sStream) = PreviousTransform{t.x, t.y};
+    auto& t = reg.get<Transform>(stream);
+    t.x = pt.x + dx * tool.offset;
+    t.y = pt.y + dy * tool.offset;
+    reg.get<PreviousTransform>(stream) = PreviousTransform{t.x, t.y};
 
     // Droplets, thrown from the nozzle outward. The cone is the RULE; these are what the player
     // actually sees, and they are what makes it read as spewing rather than as a shape switching
     // on. Emitted on a rate rather than per frame, so the look does not change with framerate.
     sEmit += dt;
-    const float interval = 1.0f / kDropletsPerSecond;
+    const float interval = 1.0f / sSpray.droplets_per_second;
     while (sEmit >= interval)
     {
         sEmit -= interval;
@@ -343,11 +408,7 @@ void update(EntityManager& em, float dt)
         tickStream(em, tool, owner, dt);
         return;
     }
-    if (reg.valid(sStream))
-    {
-        reg.destroy(sStream); // switched off a stream tool mid-spray
-        sStream = entt::null;
-    }
+    holster(em); // switched off a stream tool mid-spray
 
     if (!aim::firing() || sCooldowns[index] > 0.0f)
         return;
@@ -355,13 +416,18 @@ void update(EntityManager& em, float dt)
     // Stamina gates the shot, and an empty bar simply means not yet -- no penalty, no failed
     // swing. The cost is paid in full or the tool does not fire, so a shot is never half-priced.
     const float cost = staminaOf(tool);
-    auto& sta = reg.get_or_emplace<Stamina>(owner, Stamina{});
-    auto& charge = reg.get_or_emplace<Charge>(owner, Charge{sCharge.max, sCharge.max});
-    if (sta.current < cost || charge.current < tool.charge)
+    auto* sta = reg.try_get<Stamina>(owner);
+    auto* charge = reg.try_get<Charge>(owner);
+    if (sta == nullptr || charge == nullptr)
+    {
+        poe::log().error("combat: firing owner is missing stamina or charge -- shot dropped");
         return;
-    sta.current -= cost;
-    sta.recovery_timer = stats::formulas().stamina.recovery_delay;
-    charge.current -= tool.charge;
+    }
+    if (sta->current < cost || charge->current < tool.charge)
+        return;
+    sta->current -= cost;
+    sta->recovery_timer = stats::formulas().stamina.recovery_delay;
+    charge->current -= tool.charge;
 
     const auto& t = reg.get<Transform>(owner);
     spawnArea(em, owner, tool, t.x, t.y);
@@ -381,7 +447,7 @@ void tickParticles(EntityManager& em, float dt)
             continue;
         }
         // Slows as it goes, like something sprayed into air rather than fired.
-        const float drag = 1.0f - 2.2f * dt;
+        const float drag = 1.0f - sSpray.drag * dt;
         v.dx *= drag;
         v.dy *= drag;
         t.x += v.dx * dt;

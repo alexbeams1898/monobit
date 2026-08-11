@@ -3,6 +3,7 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
+#include "ops/NavUtils.h"
 
 #include <cmath>
 
@@ -34,8 +35,6 @@ constexpr float kTiltMax = 0.12f; // radians (~7 deg) of rock at the peak of a s
 // Held poses per step. Fewer is snappier cutout, more is smoother; 4 keeps the paper feel
 // without the strobe of 3 at walking cadence.
 constexpr float kPosesPerStep = 4.0f;
-
-constexpr float kPi = 3.14159265f;
 
 } // namespace
 
@@ -75,9 +74,9 @@ void update(EntityManager& em, float dt)
 
         // One hop per step, and the lean ALTERNATES by step parity -- left step, right step. Both
         // peak mid-step together: up-and-tilted is one pose, level at each footfall.
-        const float hop = std::abs(std::sin(s * kPi)) * kHopHeight * amp;
+        const float hop = std::abs(std::sin(s * geom::kPi)) * kHopHeight * amp;
         const float side = static_cast<int>(s) % 2 == 0 ? 1.0f : -1.0f;
-        const float theta = std::abs(std::sin(s * kPi)) * kTiltMax * side * amp;
+        const float theta = std::abs(std::sin(s * geom::kPi)) * kTiltMax * side * amp;
 
         // Pivot at the FEET. The engine rotates a sprite about its centre, which would swing the
         // feet out from under him -- offsetting by the base's displacement puts the hinge where

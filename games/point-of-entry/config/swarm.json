@@ -1,10 +1,10 @@
 {
     "_comment": "How bad a dig gets. base/per_depth are the assault curves; surge is the surfacing burst. WHO comes out is not decided here: each hole's seep file declares its own fauna (config/seeps/). juice is THE LAW OF DEPTH applied to bodies: multiplicative per level of depth, one formula for every species -- the same creature, closer to the source, worse.",
     "base": {
-        "waves": 4,
-        "per_wave": 8,
-        "growth": 2.1,
-        "spacing": 0.14,
+        "waves": 3,
+        "per_wave": 5,
+        "growth": 1.5,
+        "spacing": 0.18,
         "breath": 3.5
     },
     "per_depth": {

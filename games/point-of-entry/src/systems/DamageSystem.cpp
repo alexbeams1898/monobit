@@ -4,6 +4,7 @@
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
 #include "ops/LootOps.h"
+#include "ops/NavUtils.h"
 #include "renderers/FloaterRenderer.h"
 #include "screens/ScreenStyle.h"
 #include "systems/CombatSystem.h"
@@ -29,27 +30,33 @@ constexpr float kDeathFlash = 0.22f;
 // then ghosts away instead of vanishing between one frame and the next.
 constexpr float kDeathFade = 0.4f;
 
+// Where `target` sits in the area's already-hurt ledger; the ledger's size when absent.
+size_t markIndex(const HitArea& area, entt::entity target)
+{
+    for (size_t i = 0; i < area.hit.size(); ++i)
+        if (area.hit[i].target == target)
+            return i;
+    return area.hit.size();
+}
+
 // Has this area already hurt `target`, and is it still too soon to do it again? A one-shot area
 // never re-hits; a stream re-hits on its own interval, which is what makes holding the trigger on
 // something actually kill it.
 bool onCooldownFor(const HitArea& area, entt::entity target)
 {
-    for (size_t i = 0; i < area.hit.size(); ++i)
-        if (area.hit[i] == target)
-            return area.rehit <= 0.0f || area.age < area.hit_at[i];
-    return false;
+    const size_t i = markIndex(area, target);
+    if (i == area.hit.size())
+        return false;
+    return area.rehit <= 0.0f || area.age < area.hit[i].next_at;
 }
 
 void markHit(HitArea& area, entt::entity target)
 {
-    for (size_t i = 0; i < area.hit.size(); ++i)
-        if (area.hit[i] == target)
-        {
-            area.hit_at[i] = area.age + area.rehit;
-            return;
-        }
-    area.hit.push_back(target);
-    area.hit_at.push_back(area.age + area.rehit);
+    const size_t i = markIndex(area, target);
+    if (i == area.hit.size())
+        area.hit.push_back(HitMark{target, area.age + area.rehit});
+    else
+        area.hit[i].next_at = area.age + area.rehit;
 }
 
 // Inside the cone? A zero arc means the area is a full circle and everything in range qualifies.
@@ -61,7 +68,7 @@ bool withinArc(const HitArea& area, float dx, float dy)
     if (len <= 0.0001f)
         return true; // standing on top of it counts, whatever the angle says
     const float dot = (dx * area.dir_x + dy * area.dir_y) / len;
-    return dot >= std::cos(area.arc * 3.14159265f / 180.0f);
+    return dot >= std::cos(geom::degToRad(area.arc));
 }
 
 // Everything inside the circle that has not been hurt by this area yet. Distance is compared
@@ -103,20 +110,16 @@ void applyDamage(entt::registry& reg, HitArea& area, const Transform& at)
         // A hit flashes white briefly; a KILL flashes hot and holds longer, and the thing stays
         // on screen for it. The two have to look different, or clearing a crowd gives no
         // feedback about what actually died -- which is the only thing the player cares about.
-        const bool killed = fatal;
-        reg.emplace_or_replace<HitFlash>(target, HitFlash{killed ? kDeathFlash : kHitFlash});
-        if (killed)
+        reg.emplace_or_replace<HitFlash>(target, HitFlash{fatal ? kDeathFlash : kHitFlash});
+        if (fatal)
             reg.emplace_or_replace<Dying>(target, Dying{kDeathFade});
     }
 }
 
-} // namespace
-
-void update(EntityManager& em, float dt)
+// Age and move every live area, resolve what it hurts, and destroy the spent ones.
+void tickAreas(entt::registry& reg, float dt)
 {
-    auto& reg = em.registry();
     std::vector<entt::entity> expired;
-
     for (auto [entity, area, transform] : reg.view<HitArea, Transform>().each())
     {
         area.age += dt;
@@ -137,12 +140,14 @@ void update(EntityManager& em, float dt)
         if (spent)
             expired.push_back(entity);
     }
-
     for (const auto e : expired)
         reg.destroy(e);
+}
 
-    // Flashes fade. TintOverride is what the renderer actually reads, so the flash both sets and
-    // clears it -- a tint left behind would stain the thing white for the rest of its life.
+// Flashes fade. TintOverride is what the renderer actually reads, so the flash both sets and
+// clears it -- a tint left behind would stain the thing white for the rest of its life.
+void tickFlashes(entt::registry& reg, float dt)
+{
     std::vector<entt::entity> doneFlashing;
     for (auto [entity, flash] : reg.view<HitFlash>().each())
     {
@@ -165,9 +170,13 @@ void update(EntityManager& em, float dt)
         reg.remove<TintOverride>(e);
         reg.remove<HitFlash>(e);
     }
+}
 
-    // Clear the dead, once they have finished dying. Here rather than in a system of its own:
-    // nothing else in the game reduces health yet, so this is the only place a thing can die.
+// Clear the dead, once they have finished dying. Here rather than in a system of its own:
+// nothing else in the game reduces health yet, so this is the only place a thing can die.
+void reapDead(EntityManager& em, float dt)
+{
+    auto& reg = em.registry();
     std::vector<entt::entity> dead;
     for (auto [entity, dying] : reg.view<Dying>().each())
     {
@@ -201,6 +210,15 @@ void update(EntityManager& em, float dt)
             }
         reg.destroy(e);
     }
+}
+
+} // namespace
+
+void update(EntityManager& em, float dt)
+{
+    tickAreas(em.registry(), dt);
+    tickFlashes(em.registry(), dt);
+    reapDead(em, dt);
 }
 
 } // namespace hit_area

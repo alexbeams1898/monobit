@@ -4,12 +4,23 @@
         "max": 100.0,
         "per_kill": 4.0
     },
+    "spray": {
+        "_comment": "How a held stream LOOKS -- droplet emission, flight and dispersal. Presentation only: damage rides the cone. speed_base/speed_var are fractions of the cone radius per second, and the damaging front's sweep derives from their sum, so the kill always rides the tip of the visible wave. spread_inside is the fraction of the damaging arc droplets fan across (kept under 1 so nothing drawn overstates reach).",
+        "droplets_per_second": 90.0,
+        "speed_base": 1.5,
+        "speed_var": 0.9,
+        "spread_inside": 0.82,
+        "lifetime_base": 0.85,
+        "lifetime_var": 0.3,
+        "grow_to": 2.6,
+        "drag": 2.2
+    },
     "tools": [
         {
             "name": "Wand",
             "reach": "stream",
             "radius": 58.0,
-            "offset": 34.0,
+            "offset": 10.0,
             "arc": 30.0,
             "damage": 2.5,
             "cooldown": 0.12,

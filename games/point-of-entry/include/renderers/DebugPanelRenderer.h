@@ -26,6 +26,10 @@ bool visible();
 // evenly -- see Player.cpp.
 float walkSpeed();
 
+// Draw the hit areas' true geometry over the world (edges, reach, swept
+// front) -- for reading a miss instead of guessing at one.
+bool showHitAreas();
+
 // How many screen pixels one drawn pixel occupies. INTEGER, always: a fractional upscale
 // makes some pixels bigger than others, which is the one thing pixel art cannot survive.
 // The internal render size is the window divided by this, so the same character is the same

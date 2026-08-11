@@ -189,7 +189,7 @@ void update(Engine& /*engine*/, EntityManager& em, double dt)
     // movement. Through FacingDirection rather than onto the sprite directly: the sprite's
     // flip is OWNED by AnimationSystem, which rewrites it from facing every tick.
     auto& facing = em.registry().get_or_emplace<FacingDirection>(sPlayer);
-    if (tools::streaming())
+    if (tools::streaming(em))
     {
         if (std::abs(aim::dirX()) > 0.1f)
         {

@@ -37,6 +37,7 @@ add_library(poe-systems STATIC
     src/ops/ZoneUtils.cpp
     src/ops/AreaBuildOps.cpp
     src/systems/TravelSystem.cpp
+    src/systems/DescentSystem.cpp
     src/systems/PlayerSystem.cpp
 )
 
@@ -86,6 +87,7 @@ add_executable(poe-tests
     tests/reward_test.cpp
     tests/stats_test.cpp
     tests/area_test.cpp
+    tests/descent_test.cpp
 )
 target_link_libraries(poe-tests PRIVATE poe-systems Catch2::Catch2WithMain)
 add_test(NAME poe-tests COMMAND poe-tests)

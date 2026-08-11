@@ -8,11 +8,9 @@ class EntityManager;
 namespace zone
 {
 
-// A dug floor -- generated space, where waves run and the wave readout shows.
-bool dug();
-
-// Anywhere vermin can reach him: a dug floor, or an authored room whose dig
-// site leaks. The weapon fires here and nowhere else.
+// Anywhere vermin can reach him: a dug floor (generated space), or an
+// authored room whose dig site is open and leaking. The weapon fires here
+// and nowhere else.
 bool combat(const EntityManager& em);
 
 } // namespace zone

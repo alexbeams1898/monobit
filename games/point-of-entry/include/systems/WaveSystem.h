@@ -37,8 +37,17 @@ enum class Phase
     Cleared,  // every program finished and everything dead
 };
 
-// Begin the floor's assault: each seep starts its own program, shaped by depth.
-void begin(const std::string& configPath, const std::vector<Seep>& seeps, int depth);
+// Begin the floor's assault: each seep starts its own program, shaped by
+// depth. A seep whose index is in `cleared` starts SPENT -- its program
+// already exhausted on an earlier visit; the source does not re-press a
+// finished hole.
+void begin(const std::string& configPath, const std::vector<Seep>& seeps, int depth,
+           const std::vector<bool>& cleared = {});
+
+// Has this hole's program exhausted with nothing of its output left standing?
+// The moment it flips true, the hole stops being a spawner and can become a
+// way down.
+bool seepCleared(const EntityManager& em, int seepIndex);
 
 // The same floor over again -- what dying costs.
 void restart();

@@ -97,11 +97,36 @@ struct RestSpot
 // the room (an area swap destroys everything but him).
 struct DigSite
 {
-    float radius = 40.0f;
+    // Stand ON the hole to be offered the way down -- the prompt is the
+    // square underfoot, never the neighbourhood.
+    float radius = 18.0f;
     int depth = 0;       // the floor this site opens into
+    int hole = -1;       // which of the current floor's holes; -1 = the root
     std::string trickle; // creature file it leaks; empty = quiet
+    // A hole leaks only once it has been DESCENDED INTO -- an unopened way
+    // down is a sealed question, not a faucet.
+    bool open = false;
     float interval = 8.0f;
     float timer = 0.0f;
+    // WHERE THE LEAK SURFACES -- never assumed from the entity's transform: a
+    // wall-mounted hole's art sits in the wall, and the one thing a spawner
+    // may never be is somewhere other than where it spawns.
+    float spawn_x = 0.0f;
+    float spawn_y = 0.0f;
+};
+
+// The way back up a dug floor -- at its way in, opposite the rest spot.
+struct AscendSite
+{
+    float radius = 16.0f;
+};
+
+// A placed hole's art, tagged with which of the floor's holes it draws. When
+// the hole is spent this same entity becomes its dig site -- one sprite, one
+// spot, nothing stacked to flicker.
+struct SeepArt
+{
+    int hole = -1;
 };
 
 // What a creature pays when it dies. On the creature, not in a table here -- the config that
@@ -190,6 +215,18 @@ struct Stats
     int inspection = 1; // drops, money, what gets noticed
 };
 
+// Tags the live held-stream area -- on the entity, not in a system handle, so nothing dangles.
+struct StreamHead
+{
+};
+
+// One entry in an area's already-hurt ledger: who, and when it may be hurt again.
+struct HitMark
+{
+    entt::entity target = entt::null;
+    float next_at = 0.0f;
+};
+
 // An area that hurts what is inside it.
 //
 // Every attack in the game is one of these, whether it appeared beside the player or travelled
@@ -225,10 +262,9 @@ struct HitArea
     float speed = 0.0f;
     float range_left = 0.0f;
 
-    // Everything already hurt by this area. Small by construction -- an area lives for a moment
-    // and touches what is in reach, not the whole floor.
-    std::vector<entt::entity> hit;
-    // When each of those may be hurt again, for a re-hitting area. Parallel to `hit`.
-    std::vector<float> hit_at;
+    // Everything already hurt by this area, and when each may be hurt again. Small by
+    // construction -- an area lives for a moment and touches what is in reach, not the whole
+    // floor.
+    std::vector<HitMark> hit;
     float age = 0.0f;
 };

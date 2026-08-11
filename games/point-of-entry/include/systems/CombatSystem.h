@@ -37,7 +37,8 @@ struct Tool
     std::string name;
     Reach reach = Reach::Adjacent;
     float radius = 0.0f; // of the area it hits, world px -- what upgrades most often change
-    float offset = 0.0f; // how far from the player it lands (Adjacent) or starts (Thrown)
+    float offset = 0.0f; // from the player: where it lands (Adjacent), starts (Thrown), or the
+                         // nozzle sits (Stream)
     float range = 0.0f;  // how far it travels before expiring (Thrown only)
     float speed = 0.0f;  // travel speed, world px/s (Thrown only)
     float damage = 0.0f;
@@ -89,7 +90,13 @@ void select(int index);
 void next();
 
 // Is a held stream live right now? Facing wants to know: a man spraying faces his work.
-bool streaming();
+bool streaming(EntityManager& em);
+
+// Put the tool up. Ends a held stream unconditionally -- called wherever the
+// world moves under him (death, travel, leaving a combat zone), because the
+// stream's own end-of-trigger cleanup lives in update(), and update() does
+// not run everywhere he can wake up.
+void holster(EntityManager& em);
 
 // Tick cooldowns, and fire the held tool if it is aimed and ready. Areas are spawned here;
 // resolving what they hit is the damage pass.

@@ -32,6 +32,7 @@
 #include "systems/ChaseSystem.h"
 #include "systems/CombatSystem.h"
 #include "systems/DamageSystem.h"
+#include "systems/DescentSystem.h"
 #include "systems/FlowFieldSystem.h"
 #include "systems/GaitSystem.h"
 #include "systems/PickupSystem.h"
@@ -111,36 +112,6 @@ float sDeathTimer = 0.0f;
 constexpr float kDeathFadeOut = 0.7f;
 constexpr float kDeathFadeIn = 0.7f;
 
-// Where this job began: dying puts him back here. Held by the shell because the floor that
-// spawned him is long out of scope by the time he dies on it.
-float sSpawnX = 0.0f;
-float sSpawnY = 0.0f;
-
-// Opening a floor from the authored world (the dig site) and from the title
-// (the fallback with no map) share one generator.
-bool generateFloor(Engine& engine, int depth);
-
-// A teleport is a cut: position, interpolation history, and the camera's
-// history all move together, or the first frame after the cut smears.
-void cutPlayerTo(EntityManager& em, float x, float y)
-{
-    auto& reg = em.registry();
-    const entt::entity p = player::entity();
-    if (!reg.valid(p))
-        return;
-    auto& t = reg.get<Transform>(p);
-    t.x = x;
-    t.y = y;
-    reg.get<PreviousTransform>(p) = PreviousTransform{x, y};
-    if (auto* cam = reg.try_get<Camera>(p))
-    {
-        cam->x = x;
-        cam->y = y;
-        cam->prev_x = x;
-        cam->prev_y = y;
-    }
-}
-
 // The exterminator himself, created once and carried through every world he
 // enters. No-op when he already exists -- his sheet and pocket are him.
 void ensurePlayer(EntityManager& em, float x, float y)
@@ -181,7 +152,10 @@ void loadConfigs()
     tools::load("config/tools.json");
 }
 
-// The dig site in reach, if any.
+// The dig site underfoot, if any. Measured from the site's MOUTH (spawn_x/y)
+// rather than its art: a wall-mounted hole's art sits in the wall, and the
+// standable spot is the floor at its base -- the same point its creatures
+// surface at, whatever kind of placement put it there.
 entt::entity digSiteInRange(EntityManager& em)
 {
     auto& reg = em.registry();
@@ -189,7 +163,25 @@ entt::entity digSiteInRange(EntityManager& em)
     if (!reg.valid(p))
         return entt::null;
     const auto& pt = reg.get<Transform>(p);
-    for (const auto [e, t, site] : reg.view<Transform, DigSite>().each())
+    for (const auto [e, site] : reg.view<DigSite>().each())
+    {
+        const float dx = pt.x - site.spawn_x;
+        const float dy = pt.y - site.spawn_y;
+        if (dx * dx + dy * dy < site.radius * site.radius)
+            return e;
+    }
+    return entt::null;
+}
+
+// The way back up in reach, if any.
+entt::entity ascendSiteInRange(EntityManager& em)
+{
+    auto& reg = em.registry();
+    const entt::entity p = player::entity();
+    if (!reg.valid(p))
+        return entt::null;
+    const auto& pt = reg.get<Transform>(p);
+    for (const auto [e, t, site] : reg.view<Transform, AscendSite>().each())
     {
         const float dx = pt.x - t.x;
         const float dy = pt.y - t.y;
@@ -209,22 +201,13 @@ void deathReturn(Engine& engine, EntityManager& em)
     floaters::clear();
     notify::clear();
 
+    // The dig is untouched -- death writes nothing on the world. He just
+    // stops standing in it.
     const std::string start = area::startLevel("assets/maps/world.ldtk");
-    if (start.empty() || !travel::enter(engine, em, start))
-    {
-        // No authored home: the old behavior, the floor flooding back under him.
-        std::vector<entt::entity> gone;
-        for (const auto e : reg.view<Vermin>())
-            gone.push_back(e);
-        for (const auto e : reg.view<HitArea>())
-            gone.push_back(e);
-        for (const auto e : reg.view<Particle>())
-            gone.push_back(e);
-        for (const auto e : gone)
-            reg.destroy(e);
-        swarm::restart();
-        cutPlayerTo(em, sSpawnX, sSpawnY);
-    }
+    if (!start.empty() && travel::enter(engine, em, start))
+        descent::leave();
+    else
+        descent::enterRoot(engine, em); // no authored home: wake at the way in
 
     const entt::entity p = player::entity();
     if (!reg.valid(p))
@@ -299,19 +282,13 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // key) or a click ON the spot itself. Interacting IS resting -- heal, refill, and the staging
     // menu opens where you choose the brew. The click is swallowed so putting the kit down
     // never doubles as a trigger pull.
+    // ONE INTERACT GESTURE: stand on the spot, press Space. The mouse is the
+    // weapon's hand and never doubles as a use key -- clicking or hovering a
+    // spot means nothing.
     if (reward::atRest(em))
     {
         prompt::offer("Rest");
-        bool clickedSpot = false;
-        if (aim::firePressed())
-            for (const auto [e, t, spot] : em.registry().view<Transform, RestSpot>().each())
-            {
-                const float dx = aim::worldX() - t.x;
-                const float dy = aim::worldY() - t.y;
-                if (dx * dx + dy * dy < spot.radius * spot.radius)
-                    clickedSpot = true;
-            }
-        if (player::consumeInteract() || clickedSpot)
+        if (player::consumeInteract())
         {
             thermos::rest(em);
             sApp.staging = true;
@@ -327,8 +304,22 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
         prompt::offer("Descend");
         if (player::consumeInteract())
         {
-            const int depth = em.registry().get<DigSite>(dig).depth;
-            generateFloor(engine, depth);
+            const int hole = em.registry().get<DigSite>(dig).hole;
+            if (hole < 0)
+                descent::enterRoot(engine, em);
+            else
+                descent::dig(engine, em, hole);
+            aim::requireFreshPress();
+            return;
+        }
+    }
+    else if (const entt::entity up = ascendSiteInRange(em); up != entt::null)
+    {
+        // The way back out of a dug floor, as deliberate as the way in.
+        prompt::offer("Ascend");
+        if (player::consumeInteract())
+        {
+            descent::ascend(engine, em);
             aim::requireFreshPress();
             return;
         }
@@ -340,25 +331,30 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     FlowFieldSystem::update(em, pt.x, pt.y);
     chase::update(em, static_cast<float>(dt));
     swarm::update(em, static_cast<float>(dt));
+    descent::update(engine, em);
 
     // THE FIRST POINT OF ENTRY LEAKS. A dig site with a trickle lets one
     // through every so often; they accumulate until he leaves the room.
-    for (const auto [e, t, site] : em.registry().view<Transform, DigSite>().each())
+    for (const auto [e, site] : em.registry().view<DigSite>().each())
     {
-        if (site.trickle.empty())
+        if (site.trickle.empty() || !site.open)
             continue;
         site.timer += static_cast<float>(dt);
         if (site.timer >= site.interval)
         {
             site.timer = 0.0f;
-            swarm::spawnOne(em, site.trickle, t.x, t.y);
+            swarm::spawnOne(em, site.trickle, site.spawn_x, site.spawn_y);
         }
     }
 
     // THE TRADE HAS ITS PLACE: the weapon fires only where vermin can reach
-    // him. At the bar he is a man carrying equipment, not a man spraying it.
+    // him. At the bar he is a man carrying equipment, not a man spraying it --
+    // and holstering is EXPLICIT, because a stream interrupted by death or a
+    // door would otherwise hold its state (and his facing) forever.
     if (zone::combat(em))
         tools::update(em, static_cast<float>(dt));
+    else
+        tools::holster(em);
     tools::tickStamina(em, static_cast<float>(dt));
     tools::tickParticles(em, static_cast<float>(dt));
     hit_area::update(em, static_cast<float>(dt));
@@ -413,246 +409,28 @@ void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, 
     capture::writeIfRequested(engine.windowWidth(), engine.windowHeight());
 }
 
-// Open a generated floor at `depth` -- from a dig site in the authored world,
-// or from the title as the no-map fallback. The player walks in if he exists;
-// he is created standing at the way in if not.
-bool generateFloor(Engine& engine, int depth)
-{
-    auto& em = engine.entityManager();
-    auto& reg = em.registry();
-    // The world he came from goes; he does not. Doors from the authored level
-    // he left stop existing with it.
-    travel::leaveAuthored();
-    if (reg.valid(player::entity()))
-    {
-        std::vector<entt::entity> gone;
-        for (const auto e : reg.view<Transform>())
-            if (e != player::entity())
-                gone.push_back(e);
-        for (const auto e : gone)
-            reg.destroy(e);
-    }
-    else
-        reg.clear();
-    // The tile vocabulary is the floor's own: the authored tileset must not
-    // bleed into the dug chamber.
-    em.tile_config = TileConfig{};
-
-    const floorgen::Floor floor = floorgen::generate(em, "config/floor.json", "config/rooms");
-    if (!floor.ok)
-    {
-        poe::log().error("world: could not build a floor");
-        return false;
-    }
-    TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
-    em.flow_field.last_player_col = -1;
-    em.flow_field.last_player_row = -1;
-
-    // Every marker the rooms carried. 'P' is a point of entry -- for now a red box standing in
-    // the room, which is enough to prove placement works.
-    // WHAT KIND of hole each marker becomes: rolled from the floor's own seed, so a layout is
-    // the same holes every time it is generated. The kinds and their mix live in floor.json;
-    // each kind's file says what it looks like and where it sits (floor pit, or an arch at the
-    // base of a wall). The generator stays agnostic throughout -- letters in, meaning here.
-    struct SeepKind
-    {
-        std::string path;
-        int weight = 1;
-        sprite_def::Def def;
-        bool on_wall = false;
-    };
-    std::vector<SeepKind> kinds;
-    {
-        std::ifstream in("config/floor.json");
-        const nlohmann::json j =
-            in ? nlohmann::json::parse(in, nullptr, /*allow_exceptions=*/false) : nlohmann::json{};
-        if (!j.is_discarded())
-            for (const auto& entry : j.value("seep_types", nlohmann::json::array()))
-            {
-                SeepKind kind;
-                kind.path = entry.value("seep", std::string{});
-                kind.weight = entry.value("weight", 1);
-                std::ifstream sf(kind.path);
-                const nlohmann::json sj =
-                    sf ? nlohmann::json::parse(sf, nullptr, /*allow_exceptions=*/false)
-                       : nlohmann::json{};
-                if (!sj.is_discarded())
-                {
-                    kind.def = sprite_def::load(sj.value("sprite", std::string{}));
-                    kind.on_wall = sj.value("placement", std::string{"floor"}) == "wall";
-                }
-                kinds.push_back(std::move(kind));
-            }
-    }
-
-    // Letters an authored room may PIN to a kind: 'M' says this exact spot is a mouse hole.
-    // Plain 'P' rolls from the floor's mix. Pinned kinds not already in the mix are loaded on
-    // first sight, so a template can place something the floor would never roll.
-    std::unordered_map<char, std::string> pinned;
-    {
-        std::ifstream in("config/floor.json");
-        const nlohmann::json j =
-            in ? nlohmann::json::parse(in, nullptr, /*allow_exceptions=*/false) : nlohmann::json{};
-        if (!j.is_discarded() && j.is_object())
-        {
-            // NAMED, not a temporary: iterating .items() over the value() temporary is
-            // use-after-free -- the copy dies before the loop reads it.
-            const nlohmann::json ms = j.value("marker_seeps", nlohmann::json::object());
-            for (const auto& [letter, path] : ms.items())
-                if (!letter.empty() && path.is_string())
-                    pinned.emplace(letter.front(), path.get<std::string>());
-        }
-    }
-    const auto kindByPath = [&kinds](const std::string& path) -> const SeepKind*
-    {
-        for (const auto& k : kinds)
-            if (k.path == path)
-                return &k;
-        return nullptr;
-    };
-    const auto loadPinnedKind = [&kinds](const std::string& path) -> const SeepKind*
-    {
-        SeepKind kind;
-        kind.path = path;
-        std::ifstream sf(path);
-        const nlohmann::json sj =
-            sf ? nlohmann::json::parse(sf, nullptr, /*allow_exceptions=*/false) : nlohmann::json{};
-        if (!sj.is_discarded())
-        {
-            kind.def = sprite_def::load(sj.value("sprite", std::string{}));
-            kind.on_wall = sj.value("placement", std::string{"floor"}) == "wall";
-        }
-        kinds.push_back(std::move(kind));
-        return &kinds.back();
-    };
-
-    int poeCount = 0;
-    std::vector<swarm::Seep> seeps;
-    std::mt19937 seepRng(floor.seed * 2654435761u + 97u);
-    int totalKindWeight = 0;
-    for (const auto& kind : kinds)
-        totalKindWeight += kind.weight;
-    for (const auto& m : floor.markers)
-    {
-        const auto pin = pinned.find(m.type);
-        if (m.type == 'P' || pin != pinned.end())
-        {
-            const SeepKind* kind = kinds.empty() ? nullptr : &kinds.front();
-            if (pin != pinned.end())
-            {
-                kind = kindByPath(pin->second);
-                if (kind == nullptr)
-                    kind = loadPinnedKind(pin->second);
-            }
-            else if (totalKindWeight > 0)
-            {
-                std::uniform_int_distribution<int> roll(0, totalKindWeight - 1);
-                int ticket = roll(seepRng);
-                for (const auto& k : kinds)
-                {
-                    ticket -= k.weight;
-                    if (ticket < 0)
-                    {
-                        kind = &k;
-                        break;
-                    }
-                }
-            }
-
-            const entt::entity hole = spawn::box(em, m.x, m.y, kPoeSize, 0.75f, 0.15f, 0.15f);
-            // Where creatures actually surface. THE SPAWN MOVES WITH THE ART: a wall-mounted
-            // hole that kept emitting at its distant marker would be scenery beside an
-            // invisible fountain -- the one thing a spawner may never be is somewhere other
-            // than where it spawns.
-            float seepX = m.x;
-            float seepY = m.y;
-            if (kind != nullptr && kind->def.ok)
-            {
-                auto& spr = em.registry().get<Sprite>(hole);
-                spr.texture_path = kind->def.sheet;
-                spr.src_w = kind->def.frame_w;
-                spr.src_h = kind->def.frame_h;
-                spr.layer = 1;
-                em.registry().remove<SolidColor>(hole);
-                if (kind->on_wall)
-                {
-                    // An arch at the lower CENTRE of the nearest wall above -- snapped to the
-                    // tile so it reads as architecture, bottom flush with the wall's base so it
-                    // touches the floor it feeds. Creatures surface at its mouth. No wall in
-                    // reach: the art stays a floor pit, better honest than floating.
-                    const auto ts = static_cast<float>(em.tile_map.tile_size);
-                    for (int step = 1; step <= 4; ++step)
-                    {
-                        const float wy = m.y - static_cast<float>(step) * ts;
-                        if (!world::walkable(em, m.x, wy))
-                        {
-                            auto& t = em.registry().get<Transform>(hole);
-                            t.x = std::floor(m.x / ts) * ts + ts * 0.5f;
-                            const float wallBottom = std::floor(wy / ts) * ts + ts;
-                            t.y = wallBottom - static_cast<float>(kind->def.frame_h) * 0.5f;
-                            em.registry().get<Sprite>(hole).layer = 2;
-                            seepX = t.x;
-                            seepY = wallBottom + 8.0f; // the floor at the arch's mouth
-                            break;
-                        }
-                    }
-                }
-            }
-            poe::log().info("world: marker '{}' ({:.0f},{:.0f}) -> '{}', art ({:.0f},{:.0f}), "
-                            "spawn ({:.0f},{:.0f})",
-                            std::string(1, m.type), m.x, m.y,
-                            kind != nullptr ? kind->path : "<none>",
-                            em.registry().get<Transform>(hole).x,
-                            em.registry().get<Transform>(hole).y, seepX, seepY);
-            seeps.push_back(
-                swarm::Seep{seepX, seepY, kind != nullptr ? kind->path : std::string{}});
-            ++poeCount;
-        }
-    }
-
-    ensurePlayer(em, floor.spawn_x, floor.spawn_y);
-    cutPlayerTo(em, floor.spawn_x, floor.spawn_y);
-    // The rest spot: at the way in. A pale ring of floor where the kit is set down -- the only
-    // place points are sold, so the walk back to it with a full pocket is the loop's tension.
-    {
-        const entt::entity spot =
-            spawn::box(em, floor.spawn_x, floor.spawn_y + 8.0f, 22.0f, 0.30f, 0.42f, 0.40f);
-        em.registry().emplace<RestSpot>(spot, RestSpot{40.0f});
-        em.registry().get<Sprite>(spot).layer = 1; // ground marking, under everything that walks
-    }
-    sSpawnX = floor.spawn_x;
-    sSpawnY = floor.spawn_y;
-    poe::log().info("world: player at ({:.0f},{:.0f}), {} points of entry, depth {}", floor.spawn_x,
-                    floor.spawn_y, poeCount, depth);
-    // Opening the space is what disturbs it. The dig site carries the depth,
-    // and with it the law: proximity to the source dictates difficulty --
-    // everything downstream reads this one number.
-    swarm::begin("config/swarm.json", seeps, depth);
-    sApp.world_built = true;
-    return true;
-}
-
 // A new job from the title. The authored world is home when the map declares
 // a start; the bare generated floor stays as the fallback while it does not.
 bool buildWorld(Engine& engine)
 {
     auto& em = engine.entityManager();
     em.registry().clear(); // a previous job's world -- and its man; a new job is a new sheet
+    descent::reset();
     loadConfigs();
+    ensurePlayer(em, 0.0f, 0.0f);
     if (const std::string start = area::startLevel("assets/maps/world.ldtk"); !start.empty())
     {
-        ensurePlayer(em, 0.0f, 0.0f);
         if (travel::enter(engine, em, start))
         {
-            const auto& t = em.registry().get<Transform>(player::entity());
-            sSpawnX = t.x;
-            sSpawnY = t.y;
             sApp.world_built = true;
             return true;
         }
-        poe::log().error("world: start level '{}' failed to load -- generating instead", start);
+        poe::log().error("world: start level '{}' failed to load -- digging instead", start);
     }
-    return generateFloor(engine, 0);
+    if (!descent::enterRoot(engine, em))
+        return false;
+    sApp.world_built = true;
+    return true;
 }
 
 // What the shell does with what a screen reported.
@@ -693,6 +471,7 @@ void enactPause(Engine& engine, pause_screen::Action a)
         sApp.world_built = false;
         sApp.phase = app::Phase::Title;
         travel::reset();
+        descent::reset();
         title_screen::reset();
         break;
     case pause_screen::Action::Quit:

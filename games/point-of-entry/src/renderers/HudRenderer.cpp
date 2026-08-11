@@ -5,7 +5,9 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
+#include "ops/NavUtils.h"
 #include "ops/ZoneUtils.h"
+#include "renderers/DebugPanelRenderer.h"
 #include "renderers/NotificationRenderer.h"
 #include "renderers/PromptRenderer.h"
 #include "screens/ScreenStyle.h"
@@ -143,36 +145,6 @@ void staminaBar(const EntityManager& em, float x, float y)
     UIRenderer::drawRect(x, y, barW() * frac, barH(), fill);
 }
 
-// What the floor is doing, top-centre where the eye goes when things change. A wave count is the
-// difference between "endless" and "nearly through it", which is the whole reason waves exist
-// rather than one continuous stream; the breath between them is announced loudly because it is
-// the only moment the player gets to breathe too.
-void waveState(Engine& engine, const EntityManager& em)
-{
-    // Wave arithmetic belongs to dug floors; the basement's leak is not a
-    // wave and must not read as one.
-    if (!zone::dug())
-        return;
-    const auto cx = static_cast<float>(engine.windowWidth()) * 0.5f;
-    const swarm::Phase p = swarm::phase();
-    if (p == swarm::Phase::Cleared)
-    {
-        screen_style::headingCentered("CLEAR", cx, margin() * 2.0f, screen_style::kTextHot);
-        return;
-    }
-    if (p == swarm::Phase::Breath)
-    {
-        screen_style::headingCentered("wave " + std::to_string(swarm::waveNumber() + 1) +
-                                          " incoming",
-                                      cx, margin() * 2.0f, screen_style::kAccent);
-        return;
-    }
-    screen_style::textCentered("wave " + std::to_string(swarm::waveNumber()) + " of " +
-                                   std::to_string(swarm::totalWaves()) + "   " +
-                                   std::to_string(swarm::remaining(em)) + " left",
-                               cx, margin() * 2.0f, screen_style::kText);
-}
-
 // NOTE: hit areas are NOT drawn. The hitbox and the effect are separate objects on purpose --
 // the hitbox is shaped for fairness, the effect for feel -- and drawing the hitbox as well as the
 // effect shows the player two things where there is one attack. The spray IS the picture of the
@@ -236,6 +208,48 @@ void equipped(Engine& engine, const EntityManager& em)
 // A sliver over each hurt creature. Shown only once something has been hit: a swarm of full bars
 // is visual noise over enemies that die in two hits anyway, where a bar on the WOUNDED ones tells
 // you which to finish.
+// DEBUG: the hit areas as they actually are -- the cone's edges, its full
+// reach, and (brighter) how far the damaging front has swept. What the F1
+// toggle shows is the exact geometry HitDetection tests, so a "the spray
+// touched it but nothing died" moment can be read instead of guessed at.
+void hitAreaOverlay(Engine& engine, const EntityManager& em, float camX, float camY, int zoom)
+{
+    if (!debug_panel::showHitAreas())
+        return;
+    const auto z = static_cast<float>(zoom);
+    const float halfW = static_cast<float>(engine.windowWidth()) / (2.0f * z);
+    const float halfH = static_cast<float>(engine.windowHeight()) / (2.0f * z);
+    const auto plot = [&](float wx, float wy, const Color& c)
+    {
+        UIRenderer::drawRect((wx - (camX - halfW)) * z - 1.0f, (wy - (camY - halfH)) * z - 1.0f,
+                             2.0f, 2.0f, c);
+    };
+
+    for (const auto [entity, t, area] : em.registry().view<Transform, HitArea>().each())
+    {
+        const float front =
+            area.expand > 0.0f ? std::min(area.radius, area.expand * area.age) : area.radius;
+        const float aim = std::atan2(area.dir_y, area.dir_x);
+        const float half = area.arc > 0.0f ? geom::degToRad(area.arc) : geom::kPi;
+        // The cone's two edges, out to full reach.
+        for (float d = 4.0f; d <= area.radius; d += 4.0f)
+        {
+            plot(t.x + std::cos(aim - half) * d, t.y + std::sin(aim - half) * d,
+                 screen_style::kReticle);
+            plot(t.x + std::cos(aim + half) * d, t.y + std::sin(aim + half) * d,
+                 screen_style::kReticle);
+        }
+        // Full reach rim (faint) and the swept front (hot).
+        for (float a = -half; a <= half; a += 0.12f)
+        {
+            plot(t.x + std::cos(aim + a) * area.radius, t.y + std::sin(aim + a) * area.radius,
+                 screen_style::kReticle);
+            plot(t.x + std::cos(aim + a) * front, t.y + std::sin(aim + a) * front,
+                 screen_style::kDamage);
+        }
+    }
+}
+
 void enemyBars(Engine& engine, const EntityManager& em, float camX, float camY, int zoom)
 {
     const auto z = static_cast<float>(zoom);
@@ -263,6 +277,7 @@ void enemyBars(Engine& engine, const EntityManager& em, float camX, float camY, 
 void renderWorldOverlays(Engine& engine, EntityManager& em, float camX, float camY, int zoom)
 {
     enemyBars(engine, em, camX, camY, zoom);
+    hitAreaOverlay(engine, em, camX, camY, zoom);
 }
 
 void render(Engine& engine, EntityManager& em)
@@ -293,8 +308,6 @@ void render(Engine& engine, EntityManager& em)
                            margin(), margin() + barH() * 2.0f + 14.0f,
                            thermos::sipsLeft() > 0 ? screen_style::kText : screen_style::kAccent);
     }
-
-    waveState(engine, em);
 
     // BOTTOM LEFT: what is in his hand, and the acquisition feed above it.
     equipped(engine, em);
