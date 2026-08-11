@@ -1,3 +1,4 @@
+#include "AreaLoader.h"
 #include "Engine.h"
 #include "FloorGen.h"
 #include "FontManager.h"
@@ -10,9 +11,11 @@
 #include "ecs/GameComponents.h"
 #include "ecs/ItemConfig.h"
 #include "gl/PixelRenderTarget.h"
+#include "ops/AreaBuildOps.h"
 #include "ops/CaptureUtils.h"
 #include "ops/LogUtils.h"
 #include "ops/NavUtils.h"
+#include "ops/SpawnUtils.h"
 #include "renderers/DebugPanelRenderer.h"
 #include "renderers/FloaterRenderer.h"
 #include "renderers/HudRenderer.h"
@@ -38,11 +41,13 @@
 #include "systems/SpriteAnimSystem.h"
 #include "systems/ThermosSystem.h"
 #include "systems/TileMapRenderer.h"
+#include "systems/TravelSystem.h"
 #include "systems/WaveSystem.h"
 
 #include <nlohmann/json.hpp>
 
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <random>
 #include <unordered_map>
@@ -89,31 +94,6 @@ constexpr float kVoidB = 0.06f;
 // texture, which is all this needs until the real pixel art exists.
 constexpr float kPlayerSize = 28.0f;
 constexpr float kPoeSize = 32.0f;
-
-// A box that reads as a thing, with no art yet.
-entt::entity spawnBox(EntityManager& em, float x, float y, float size, float r, float g, float b)
-{
-    auto& reg = em.registry();
-    const entt::entity e = reg.create();
-    // Transform is {x, y, z, rotation, pitch, roll, scale} -- set the fields by
-    // name rather than by position, or a mis-counted brace silently lands in the
-    // wrong one (scale 0 draws a sprite zero pixels wide, which looks exactly
-    // like the sprite not existing).
-    Transform t{};
-    t.x = x;
-    t.y = y;
-    reg.emplace<Transform>(e, t);
-    reg.emplace<PreviousTransform>(e, PreviousTransform{x, y});
-    Sprite spr{};
-    spr.src_w = static_cast<int>(size);
-    spr.src_h = static_cast<int>(size);
-    spr.layer = 2;
-    reg.emplace<Sprite>(e, spr);
-    // No art yet: the renderer draws a flat quad for a SolidColor sprite, which
-    // is all the skeleton needs to prove placement.
-    reg.emplace<SolidColor>(e, SolidColor{r, g, b});
-    return e;
-}
 
 // THE DEATH BEAT. No drama and no announcement -- the register is a man who never cracks, so
 // the world simply fades to black, holds one breath while the floor floods back underneath,
@@ -228,10 +208,24 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
         return;
     }
 
+    // A door transition owns the clock exactly as the death beat does: the
+    // world holds its breath under the black and the swap happens mid-curtain.
+    if (travel::active())
+    {
+        travel::update(engine, em, static_cast<float>(dt));
+        return;
+    }
+
     // Aim first: everything that fires this tick reads where he is pointing, and a stale
     // cursor would put the shot where he pointed last frame.
     aim::update(engine, em);
     player::update(engine, em, dt);
+
+    // After movement, before anything reads the map: crossing a door starts
+    // the curtain and the rest of this tick stands down.
+    travel::update(engine, em, static_cast<float>(dt));
+    if (travel::active())
+        return;
 
     // THE STAGING AREA, the reference's interaction shape: in range, either Space (the interact
     // key) or a click ON the spot itself. Interacting IS resting -- heal, refill, and the staging
@@ -450,7 +444,7 @@ bool buildWorld(Engine& engine)
                 }
             }
 
-            const entt::entity hole = spawnBox(em, m.x, m.y, kPoeSize, 0.75f, 0.15f, 0.15f);
+            const entt::entity hole = spawn::box(em, m.x, m.y, kPoeSize, 0.75f, 0.15f, 0.15f);
             // Where creatures actually surface. THE SPAWN MOVES WITH THE ART: a wall-mounted
             // hole that kept emitting at its distant marker would be scenery beside an
             // invisible fountain -- the one thing a spawner may never be is somewhere other
@@ -502,7 +496,7 @@ bool buildWorld(Engine& engine)
     }
 
     const entt::entity playerEnt =
-        spawnBox(em, floor.spawn_x, floor.spawn_y, kPlayerSize, 0.85f, 0.84f, 0.78f);
+        spawn::box(em, floor.spawn_x, floor.spawn_y, kPlayerSize, 0.85f, 0.84f, 0.78f);
     // Real art, if the pipeline has produced any. The frame size comes from the def rather
     // than a constant here -- the same number written twice is the same number drifting.
     // No def means the placeholder box stands in, loudly (SpriteDef::load logs).
@@ -524,7 +518,7 @@ bool buildWorld(Engine& engine)
     // place points are sold, so the walk back to it with a full pocket is the loop's tension.
     {
         const entt::entity spot =
-            spawnBox(em, floor.spawn_x, floor.spawn_y + 8.0f, 22.0f, 0.30f, 0.42f, 0.40f);
+            spawn::box(em, floor.spawn_x, floor.spawn_y + 8.0f, 22.0f, 0.30f, 0.42f, 0.40f);
         em.registry().emplace<RestSpot>(spot, RestSpot{40.0f});
         em.registry().get<Sprite>(spot).layer = 1; // ground marking, under everything that walks
     }
@@ -583,6 +577,7 @@ void enactPause(Engine& engine, pause_screen::Action a)
         sApp.paused = false;
         sApp.world_built = false;
         sApp.phase = app::Phase::Title;
+        travel::reset();
         title_screen::reset();
         break;
     case pause_screen::Action::Quit:
@@ -624,6 +619,11 @@ void gameRenderUI(Engine& engine, EntityManager& em)
                                  static_cast<float>(engine.windowHeight()),
                                  screen_style::black(std::min(1.0f, std::max(0.0f, a))));
         }
+        // The door curtain, same cloth as the death black.
+        if (travel::active())
+            UIRenderer::drawRect(0.0f, 0.0f, static_cast<float>(engine.windowWidth()),
+                                 static_cast<float>(engine.windowHeight()),
+                                 screen_style::black(travel::curtainAlpha()));
     }
     const int ww = engine.windowWidth();
     const int wh = engine.windowHeight();
@@ -681,6 +681,7 @@ void gameRenderUI(Engine& engine, EntityManager& em)
                 sDeathBeat = DeathBeat::None;
                 sApp.world_built = false;
                 sApp.phase = app::Phase::Title;
+                travel::reset();
                 title_screen::reset();
                 break;
             case death_screen::Action::Quit:
@@ -713,12 +714,20 @@ void gameOnResize(Engine& /*engine*/, int w, int h)
     // The blit follows the window, and so does the internal size -- see internalW().
     engine::gl::pixelTargetResize(w, h);
 }
+
 } // namespace
 
 int main(int argc, char* argv[])
 {
     (void)argc;
     (void)argv;
+
+#ifdef POE_SOURCE_DIR
+    // Dev builds run against the source tree: every relative path (config/,
+    // assets/) resolves there, and the editor's saves land where git sees them.
+    std::error_code ec;
+    std::filesystem::current_path(POE_SOURCE_DIR, ec);
+#endif
 
     Engine engine;
     // BORDERLESS FULLSCREEN, and it is a performance decision as much as a presentation one.
@@ -750,6 +759,11 @@ int main(int argc, char* argv[])
     // The one face at its two ladder sizes -- ScreenStyle owns fonts and the integer scale
     // (see check_design.py for the standards this keeps).
     screen_style::initFonts(engine.windowHeight());
+
+    // Authored places: builders first, then the door index over the project.
+    travel::init();
+    area_build::registerAll();
+    travel::scan("assets/maps/world.ldtk");
 
     auto& em = engine.entityManager();
 

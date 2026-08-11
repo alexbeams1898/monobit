@@ -31,10 +31,7 @@ void render(Engine& engine)
     const float bandH = lh * 1.9f;
     const float bx = (w - bandW) * 0.5f;
     const float by = h * 0.68f;
-    UIRenderer::drawRect(bx, by, bandW, bandH,
-                         screen_style::withAlpha(screen_style::kOverlay, 0.82f));
-    UIRenderer::drawRect(bx, by, bandW, 1.0f, screen_style::kPanelEdge);
-    UIRenderer::drawRect(bx, by + bandH - 1.0f, bandW, 1.0f, screen_style::kPanelEdge);
+    screen_style::panel(screen_style::Rect{bx, by, bandW, bandH});
 
     screen_style::textInBox(sAction + "  -  space", screen_style::Rect{bx, by, bandW, bandH},
                             screen_style::kTextHot);

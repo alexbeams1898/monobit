@@ -50,6 +50,8 @@ CTestTestfile.cmake
 *.log
 *.tmp
 *.cache
+frame.png
+imgui.ini
 tmp/
 temp/
 

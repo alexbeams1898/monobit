@@ -187,7 +187,6 @@ void equipped(Engine& engine, const EntityManager& em)
     const auto& held = kit[static_cast<size_t>(tools::selected())];
 
     const auto bottom = static_cast<float>(engine.windowHeight());
-    const float nameY = bottom - margin() - screen_style::pageRowH() - screen_style::lineHeight();
 
     const auto& reg = em.registry();
     const entt::entity p = player::entity();
@@ -202,14 +201,25 @@ void equipped(Engine& engine, const EntityManager& em)
     const std::string ammo =
         std::to_string(static_cast<int>(cur)) + " / " + std::to_string(static_cast<int>(max));
 
+    // The tool's own box, the pocket's sibling: name row over ammo row.
+    const float boxW = screen_style::pad(24);
+    const float rowH = screen_style::lineHeight() + screen_style::pad(1);
+    const float boxH = rowH * 2.0f;
+    const float bx = margin();
+    const float by = bottom - margin() - boxH;
+    screen_style::panel(screen_style::Rect{bx, by, boxW, boxH});
+
     // Amber under a quarter: the tank running low is the thing that decides whether to keep
     // spraying or go earn some back, and it must be noticeable without being read.
     const bool low = max > 0.0f && cur / max < 0.25f;
-    screen_style::text(held.name, margin(), nameY, screen_style::kTextDim);
-    screen_style::text(ammo, margin(), nameY + screen_style::pageRowH(),
-                       low ? screen_style::kAccent : screen_style::kTextHot);
+    screen_style::textInBox(held.name, screen_style::Rect{bx, by, boxW, rowH},
+                            screen_style::kTextDim, /*alignRight=*/false);
+    screen_style::textInBox(ammo, screen_style::Rect{bx, by + rowH, boxW, rowH},
+                            low ? screen_style::kAccent : screen_style::kTextHot,
+                            /*alignRight=*/false);
     if (kit.size() > 1)
-        screen_style::textRight("Q", margin() + barW(), nameY, screen_style::kTextDim);
+        screen_style::textInBox("Q", screen_style::Rect{bx, by, boxW - screen_style::pad(1), rowH},
+                                screen_style::kTextDim, /*alignRight=*/true);
 }
 
 // A sliver over each hurt creature. Shown only once something has been hit: a swarm of full bars
@@ -288,10 +298,7 @@ void render(Engine& engine, EntityManager& em)
     const float boxH = screen_style::lineHeight() + screen_style::pad(2);
     const float bx = right - boxW;
     const float by = bottom - boxH;
-    // A bordered box: frame first, then the inset field. Text through the idioms -- true
-    // vertical centring from real metrics, padding in units.
-    UIRenderer::drawRect(bx - 1.0f, by - 1.0f, boxW + 2.0f, boxH + 2.0f, screen_style::kPanelEdge);
-    UIRenderer::drawRect(bx, by, boxW, boxH, screen_style::kPanel);
+    screen_style::panel(screen_style::Rect{bx, by, boxW, boxH});
     screen_style::textInBox(std::to_string(reward::banked(em) - sPending),
                             screen_style::Rect{bx, by, boxW, boxH}, screen_style::kText,
                             /*alignRight=*/true);

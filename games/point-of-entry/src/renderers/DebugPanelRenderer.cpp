@@ -1,5 +1,6 @@
 #include "renderers/DebugPanelRenderer.h"
 
+#include "AreaLoader.h"
 #include "Engine.h"
 #include "ecs/BalanceConfig.h"
 #include "ecs/Components.h"
@@ -7,6 +8,7 @@
 #include "ops/LogUtils.h"
 #include "systems/CombatSystem.h"
 #include "systems/PlayerSystem.h"
+#include "systems/TravelSystem.h"
 
 #include <imgui.h>
 
@@ -105,6 +107,22 @@ void render(Engine& engine, EntityManager& em)
                 const auto& held = tools::all()[static_cast<size_t>(tools::selected())];
                 ImGui::TextDisabled("%s dmg %.1f", held.name.c_str(), tools::damageOf(held, sheet));
             }
+        }
+
+        // AUTHORED PLACES. Verifying a level means standing in it: click a
+        // level to enter at its start, a door to land on its doormat -- the
+        // exact state walking through its counterpart would produce.
+        if (em.registry().valid(player::entity()))
+        {
+            ImGui::Separator();
+            ImGui::TextUnformatted("Levels");
+            for (const auto& lvl : area::levels("assets/maps/world.ldtk"))
+                if (ImGui::Selectable((lvl + "##level").c_str()))
+                    travel::enter(engine, em, lvl);
+            ImGui::TextUnformatted("Doors");
+            for (const auto& id : travel::doorIds())
+                if (ImGui::Selectable((id + "##door").c_str()))
+                    travel::jumpToDoor(engine, em, id);
         }
 
         ImGui::Separator();

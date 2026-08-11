@@ -33,6 +33,10 @@ add_library(poe-systems STATIC
     src/SpriteDefLoader.cpp
     src/screens/TitleScreen.cpp
     src/FloorGen.cpp
+    src/AreaLoader.cpp
+    src/ops/SpawnUtils.cpp
+    src/ops/AreaBuildOps.cpp
+    src/systems/TravelSystem.cpp
     src/systems/PlayerSystem.cpp
 )
 
@@ -53,18 +57,26 @@ if(MINGW)
     target_link_options(point-of-entry PRIVATE -static-libgcc -static-libstdc++)
 endif()
 
-# Assets + config live beside the exe. Copied on every build so an edit to a
-# .room file or a config value is picked up by the next run without a reconfigure.
-add_custom_target(poe-sync-assets-and-config ALL
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/config
-        $<TARGET_FILE_DIR:point-of-entry>/config
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/assets
-        $<TARGET_FILE_DIR:point-of-entry>/assets
-    COMMENT "point-of-entry: syncing config/ + assets/"
-)
-add_dependencies(point-of-entry poe-sync-assets-and-config)
+# Dev builds read assets + config straight from the SOURCE tree (the exe chdirs
+# there at boot): one source of truth, so a config or map edit -- including maps
+# the in-game editor writes back -- is live on the next launch with no copy step
+# to lag or overwrite it. Release builds ship the copy beside the exe instead.
+option(POE_RELEASE "Package assets beside the exe instead of reading the source tree" OFF)
+if(POE_RELEASE)
+    add_custom_target(poe-sync-assets-and-config ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/config
+            $<TARGET_FILE_DIR:point-of-entry>/config
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_CURRENT_SOURCE_DIR}/assets
+            $<TARGET_FILE_DIR:point-of-entry>/assets
+        COMMENT "point-of-entry: syncing config/ + assets/"
+    )
+    add_dependencies(point-of-entry poe-sync-assets-and-config)
+else()
+    target_compile_definitions(point-of-entry PRIVATE
+        POE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+endif()
 
 # Tests -- link the same poe-systems the game does, so what is tested is what ships.
 add_executable(poe-tests
@@ -73,6 +85,7 @@ add_executable(poe-tests
     tests/loot_test.cpp
     tests/reward_test.cpp
     tests/stats_test.cpp
+    tests/area_test.cpp
 )
 target_link_libraries(poe-tests PRIVATE poe-systems Catch2::Catch2WithMain)
 add_test(NAME poe-tests COMMAND poe-tests)

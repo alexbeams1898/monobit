@@ -61,6 +61,12 @@ void textInBox(const std::string& s, const Rect& box, const Color& c, bool align
     text(s, x, y, c);
 }
 
+void panel(const Rect& r)
+{
+    UIRenderer::drawRect(r.x - 1.0f, r.y - 1.0f, r.w + 2.0f, r.h + 2.0f, kPanelEdge);
+    UIRenderer::drawRect(r.x, r.y, r.w, r.h, kPanel);
+}
+
 float pageHeadingY(int windowH)
 {
     return static_cast<float>(windowH) * 0.22f;

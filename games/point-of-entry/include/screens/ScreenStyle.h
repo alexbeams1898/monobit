@@ -70,6 +70,10 @@ struct Rect
 void textRight(const std::string& s, float xRight, float y, const Color& c);
 void textInBox(const std::string& s, const Rect& box, const Color& c, bool alignRight = false);
 
+// A bordered panel -- the shell's one box: edge frame, inset field. The pocket, the weapon
+// block, and whatever needs a box next all draw this, so boxes cannot drift into siblings.
+void panel(const Rect& r);
+
 // PAGE ANATOMY. Every full-screen surface shares one skeleton -- heading at the same height,
 // content starting the same distance under it, rows on the same rhythm -- so screens are the
 // same page wearing different words. A screen inventing its own proportions is drift.
