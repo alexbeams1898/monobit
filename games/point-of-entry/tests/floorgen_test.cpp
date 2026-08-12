@@ -1,15 +1,17 @@
 #include "FloorGen.h"
 #include "ecs/Components.h"
+#include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
 #include "systems/WaveSystem.h"
-#include "ecs/EntityManager.h"
 
 #include <nlohmann/json.hpp>
 
+#include <filesystem>
 #include <fstream>
 #include <queue>
 #include <vector>
 
+#include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 // The promises a generated floor must keep, swept across many seeds. Generation bugs are
@@ -211,10 +213,15 @@ TEST_CASE("every seep and creature file parses and keeps its promises", "[bestia
         REQUIRE(f.good());
         const nlohmann::json j = nlohmann::json::parse(f, nullptr, false);
         REQUIRE_FALSE(j.is_discarded());
-        CHECK(j.value("health", 0) > 0);
-        CHECK(j.value("contact_damage", 0.0f) > 0.0f);
-        CHECK(j.value("speed", 0.0f) > 0.0f);
-        CHECK(j.value("xp", 0) > 0);
+        const auto sheet = j.value("sheet", nlohmann::json::object());
+        CHECK(sheet.value("resistance", 0) > 0);
+        CHECK(sheet.value("defensiveness", 0) > 0);
+        CHECK(sheet.value("dispersal", 0) > 0);
+        const auto base = j.value("base", nlohmann::json::object());
+        CHECK(base.value("hp", 0) > 0);
+        CHECK(base.value("power", 0.0f) > 0.0f);
+        CHECK(base.value("speed", 0.0f) > 0.0f);
+        CHECK(base.value("xp", 0) > 0);
         std::ifstream art(j.value("sprite", std::string{}));
         CHECK(art.good()); // the drawing it names must exist
     }
@@ -245,5 +252,138 @@ TEST_CASE("what emerges can actually move", "[bestiary]")
         CHECK(em.registry().all_of<Health>(e));
         CHECK(em.registry().all_of<Worth>(e));
         CHECK(em.registry().all_of<SeepSource>(e));
+        CHECK(em.registry().all_of<Smell>(e));
     }
+}
+
+// The derivation contract: a body's numbers come out of its sheet through the bestiary
+// formulas and nowhere else. Fixture configs go to a temp dir with the smell range pinned
+// (min == max), so every roll is deterministic without reaching into the RNG.
+
+namespace
+{
+
+struct BestiaryFixture
+{
+    std::string swarm;
+    std::string creature;
+};
+
+// Known constants and a known sheet, chosen for round hand-computed numbers. atSmell > 0
+// wires an evolved form (all-ones sheet, base hp 100) behind that threshold.
+BestiaryFixture writeBestiaryFixture(int smellMin, int smellMax, int atSmell)
+{
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "poe_bestiary_fixture";
+    fs::create_directories(dir);
+
+    const fs::path evolvedPath = dir / "evolved.json";
+    nlohmann::json evolved = {
+        {"sheet", {{"resistance", 1}, {"defensiveness", 1}, {"dispersal", 1}}},
+        {"base", {{"hp", 100}, {"power", 50.0}, {"speed", 300.0}, {"xp", 40}}},
+    };
+    std::ofstream(evolvedPath) << evolved.dump(2);
+
+    const fs::path creaturePath = dir / "creature.json";
+    nlohmann::json creature = {
+        {"sheet", {{"resistance", 2}, {"defensiveness", 3}, {"dispersal", 4}}},
+        {"base", {{"hp", 10}, {"power", 10.0}, {"speed", 100.0}, {"xp", 8}}},
+        {"growth", {{"resistance", 1}, {"defensiveness", 0}, {"dispersal", 2}}},
+    };
+    if (atSmell > 0)
+        creature["evolves"] = {{"into", evolvedPath.generic_string()}, {"at_smell", atSmell}};
+    std::ofstream(creaturePath) << creature.dump(2);
+
+    const fs::path swarmPath = dir / "swarm.json";
+    const nlohmann::json swarmCfg = {
+        {"bestiary",
+         {{"hp", {{"per_resistance", 2.0}}},
+          {"contact",
+           {{"per_point", 0.1}, {"defensiveness_weight", 1.0}, {"resistance_weight", 0.5}}},
+          {"speed", {{"per_point", 0.1}, {"dispersal_weight", 1.0}, {"defensiveness_weight", 0.5}}},
+          {"xp", {{"per_total", 0.25}}},
+          {"smell",
+           {{"base_min", smellMin},
+            {"base_max", smellMax},
+            {"min_per_depth", 0},
+            {"max_per_depth", 0}}}}},
+    };
+    std::ofstream(swarmPath) << swarmCfg.dump(2);
+    return {swarmPath.generic_string(), creaturePath.generic_string()};
+}
+
+void openRoom(EntityManager& em)
+{
+    em.tile_map.tile_size = 32;
+    em.tile_map.width = 10;
+    em.tile_map.height = 10;
+    em.tile_map.tiles.assign(100, TileMap::Tile{0, true});
+}
+
+entt::entity theOneEmerged(EntityManager& em, const BestiaryFixture& fx, int depth)
+{
+    openRoom(em);
+    swarm::begin(fx.swarm, {}, depth);
+    swarm::spawnOne(em, fx.creature, 160.0f, 160.0f);
+    REQUIRE(em.registry().view<Vermin>().size() == 1);
+    return em.registry().view<Vermin>().front();
+}
+
+} // namespace
+
+TEST_CASE("derived numbers follow the bestiary formulas", "[bestiary]")
+{
+    const BestiaryFixture fx = writeBestiaryFixture(0, 0, 0);
+    EntityManager em;
+    const entt::entity e = theOneEmerged(em, fx, 0);
+    // sheet {2,3,4}: hp = 10 + 2*2; contact = 10*(1 + 0.1*(3 + 2*0.5));
+    // speed = 100*(1 + 0.1*(4 + 3*0.5)); xp = 8*(1 + 0.25*(9-3)).
+    CHECK(em.registry().get<Health>(e).max == 14);
+    CHECK(em.registry().get<Vermin>(e).contact_damage == Catch::Approx(14.0f));
+    CHECK(em.registry().get<Vermin>(e).speed == Catch::Approx(155.0f));
+    CHECK(em.registry().get<Worth>(e).xp == 20);
+    CHECK(em.registry().get<Smell>(e).amount == 0);
+}
+
+TEST_CASE("depth deepens a species along its growth spread", "[bestiary]")
+{
+    const BestiaryFixture fx = writeBestiaryFixture(0, 0, 0);
+    EntityManager em;
+    const entt::entity e = theOneEmerged(em, fx, 2);
+    // Two depths of growth {1,0,2} make the sheet {4,3,8}; everything re-derives from that.
+    CHECK(em.registry().get<Health>(e).max == 18);
+    CHECK(em.registry().get<Vermin>(e).contact_damage == Catch::Approx(15.0f));
+    CHECK(em.registry().get<Vermin>(e).speed == Catch::Approx(195.0f));
+    CHECK(em.registry().get<Worth>(e).xp == 32);
+}
+
+TEST_CASE("smell multiplies everything derived", "[bestiary]")
+{
+    const BestiaryFixture fx = writeBestiaryFixture(50, 50, 0);
+    EntityManager em;
+    const entt::entity e = theOneEmerged(em, fx, 0);
+    CHECK(em.registry().get<Smell>(e).amount == 50);
+    CHECK(em.registry().get<Health>(e).max == 21);
+    CHECK(em.registry().get<Vermin>(e).contact_damage == Catch::Approx(21.0f));
+    CHECK(em.registry().get<Vermin>(e).speed == Catch::Approx(232.5f));
+    CHECK(em.registry().get<Worth>(e).xp == 30);
+}
+
+TEST_CASE("a hot enough roll surfaces the evolved form", "[bestiary]")
+{
+    const BestiaryFixture fx = writeBestiaryFixture(50, 50, 40);
+    EntityManager em;
+    const entt::entity e = theOneEmerged(em, fx, 0);
+    // The evolved body's numbers, re-rolled smell included (pinned range rolls 50 again).
+    CHECK(em.registry().get<Health>(e).max == 153);
+    CHECK(em.registry().get<Smell>(e).amount == 50);
+}
+
+TEST_CASE("a cool roll stays the base form", "[bestiary]")
+{
+    const BestiaryFixture fx = writeBestiaryFixture(30, 30, 40);
+    EntityManager em;
+    const entt::entity e = theOneEmerged(em, fx, 0);
+    CHECK(em.registry().get<Smell>(e).amount == 30);
+    CHECK(em.registry().get<Health>(e).max == 18); // lround(14 * 1.3) -- the base body, warmed
 }

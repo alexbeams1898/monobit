@@ -24,8 +24,9 @@ enum class Page
     Points
 };
 Page sPage = Page::Menu;
-int sCursor = 0;
+int sCursor = shell_input::kNoChoice;
 bool sConfirmed = false; // a confirm pressed this frame, spent by render
+int sRows = 0;           // rows on the page as last drawn, for the keyboard to walk
 
 constexpr std::array<const char*, 3> kMenu{"Brew", "Spend points", "Back to work"};
 
@@ -53,7 +54,7 @@ int pageRows(const EntityManager& em)
 void reset()
 {
     sPage = Page::Menu;
-    sCursor = 0;
+    sCursor = shell_input::kNoChoice;
     sConfirmed = false;
 }
 
@@ -65,29 +66,28 @@ Action step(bool up, bool down, bool confirm, bool back)
         if (sPage != Page::Menu)
         {
             sPage = Page::Menu;
-            sCursor = 0;
+            sCursor = shell_input::kNoChoice;
             return Action::None;
         }
         return Action::Close;
     }
-    if (up)
-        --sCursor;
-    if (down)
-        ++sCursor;
-    sConfirmed = confirm;
+    sCursor = shell_input::step(sCursor, sRows, up, down);
+    sConfirmed = confirm && sCursor != shell_input::kNoChoice;
     return Action::None;
 }
 
-Action render(EntityManager& em, const Mouse& mouse, int windowW, int windowH)
+Action render(EntityManager& em, const shell_input::Mouse& mouse, int windowW, int windowH)
 {
     screen_style::dim(windowW, windowH);
     const float cx = static_cast<float>(windowW) * 0.5f;
     const float lh = screen_style::lineHeight();
     float y = screen_style::pageHeadingY(windowH);
 
-    const int rows = pageRows(em);
-    if (rows > 0)
-        sCursor = ((sCursor % rows) + rows) % rows;
+    // The row count the NEXT keypress will walk: step() needs it, and only render knows the
+    // page's contents.
+    sRows = pageRows(em);
+    if (sCursor >= sRows)
+        sCursor = shell_input::kNoChoice;
 
     screen_style::headingCentered("STAGING", cx, y, screen_style::kText);
     y += lh * 2.2f;
@@ -95,11 +95,12 @@ Action render(EntityManager& em, const Mouse& mouse, int windowW, int windowH)
     Action out = Action::None;
     const float rowH = screen_style::pageRowH();
     const auto rowAt = [&](int i) { return y + lh * 1.4f + rowH * static_cast<float>(i); };
-    const auto hover = [&](int i)
-    {
-        const screen_style::Rect r{cx - lh * 7.0f, rowAt(i) - lh * 0.35f, lh * 14.0f, lh};
-        return screen_style::hit(r, mouse.x, mouse.y);
-    };
+    int over = shell_input::kNoChoice;
+    for (int i = 0; i < sRows; ++i)
+        if (screen_style::hit(screen_style::pageRow(cx, rowAt(i)), mouse.x, mouse.y))
+            over = i;
+    sCursor = shell_input::hover(sCursor, over, mouse.moved);
+    const auto hover = [&](int i) { return i == over; };
 
     switch (sPage)
     {
@@ -111,15 +112,11 @@ Action render(EntityManager& em, const Mouse& mouse, int windowW, int windowH)
                                    cx, y, screen_style::kTextDim);
         for (int i = 0; i < static_cast<int>(kMenu.size()); ++i)
         {
-            if (hover(i))
-            {
-                sCursor = i;
-                if (mouse.clicked)
-                    sConfirmed = true;
-            }
+            if (hover(i) && mouse.clicked)
+                sConfirmed = true;
             drawRow(kMenu[static_cast<std::size_t>(i)], cx, rowAt(i), i == sCursor);
         }
-        if (sConfirmed)
+        if (sConfirmed && sCursor != shell_input::kNoChoice)
         {
             sConfirmed = false;
             if (sCursor == 0)
@@ -128,7 +125,7 @@ Action render(EntityManager& em, const Mouse& mouse, int windowW, int windowH)
                 sPage = Page::Points;
             else
                 out = Action::Close;
-            sCursor = 0;
+            sCursor = shell_input::kNoChoice;
         }
         break;
     }
@@ -138,18 +135,14 @@ Action render(EntityManager& em, const Mouse& mouse, int windowW, int windowH)
         screen_style::textCentered("what goes in the thermos", cx, y, screen_style::kTextDim);
         for (int i = 0; i < static_cast<int>(fills.size()); ++i)
         {
-            if (hover(i))
-            {
-                sCursor = i;
-                if (mouse.clicked)
-                    sConfirmed = true;
-            }
+            if (hover(i) && mouse.clicked)
+                sConfirmed = true;
             const bool held = i == thermos::fillIndex();
             drawRow((fills[static_cast<std::size_t>(i)].name + (held ? "  (in the thermos)" : ""))
                         .c_str(),
                     cx, rowAt(i), i == sCursor);
         }
-        if (sConfirmed)
+        if (sConfirmed && sCursor != shell_input::kNoChoice)
         {
             sConfirmed = false;
             thermos::setFill(em, sCursor); // at the spot, so this refills on the spot
@@ -170,16 +163,12 @@ Action render(EntityManager& em, const Mouse& mouse, int windowW, int windowH)
         const int values[5] = {s.chemical, s.physical, s.biological, s.endurance, s.inspection};
         for (int i = 0; i < 5; ++i)
         {
-            if (hover(i))
-            {
-                sCursor = i;
-                if (mouse.clicked)
-                    sConfirmed = true;
-            }
+            if (hover(i) && mouse.clicked)
+                sConfirmed = true;
             drawRow((std::string{names[i]} + "  " + std::to_string(values[i])).c_str(), cx,
                     rowAt(i), i == sCursor);
         }
-        if (sConfirmed)
+        if (sConfirmed && sCursor != shell_input::kNoChoice)
         {
             sConfirmed = false;
             reward::spend(em, sCursor);

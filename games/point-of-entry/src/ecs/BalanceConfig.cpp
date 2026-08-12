@@ -45,6 +45,11 @@ bool load(const std::string& path)
         st.value("endurance_scale", sFormulas.stamina.endurance_scale);
     sFormulas.stamina.recovery_delay = st.value("recovery_delay", sFormulas.stamina.recovery_delay);
     sFormulas.stamina.recovery_rate = st.value("recovery_rate", sFormulas.stamina.recovery_rate);
+    const auto& bl = j.value("block", nlohmann::json::object());
+    sFormulas.block.stamina_per_damage =
+        bl.value("stamina_per_damage", sFormulas.block.stamina_per_damage);
+    sFormulas.block.walk_factor = bl.value("walk_factor", sFormulas.block.walk_factor);
+    sFormulas.block.broken_factor = bl.value("broken_factor", sFormulas.block.broken_factor);
     const auto& d = j.value("defense", nlohmann::json::object());
     sFormulas.defense.level_scale = d.value("level_scale", sFormulas.defense.level_scale);
     sFormulas.defense.physical_scale = d.value("physical_scale", sFormulas.defense.physical_scale);

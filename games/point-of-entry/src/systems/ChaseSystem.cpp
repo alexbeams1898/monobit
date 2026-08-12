@@ -5,6 +5,8 @@
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
 #include "ops/NavUtils.h"
+#include "systems/AimSystem.h"
+#include "systems/CombatSystem.h"
 #include "systems/PlayerSystem.h"
 
 #include <cmath>
@@ -120,7 +122,8 @@ void integrate(EntityManager& em, float dt)
                 const int def =
                     reg.all_of<Stats>(playerEnt) ? stats::defense(reg.get<Stats>(playerEnt)) : 0;
                 const int raw = static_cast<int>(reg.get<Vermin>(entity).contact_damage);
-                hp->current -= std::max(1, raw - def);
+                // The guard stands between the hit and the bar -- see absorbWithGuard.
+                hp->current -= tools::absorbWithGuard(em, std::max(1, raw - def), aim::guarding());
             }
         }
     }

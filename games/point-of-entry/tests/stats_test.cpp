@@ -1,7 +1,9 @@
 #include "ecs/BalanceConfig.h"
-#include "systems/CombatSystem.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
+#include "ecs/GameComponents.h"
+#include "systems/CombatSystem.h"
+#include "systems/PlayerSystem.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -83,4 +85,34 @@ TEST_CASE("a re-derive keeps the fraction rather than healing", "[stats]")
     const float fracAfter = static_cast<float>(hp2.current) / static_cast<float>(hp2.max);
     CHECK(fracAfter == Catch::Approx(fracBefore).margin(0.02f));
     CHECK(hp2.max > 80); // it did actually grow
+}
+
+TEST_CASE("the guard pays in stamina, breaks when it cannot, and stands aside when down", "[block]")
+{
+    stats::load("config/stats.json");
+    EntityManager em;
+    auto& reg = em.registry();
+    const entt::entity p = reg.create();
+    reg.emplace<Transform>(p, Transform{0.0f, 0.0f});
+    reg.emplace<Stamina>(p, Stamina{100.0f, 100.0f, 0.0f});
+    player::bind(p);
+
+    // Guard up with a full bar: the hit is absorbed and the bar pays for it.
+    CHECK(tools::absorbWithGuard(em, 10, true) == 0);
+    const float afterFirst = reg.get<Stamina>(p).current;
+    CHECK(afterFirst < 100.0f);
+    CHECK(reg.get<Stamina>(p).recovery_timer > 0.0f);
+
+    // A bar too empty to pay: the guard breaks -- the rest of the bar is
+    // spent and only a FRACTION of the hit gets through, because the arm is
+    // still up. Dropping the guard is the only way to eat a hit whole.
+    reg.get<Stamina>(p).current = 1.0f;
+    const int through = tools::absorbWithGuard(em, 10, true);
+    CHECK(through > 0);
+    CHECK(through < 10);
+    CHECK(reg.get<Stamina>(p).current == 0.0f);
+
+    // Guard down: the hit passes untouched, whatever the bar holds.
+    reg.get<Stamina>(p).current = 100.0f;
+    CHECK(tools::absorbWithGuard(em, 10, false) == 10);
 }

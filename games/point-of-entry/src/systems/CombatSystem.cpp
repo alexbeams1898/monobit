@@ -200,6 +200,28 @@ bool streaming(EntityManager& em)
     return streamEntity(em.registry()) != entt::null;
 }
 
+int absorbWithGuard(EntityManager& em, int damage, bool guarding)
+{
+    if (!guarding || damage <= 0)
+        return damage;
+    auto& reg = em.registry();
+    auto* sta = reg.try_get<Stamina>(player::entity());
+    if (sta == nullptr)
+        return damage;
+    const float cost = static_cast<float>(damage) * stats::formulas().block.stamina_per_damage;
+    sta->recovery_timer = stats::formulas().stamina.recovery_delay;
+    if (sta->current >= cost)
+    {
+        sta->current -= cost;
+        return 0;
+    }
+    // The guard BREAKS but the arm is still up: what stamina remains is
+    // spent, and only a fraction of the hit gets through.
+    sta->current = 0.0f;
+    return std::max(1, static_cast<int>(std::lround(static_cast<float>(damage) *
+                                                    stats::formulas().block.broken_factor)));
+}
+
 void holster(EntityManager& em)
 {
     auto& reg = em.registry();
@@ -319,7 +341,8 @@ void tickStream(EntityManager& em, const Tool& tool, entt::entity owner, float d
     }
     // Both meters gate a held stream, and they say different things: an empty tank means he has
     // not killed enough, an empty body means he has been leaning on the trigger too long.
-    const bool wants = aim::firing() && charge->current > 0.0f && sta->current > 0.0f;
+    const bool wants =
+        aim::firing() && !aim::guarding() && charge->current > 0.0f && sta->current > 0.0f;
 
     entt::entity stream = streamEntity(reg);
     if (!wants)
@@ -410,7 +433,7 @@ void update(EntityManager& em, float dt)
     }
     holster(em); // switched off a stream tool mid-spray
 
-    if (!aim::firing() || sCooldowns[index] > 0.0f)
+    if (!aim::firing() || aim::guarding() || sCooldowns[index] > 0.0f)
         return;
 
     // Stamina gates the shot, and an empty bar simply means not yet -- no penalty, no failed

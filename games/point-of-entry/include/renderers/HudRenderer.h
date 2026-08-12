@@ -20,6 +20,8 @@ void renderWorldOverlays(Engine& engine, EntityManager& em, float camX, float ca
 
 // Show the system pointer on menus, hide it while playing. Called every frame with the current
 // state -- see the note in the implementation for why this is derived rather than toggled.
-void cursorForPhase(bool playing);
+// Hide the system cursor exactly where this game draws its own. Every other state -- a menu,
+// the dev panel, a room where nothing can reach him -- gets the pointer back.
+void cursorForPhase(bool crosshair);
 
 } // namespace hud

@@ -9,17 +9,24 @@ namespace prompt
 namespace
 {
 std::string sAction;
+// Offers arrive at the fixed tick rate; renders come faster. Without a grace
+// window the band starves between ticks and blinks -- it holds for a few
+// renders and clears only when offers actually stop.
+constexpr int kGraceFrames = 8;
+int sGrace = 0;
 } // namespace
 
 void offer(const std::string& action)
 {
     sAction = action;
+    sGrace = kGraceFrames;
 }
 
 void render(Engine& engine)
 {
-    if (sAction.empty())
+    if (sAction.empty() || sGrace <= 0)
         return;
+    --sGrace;
 
     const auto w = static_cast<float>(engine.windowWidth());
     const auto h = static_cast<float>(engine.windowHeight());
@@ -35,7 +42,8 @@ void render(Engine& engine)
 
     screen_style::textInBox(sAction + "  -  space", screen_style::Rect{bx, by, bandW, bandH},
                             screen_style::kTextHot);
-    sAction.clear();
+    if (sGrace <= 0)
+        sAction.clear();
 }
 
 } // namespace prompt

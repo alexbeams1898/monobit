@@ -44,6 +44,17 @@ struct Formulas
     } scaling;
     struct
     {
+        // Guarding converts contact damage into stamina at this exchange rate; a bar too
+        // empty to pay breaks the guard and the hit lands whole.
+        float stamina_per_damage = 2.0f;
+        float walk_factor = 0.5f; // movement speed while guarding
+        // A guard too spent to pay still stands between the hit and the bar:
+        // this fraction of the damage gets through, the rest is the raised
+        // arm. Only dropping the guard entirely eats a hit whole.
+        float broken_factor = 0.6f;
+    } block;
+    struct
+    {
         // Quality score cutoffs (0-50 roll + Inspection's nudge): below [0] crude, then
         // standard, then fine; past [2] superior.
         float quality_thresholds[3] = {20.0f, 38.0f, 48.0f};

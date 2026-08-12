@@ -14,54 +14,47 @@ constexpr std::array<Action, 4> kActions{Action::NewJob, Action::Continue, Actio
 constexpr int kCount = 4;
 constexpr int kContinue = 1;
 
-int sCursor = 0;
+int sCursor = shell_input::kNoChoice;
 
 bool enabled(int i, bool has_save)
 {
     return i != kContinue || has_save;
 }
 
-// Move the cursor, stepping OVER anything disabled so the hand never lands on a dead entry.
-// Bounded by kCount so an all-disabled list cannot spin.
 void move(int dir, bool has_save)
 {
-    for (int guard = 0; guard < kCount; ++guard)
-    {
-        sCursor = (sCursor + dir + kCount) % kCount;
-        if (enabled(sCursor, has_save))
-            return;
-    }
+    sCursor = shell_input::stepOver(sCursor, kCount, dir < 0, dir > 0,
+                                    [&](int i) { return enabled(i, has_save); });
 }
 } // namespace
 
 void reset()
 {
-    sCursor = 0;
+    sCursor = shell_input::kNoChoice;
 }
 
 Action step(bool up, bool down, bool confirm, bool has_save)
 {
     // A cursor left on Continue by a previous run, arriving at a title with no save, would sit
     // on an entry that cannot be taken. Land somewhere real first.
-    if (!enabled(sCursor, has_save))
+    if (sCursor != shell_input::kNoChoice && !enabled(sCursor, has_save))
         move(1, has_save);
 
     if (up)
         move(-1, has_save);
     if (down)
         move(1, has_save);
-    if (confirm && enabled(sCursor, has_save))
+    if (confirm && sCursor != shell_input::kNoChoice && enabled(sCursor, has_save))
         return kActions[static_cast<std::size_t>(sCursor)];
     return Action::None;
 }
 
-Action render(const Mouse& mouse, bool has_save, int windowW, int windowH)
+Action render(const shell_input::Mouse& mouse, bool has_save, int windowW, int windowH)
 {
     screen_style::dim(windowW, windowH);
 
     const float cx = static_cast<float>(windowW) * 0.5f;
-    const float lh = screen_style::lineHeight();
-    // The genre's title shape: the name large in the upper third, the menu low.
+    // The title's own shape: the name large in the upper third, the menu low.
     screen_style::displayCentered("POINT OF ENTRY", cx, screen_style::titleY(windowH),
                                   screen_style::kText);
     float y = screen_style::titleMenuY(windowH);
@@ -71,19 +64,20 @@ Action render(const Mouse& mouse, bool has_save, int windowW, int windowH)
     // one will land is known without drawing it first.
     Action committed = Action::None;
     const float rowH = screen_style::pageRowH();
+    int over = shell_input::kNoChoice;
     for (int i = 0; i < kCount; ++i)
     {
         if (!enabled(i, has_save))
             continue;
         const float rowY = y + rowH * static_cast<float>(i);
-        const screen_style::Rect r{cx - lh * 6.0f, rowY - lh * 0.35f, lh * 12.0f, lh};
-        if (screen_style::hit(r, mouse.x, mouse.y))
+        if (screen_style::hit(screen_style::pageRow(cx, rowY), mouse.x, mouse.y))
         {
-            sCursor = i;
+            over = i;
             if (mouse.clicked)
                 committed = kActions[static_cast<std::size_t>(i)];
         }
     }
+    sCursor = shell_input::hover(sCursor, over, mouse.moved);
 
     for (int i = 0; i < kCount; ++i)
     {

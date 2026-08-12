@@ -3,9 +3,12 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
+#include "ops/GuideOps.h"
 #include "ops/LootOps.h"
 #include "ops/NavUtils.h"
+#include "ops/RecordOps.h"
 #include "renderers/FloaterRenderer.h"
+#include "renderers/NotificationRenderer.h"
 #include "screens/ScreenStyle.h"
 #include "systems/CombatSystem.h"
 #include "systems/PickupSystem.h"
@@ -196,6 +199,21 @@ void reapDead(EntityManager& em, float dt)
         tools::creditKill(em);
         if (const auto* worth = reg.try_get<Worth>(e))
             reward::credit(em, worth->xp);
+        // The kill goes on the record by species -- the one ledger everything later reads. The
+        // tally reaching the guide's entry gate is announced through the feed: the book fills
+        // in the field, not silently behind the pause screen.
+        if (const auto* species = reg.try_get<Species>(e))
+        {
+            // Lazily on the first kill -- boot has settled the working directory by then --
+            // and once: the gates are config, stable for the session.
+            static const guide::Gates sGates = guide::gates("config/stats.json");
+            const int had = record::kills(species->path);
+            record::countKill(species->path);
+            if (guide::tier(had, sGates) == guide::Tier::Undocumented &&
+                guide::tier(had + 1, sGates) != guide::Tier::Undocumented)
+                notify::line(species->path,
+                             guide::nameOf(species->path) + " added to the field guide");
+        }
         // Goods hit the floor where it died; the roll is the species' table against his
         // Inspection. One rng for the whole game's drops -- reseeding per kill would make a
         // wave's loot correlate with its spawn pattern.

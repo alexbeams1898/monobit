@@ -1,13 +1,23 @@
 {
-    "_comment": "A creature is a FILE. Everything the waves need to field one lives here -- adding a species to the bestiary is writing one of these plus a drawing, never touching code. min_wave is when it starts appearing; weight is its share of the mix among everything eligible. movement declares the species' character -- the ant's tremor is insect language; a file that omits the block walks plainly.",
+    "_comment": "A creature is a FILE. Everything the waves need to field one lives here -- adding a species to the bestiary is writing one of these plus a drawing, never touching code. sheet is the species' three stats; hp/contact/speed/xp derive from them through swarm.json's bestiary block, scaled off base. growth is which stats gain points per level of depth -- each species deepens along its own character. movement declares the species' gait; a file that omits the block walks plainly. guide is the species' printed field-guide page, the trade's six sections; a file without the block is a species the book does not know, and an empty string is a section not yet written.",
     "sprite": "assets/sprites/ant.json",
-    "health": 7,
-    "contact_damage": 4,
-    "speed": 46.0,
-    "xp": 2,
+    "sheet": {
+        "resistance": 1,
+        "defensiveness": 2,
+        "dispersal": 2
+    },
+    "base": {
+        "hp": 5,
+        "power": 3.4,
+        "speed": 38.0,
+        "xp": 2
+    },
+    "growth": {
+        "resistance": 0,
+        "defensiveness": 0,
+        "dispersal": 1
+    },
     "scale": 0.75,
-    "min_wave": 1,
-    "weight": 10,
     "movement": {
         "buzz_hz": 21.0,
         "buzz_amount": 0.35,
@@ -21,5 +31,13 @@
             "max": 1,
             "chance": 0.02
         }
-    ]
+    ],
+    "guide": {
+        "description": "",
+        "similar": "",
+        "biology": "",
+        "habits": "",
+        "signs": "",
+        "control": ""
+    }
 }

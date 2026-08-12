@@ -1,12 +1,22 @@
 {
     "sprite": "assets/sprites/mouse.json",
-    "health": 16,
-    "contact_damage": 6,
-    "speed": 72.0,
-    "xp": 6,
+    "sheet": {
+        "resistance": 3,
+        "defensiveness": 2,
+        "dispersal": 4
+    },
+    "base": {
+        "hp": 10,
+        "power": 4.8,
+        "speed": 52.5,
+        "xp": 4
+    },
+    "growth": {
+        "resistance": 1,
+        "defensiveness": 0,
+        "dispersal": 0
+    },
     "scale": 1.0,
-    "min_wave": 3,
-    "weight": 3,
     "drops": [
         {
             "item": "config/items/materials/mouse_tail.json",
@@ -14,5 +24,13 @@
             "max": 1,
             "chance": 0.35
         }
-    ]
+    ],
+    "guide": {
+        "description": "",
+        "similar": "",
+        "biology": "",
+        "habits": "",
+        "signs": "",
+        "control": ""
+    }
 }

@@ -13,6 +13,7 @@
 
 #include <cmath>
 #include <fstream>
+#include <random>
 #include <unordered_map>
 #include <vector>
 
@@ -23,20 +24,33 @@ namespace swarm
 namespace
 {
 
-// A species, read whole from its file. `evolves_*` is the depth law's swap: past the
-// threshold, this species stops coming through and its worse self comes instead.
+// A species' three stats, all trade terms: resistance survives treatment (hp), defensiveness
+// stings back (contact), dispersal moves through a structure (speed). Everything a body is
+// derives from these -- same doctrine as the player's sheet, nothing authored twice.
+struct Sheet
+{
+    int resistance = 1;
+    int defensiveness = 1;
+    int dispersal = 1;
+};
+
+// A species, read whole from its file. `evolves_*` is the smell's swap: an individual rolled
+// hot enough comes through as this species' worse self instead.
 struct Creature
 {
+    std::string path; // the file it was read from -- the species' one identity
     sprite_def::Def def;
-    int health = 7;
-    float contact = 4.0f;
-    float speed = 46.0f;
-    int xp = 2;
+    Sheet sheet;
+    Sheet growth; // points the sheet gains per level of depth
+    int base_hp = 5;
+    float base_power = 3.0f;
+    float base_speed = 40.0f;
+    int base_xp = 2;
     float scale = 1.0f;
     Motion motion;
     std::vector<DropEntry> drops;
     std::string evolves_into; // creature file path; empty = terminal form
-    int evolves_at_depth = 0;
+    int evolves_at_smell = 0;
 };
 
 // One line of a seep's fauna.
@@ -71,14 +85,41 @@ struct ActiveSeep
     bool done = false;
 };
 
-// How depth juices what emerges: multiplicative per level of depth, from config. One formula
-// for every species -- the law scales the world, not cases.
-struct Juice
+// The derivation constants, from config's bestiary block. Cross-feeds are deliberate:
+// contact also reads body-weight (resistance, minor), speed also reads temper
+// (defensiveness, minor).
+struct Bestiary
 {
-    float health = 0.12f;
-    float damage = 0.10f;
-    float speed = 0.03f;
-    float xp = 0.15f;
+    struct
+    {
+        float per_resistance = 2.0f;
+    } hp;
+    struct
+    {
+        float per_point = 0.08f;
+        float defensiveness_weight = 1.0f;
+        float resistance_weight = 0.4f;
+    } contact;
+    struct
+    {
+        float per_point = 0.08f;
+        float dispersal_weight = 1.0f;
+        float defensiveness_weight = 0.3f;
+    } speed;
+    struct
+    {
+        float per_total = 0.1f; // per effective sheet point above the all-ones baseline
+    } xp;
+    struct
+    {
+        // The per-individual roll's range, in percent. Both ends climb with depth -- deeper
+        // individuals run hotter -- and the top climbs faster, so the first evolved form
+        // arrives as a surprise among normals before its depth owns it.
+        int base_min = 0;
+        int base_max = 10;
+        int min_per_depth = 3;
+        int max_per_depth = 8;
+    } smell;
 };
 
 std::vector<Creature> sCreatures;
@@ -86,7 +127,8 @@ std::unordered_map<std::string, std::size_t> sCreatureIndex;
 std::unordered_map<std::string, SeepProgram> sSeepTypes;
 std::vector<ActiveSeep> sSeeps;
 int sDepth = 0;
-Juice sJuice;
+Bestiary sBestiary;
+std::mt19937 sRng{std::random_device{}()};
 float sSurgeSpeed = 150.0f;
 float sSurgeDuration = 0.35f;
 unsigned sSpawnCounter = 0;
@@ -94,9 +136,51 @@ unsigned sSpawnCounter = 0;
 // Assault defaults at this depth, before any per-seep overrides.
 SeepProgram sBaseProgram;
 
-float juiceFactor(float perDepth)
+// THE SMELL: the law of depth on bodies, one roll per individual at emergence.
+int rollSmell()
 {
-    return 1.0f + perDepth * static_cast<float>(sDepth);
+    const int lo = sBestiary.smell.base_min + sBestiary.smell.min_per_depth * sDepth;
+    const int hi = sBestiary.smell.base_max + sBestiary.smell.max_per_depth * sDepth;
+    std::uniform_int_distribution<int> roll(lo, std::max(lo, hi));
+    return roll(sRng);
+}
+
+// A body's numbers at emergence: the authored sheet plus the species' growth spread times
+// depth -- each kind deepens along its own character -- pushed through the formulas, all of
+// it multiplied by the individual's smell.
+struct Derived
+{
+    int hp = 1;
+    float contact = 0.0f;
+    float speed = 0.0f;
+    int xp = 1;
+};
+
+Derived derive(const Creature& kind, int smell)
+{
+    const auto res = static_cast<float>(kind.sheet.resistance + kind.growth.resistance * sDepth);
+    const auto dfn =
+        static_cast<float>(kind.sheet.defensiveness + kind.growth.defensiveness * sDepth);
+    const auto dsp = static_cast<float>(kind.sheet.dispersal + kind.growth.dispersal * sDepth);
+    const float mul = 1.0f + static_cast<float>(smell) / 100.0f;
+    Derived d;
+    d.hp = std::max(
+        1, static_cast<int>(std::lround(
+               (static_cast<float>(kind.base_hp) + sBestiary.hp.per_resistance * res) * mul)));
+    d.contact =
+        kind.base_power *
+        (1.0f + sBestiary.contact.per_point * (dfn * sBestiary.contact.defensiveness_weight +
+                                               res * sBestiary.contact.resistance_weight)) *
+        mul;
+    d.speed = kind.base_speed *
+              (1.0f + sBestiary.speed.per_point * (dsp * sBestiary.speed.dispersal_weight +
+                                                   dfn * sBestiary.speed.defensiveness_weight)) *
+              mul;
+    const float total = res + dfn + dsp - 3.0f;
+    d.xp =
+        std::max(1, static_cast<int>(std::lround(static_cast<float>(kind.base_xp) *
+                                                 (1.0f + sBestiary.xp.per_total * total) * mul)));
+    return d;
 }
 
 std::size_t loadCreature(const std::string& path)
@@ -116,11 +200,21 @@ std::size_t loadCreature(const std::string& path)
         return static_cast<std::size_t>(-1);
     }
     Creature c;
+    c.path = path;
     c.def = sprite_def::load(j.value("sprite", std::string{}));
-    c.health = j.value("health", c.health);
-    c.contact = j.value("contact_damage", c.contact);
-    c.speed = j.value("speed", c.speed);
-    c.xp = j.value("xp", c.xp);
+    const auto& sheet = j.value("sheet", nlohmann::json::object());
+    c.sheet.resistance = sheet.value("resistance", c.sheet.resistance);
+    c.sheet.defensiveness = sheet.value("defensiveness", c.sheet.defensiveness);
+    c.sheet.dispersal = sheet.value("dispersal", c.sheet.dispersal);
+    const auto& base = j.value("base", nlohmann::json::object());
+    c.base_hp = base.value("hp", c.base_hp);
+    c.base_power = base.value("power", c.base_power);
+    c.base_speed = base.value("speed", c.base_speed);
+    c.base_xp = base.value("xp", c.base_xp);
+    const auto& growth = j.value("growth", nlohmann::json::object());
+    c.growth.resistance = growth.value("resistance", 0);
+    c.growth.defensiveness = growth.value("defensiveness", 0);
+    c.growth.dispersal = growth.value("dispersal", 0);
     c.scale = j.value("scale", c.scale);
     const auto& mv = j.value("movement", nlohmann::json::object());
     c.motion.buzz_hz = mv.value("buzz_hz", 0.0f);
@@ -138,10 +232,10 @@ std::size_t loadCreature(const std::string& path)
     }
     const auto& ev = j.value("evolves", nlohmann::json::object());
     c.evolves_into = ev.value("into", std::string{});
-    c.evolves_at_depth = ev.value("at_depth", 0);
+    c.evolves_at_smell = ev.value("at_smell", 0);
     sCreatures.push_back(std::move(c));
     sCreatureIndex.emplace(path, sCreatures.size() - 1);
-    // Resolve the evolved form up front, so depth can swap without touching disk mid-wave.
+    // Resolve the evolved form up front, so a hot roll can swap without touching disk mid-wave.
     const std::size_t idx = sCreatures.size() - 1;
     if (!sCreatures[idx].evolves_into.empty())
         loadCreature(sCreatures[idx].evolves_into);
@@ -195,11 +289,11 @@ int countForWave(const SeepProgram& p, int wave)
 }
 
 // Which species surfaces from THIS hole: weighted round-robin among its fauna whose min_wave
-// has come, then the depth law's swap -- past the threshold, the evolved form comes instead.
-const Creature* pickCreature(const ActiveSeep& seep, unsigned n)
+// has come. Evolution is not decided here -- that belongs to the individual's roll.
+std::size_t pickCreature(const ActiveSeep& seep, unsigned n)
 {
     if (seep.program.entries.empty())
-        return nullptr;
+        return static_cast<std::size_t>(-1);
     const auto& entries = seep.program.entries;
     int totalWeight = 0;
     for (const auto& entry : entries)
@@ -221,20 +315,32 @@ const Creature* pickCreature(const ActiveSeep& seep, unsigned n)
             }
         }
     }
-    // The swap walks the chain, so deep enough digs can be two evolutions past the surface form.
-    while (!sCreatures[chosen].evolves_into.empty() &&
-           sDepth >= sCreatures[chosen].evolves_at_depth && sCreatures[chosen].evolves_at_depth > 0)
-    {
-        const auto it = sCreatureIndex.find(sCreatures[chosen].evolves_into);
-        if (it == sCreatureIndex.end())
-            break;
-        chosen = it->second;
-    }
-    return &sCreatures[chosen];
+    return chosen;
 }
 
-void emerge(EntityManager& em, float atX, float atY, int seepIndex, const Creature& kind)
+// Enough smell transforms bodies: a hot individual comes through as the species' worse self,
+// re-rolled for the new form. The walk can chain, so the hottest rolls of a deep dig arrive
+// two evolutions past the surface form.
+std::size_t resolveForm(std::size_t idx, int& smell)
 {
+    while (!sCreatures[idx].evolves_into.empty() && sCreatures[idx].evolves_at_smell > 0 &&
+           smell >= sCreatures[idx].evolves_at_smell)
+    {
+        const auto it = sCreatureIndex.find(sCreatures[idx].evolves_into);
+        if (it == sCreatureIndex.end())
+            break;
+        idx = it->second;
+        smell = rollSmell();
+    }
+    return idx;
+}
+
+void emerge(EntityManager& em, float atX, float atY, int seepIndex, std::size_t kindIndex)
+{
+    int smell = rollSmell();
+    kindIndex = resolveForm(kindIndex, smell);
+    const Creature& kind = sCreatures[kindIndex];
+
     auto& reg = em.registry();
     const entt::entity e = reg.create();
 
@@ -275,15 +381,13 @@ void emerge(EntityManager& em, float atX, float atY, int seepIndex, const Creatu
     reg.emplace<Velocity>(e, Velocity{});
     sprite_anim::attach(em, e, kind.def);
 
-    // THE JUICE: the law of depth, applied at the moment of emergence. Same species, worse.
-    const int hp = std::max(1, static_cast<int>(std::lround(static_cast<float>(kind.health) *
-                                                            juiceFactor(sJuice.health))));
-    reg.emplace<Health>(e, Health{hp, hp});
-    reg.emplace<Vermin>(e, Vermin{kind.contact * juiceFactor(sJuice.damage),
-                                  kind.speed * juiceFactor(sJuice.speed)});
-    reg.emplace<Worth>(e,
-                       Worth{std::max(1, static_cast<int>(std::lround(static_cast<float>(kind.xp) *
-                                                                      juiceFactor(sJuice.xp))))});
+    const Derived d = derive(kind, smell);
+    reg.emplace<Health>(e, Health{d.hp, d.hp});
+    reg.emplace<Vermin>(e, Vermin{d.contact, d.speed});
+    // The resolved form's path, so an evolved individual goes on the record as what it became.
+    reg.emplace<Species>(e, Species{kind.path});
+    reg.emplace<Worth>(e, Worth{d.xp});
+    reg.emplace<Smell>(e, Smell{smell});
     reg.emplace<Motion>(e, kind.motion);
     if (!kind.drops.empty())
         reg.emplace<DropTable>(e, DropTable{kind.drops});
@@ -301,6 +405,21 @@ int livingFrom(const EntityManager& em, int seepIndex)
         if (source.index == seepIndex && !em.registry().all_of<Dying>(entity))
             ++n;
     return n;
+}
+
+// Wind every hole's program back to its start. Called when a floor's assault
+// is set up; not a way to make a floor happen twice, which is not a thing the
+// descent does any more.
+void restart()
+{
+    for (auto& seep : sSeeps)
+    {
+        seep.wave = 0;
+        seep.to_emerge = 0;
+        seep.timer = seep.program.breath;
+        seep.emerging = false;
+        seep.done = seep.program.entries.empty();
+    }
 }
 
 } // namespace
@@ -335,11 +454,28 @@ void begin(const std::string& configPath, const std::vector<Seep>& seeps, int de
     sBaseProgram.breath =
         std::max(1.0f, base.value("breath", 3.0f) - per.value("breath", 0.1f) * d);
 
-    const auto& juice = j.value("juice", nlohmann::json::object());
-    sJuice.health = juice.value("health_per_depth", sJuice.health);
-    sJuice.damage = juice.value("damage_per_depth", sJuice.damage);
-    sJuice.speed = juice.value("speed_per_depth", sJuice.speed);
-    sJuice.xp = juice.value("xp_per_depth", sJuice.xp);
+    const auto& b = j.value("bestiary", nlohmann::json::object());
+    const auto& bh = b.value("hp", nlohmann::json::object());
+    sBestiary.hp.per_resistance = bh.value("per_resistance", sBestiary.hp.per_resistance);
+    const auto& bc = b.value("contact", nlohmann::json::object());
+    sBestiary.contact.per_point = bc.value("per_point", sBestiary.contact.per_point);
+    sBestiary.contact.defensiveness_weight =
+        bc.value("defensiveness_weight", sBestiary.contact.defensiveness_weight);
+    sBestiary.contact.resistance_weight =
+        bc.value("resistance_weight", sBestiary.contact.resistance_weight);
+    const auto& bs = b.value("speed", nlohmann::json::object());
+    sBestiary.speed.per_point = bs.value("per_point", sBestiary.speed.per_point);
+    sBestiary.speed.dispersal_weight =
+        bs.value("dispersal_weight", sBestiary.speed.dispersal_weight);
+    sBestiary.speed.defensiveness_weight =
+        bs.value("defensiveness_weight", sBestiary.speed.defensiveness_weight);
+    const auto& bx = b.value("xp", nlohmann::json::object());
+    sBestiary.xp.per_total = bx.value("per_total", sBestiary.xp.per_total);
+    const auto& bm = b.value("smell", nlohmann::json::object());
+    sBestiary.smell.base_min = bm.value("base_min", sBestiary.smell.base_min);
+    sBestiary.smell.base_max = bm.value("base_max", sBestiary.smell.base_max);
+    sBestiary.smell.min_per_depth = bm.value("min_per_depth", sBestiary.smell.min_per_depth);
+    sBestiary.smell.max_per_depth = bm.value("max_per_depth", sBestiary.smell.max_per_depth);
 
     const auto& surge = j.value("surge", nlohmann::json::object());
     sSurgeSpeed = surge.value("speed", sSurgeSpeed);
@@ -365,18 +501,6 @@ void begin(const std::string& configPath, const std::vector<Seep>& seeps, int de
                         sSeeps[i].program.entries.size());
 }
 
-void restart()
-{
-    for (auto& seep : sSeeps)
-    {
-        seep.wave = 0;
-        seep.to_emerge = 0;
-        seep.timer = seep.program.breath;
-        seep.emerging = false;
-        seep.done = seep.program.entries.empty();
-    }
-}
-
 bool seepCleared(const EntityManager& em, int seepIndex)
 {
     if (seepIndex < 0 || seepIndex >= static_cast<int>(sSeeps.size()))
@@ -390,7 +514,7 @@ void spawnOne(EntityManager& em, const std::string& creaturePath, float x, float
     if (idx == static_cast<std::size_t>(-1))
         return;
     // Belongs to no seep's kill gate -- the trickle answers to no wave clock.
-    emerge(em, x, y, -1, sCreatures[idx]);
+    emerge(em, x, y, -1, idx);
 }
 
 void update(EntityManager& em, float dt)
@@ -408,9 +532,10 @@ void update(EntityManager& em, float dt)
             seep.timer -= dt;
             while (seep.timer <= 0.0f && seep.to_emerge > 0)
             {
-                if (const Creature* kind = pickCreature(seep, sSpawnCounter); kind != nullptr)
+                if (const std::size_t kind = pickCreature(seep, sSpawnCounter);
+                    kind != static_cast<std::size_t>(-1))
                 {
-                    emerge(em, seep.at.x, seep.at.y, i, *kind);
+                    emerge(em, seep.at.x, seep.at.y, i, kind);
                     if (seep.to_emerge == countForWave(seep.program, seep.wave))
                         poe::log().info("swarm:   seep[{}] first emergence at ({:.0f},{:.0f})", i,
                                         seep.at.x, seep.at.y);
@@ -466,22 +591,6 @@ Phase phase()
     if (anyEmerging)
         return Phase::Emerging;
     return anyMidProgram ? Phase::Fighting : Phase::Breath;
-}
-
-int waveNumber()
-{
-    int furthest = 0;
-    for (const auto& seep : sSeeps)
-        furthest = std::max(furthest, seep.wave);
-    return furthest;
-}
-
-int totalWaves()
-{
-    int longest = 0;
-    for (const auto& seep : sSeeps)
-        longest = std::max(longest, seep.program.waves);
-    return longest;
 }
 
 int remaining(const EntityManager& em)

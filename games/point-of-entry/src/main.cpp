@@ -15,6 +15,7 @@
 #include "ops/CaptureUtils.h"
 #include "ops/LogUtils.h"
 #include "ops/NavUtils.h"
+#include "ops/RecordOps.h"
 #include "ops/SpawnUtils.h"
 #include "ops/ZoneUtils.h"
 #include "renderers/DebugPanelRenderer.h"
@@ -207,7 +208,7 @@ void deathReturn(Engine& engine, EntityManager& em)
     if (!start.empty() && travel::enter(engine, em, start))
         descent::leave();
     else
-        descent::enterRoot(engine, em); // no authored home: wake at the way in
+        poe::log().error("world: no start level to wake in");
 
     const entt::entity p = player::entity();
     if (!reg.valid(p))
@@ -238,6 +239,13 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
 
     if (!nowPlaying)
         return;
+
+    // WHAT IS TRUE about the room, as opposed to what is moving in it. Settled
+    // at the top of every frame, including the frames a cut owns: a state that
+    // stood down with the rest of the tick would go on describing the room he
+    // left while he is already looking at the one he arrived in.
+    descent::update(engine, em);
+    zone::update(em, static_cast<float>(dt), travel::active() || sDeathBeat != DeathBeat::None);
 
     // The death beat owns the clock while it runs: the world holds its breath, the floor is
     // flooded back under cover of the black, and play resumes only once the fade-in ends.
@@ -304,11 +312,7 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
         prompt::offer("Descend");
         if (player::consumeInteract())
         {
-            const int hole = em.registry().get<DigSite>(dig).hole;
-            if (hole < 0)
-                descent::enterRoot(engine, em);
-            else
-                descent::dig(engine, em, hole);
+            descent::dig(engine, em, em.registry().get<DigSite>(dig).hole);
             aim::requireFreshPress();
             return;
         }
@@ -331,13 +335,12 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     FlowFieldSystem::update(em, pt.x, pt.y);
     chase::update(em, static_cast<float>(dt));
     swarm::update(em, static_cast<float>(dt));
-    descent::update(engine, em);
 
     // THE FIRST POINT OF ENTRY LEAKS. A dig site with a trickle lets one
     // through every so often; they accumulate until he leaves the room.
     for (const auto [e, site] : em.registry().view<DigSite>().each())
     {
-        if (site.trickle.empty() || !site.open)
+        if (site.trickle.empty() || !site.leaking)
             continue;
         site.timer += static_cast<float>(dt);
         if (site.timer >= site.interval)
@@ -351,7 +354,7 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // him. At the bar he is a man carrying equipment, not a man spraying it --
     // and holstering is EXPLICIT, because a stream interrupted by death or a
     // door would otherwise hold its state (and his facing) forever.
-    if (zone::combat(em))
+    if (zone::combat())
         tools::update(em, static_cast<float>(dt));
     else
         tools::holster(em);
@@ -416,6 +419,8 @@ bool buildWorld(Engine& engine)
     auto& em = engine.entityManager();
     em.registry().clear(); // a previous job's world -- and its man; a new job is a new sheet
     descent::reset();
+    zone::reset();
+    record::reset(); // a new job is a new record
     loadConfigs();
     ensurePlayer(em, 0.0f, 0.0f);
     if (const std::string start = area::startLevel("assets/maps/world.ldtk"); !start.empty())
@@ -425,12 +430,9 @@ bool buildWorld(Engine& engine)
             sApp.world_built = true;
             return true;
         }
-        poe::log().error("world: start level '{}' failed to load -- digging instead", start);
     }
-    if (!descent::enterRoot(engine, em))
-        return false;
-    sApp.world_built = true;
-    return true;
+    poe::log().error("world: no start level -- a job needs somewhere to begin");
+    return false;
 }
 
 // What the shell does with what a screen reported.
@@ -489,7 +491,8 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     const bool playing = sApp.phase == app::Phase::Playing && !sApp.paused && !sApp.staging;
     // The dev panel needs a pointer to click, and it opens while playing -- so it counts as a
     // screen with options, exactly like a menu.
-    hud::cursorForPhase(playing && !debug_panel::visible());
+    // The system cursor gives way ONLY where the crosshair takes its place.
+    hud::cursorForPhase(playing && !debug_panel::visible() && zone::combat());
     if (playing)
     {
         // World-anchored, so it needs the camera the world was drawn with.
@@ -518,17 +521,17 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     const int ww = engine.windowWidth();
     const int wh = engine.windowHeight();
 
-    const shell_input::Frame in = shell_input::read();
+    const shell_input::Frame in = shell_input::read(em.mouse_wheel_y);
+    em.mouse_wheel_y = 0;
 
     switch (sApp.phase)
     {
     case app::Phase::Title:
     {
-        const title_screen::Mouse m{in.mouse_x, in.mouse_y, in.clicked};
         // Keyboard first, then the mouse over what was drawn -- either may commit.
         enactTitle(engine, title_screen::step(in.up, in.down, in.confirm, /*has_save=*/false));
         if (sApp.phase == app::Phase::Title)
-            enactTitle(engine, title_screen::render(m, /*has_save=*/false, ww, wh));
+            enactTitle(engine, title_screen::render(in.mouse, /*has_save=*/false, ww, wh));
         break;
     }
     case app::Phase::Settings:
@@ -546,26 +549,25 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     case app::Phase::Playing:
         if (sApp.staging)
         {
-            const staging_screen::Mouse m{in.mouse_x, in.mouse_y, in.clicked};
             staging_screen::Action a = staging_screen::step(in.up, in.down, in.confirm, in.back);
             if (a == staging_screen::Action::None)
-                a = staging_screen::render(em, m, ww, wh);
+                a = staging_screen::render(em, in.mouse, ww, wh);
             if (a == staging_screen::Action::Close)
                 sApp.staging = false;
             break;
         }
-        if (!sApp.paused && in.back)
+        if (!sApp.paused && in.menu)
         {
             sApp.paused = true;
             pause_screen::reset();
         }
         else if (sApp.paused)
         {
-            const pause_screen::Mouse m{in.mouse_x, in.mouse_y, in.clicked};
             enactPause(engine,
                        pause_screen::step(in.up, in.down, in.left, in.right, in.confirm, in.back));
             if (sApp.paused)
-                enactPause(engine, pause_screen::render(em, m, ww, wh));
+                enactPause(engine,
+                           pause_screen::render(em, engine.textureManager(), in.mouse, ww, wh));
         }
         break;
     }

@@ -13,10 +13,25 @@ FontHandle sBody = -1;
 FontHandle sHeading = -1;
 FontHandle sDisplay = -1;
 
-// How much wider than the text a menu row's hit area is, so the mouse does not have to land
-// on a glyph. A fraction of the line height, to scale with the font.
-constexpr float kRowPadX = 1.5f;
+// How far above a row's baseline its band starts, and how tall the band is -- fractions of the
+// line height, so the strike area scales with the font.
 constexpr float kRowPadY = 0.35f;
+constexpr float kRowH = 1.3f;
+
+// How far a lit link's marks stand off its words, as a fraction of the line height.
+constexpr float kMarkGap = 0.45f;
+
+// THE COLUMN's width in spacing units: a page's proportion of the window it was drawn for,
+// wide enough to hold a paragraph of an entry without the words running to a thread, with
+// margin enough left over that the frozen world still shows around it.
+constexpr int kColumnUnits = 192;
+
+// THE PAGE'S FRAME, in spacing units: how far the page sits in from the window, and its own
+// padding inside that. One number each, spent on every side -- the page is centred and its
+// field is evenly inset by construction, rather than by four anchors happening to agree. The
+// heading sits at the top of the padded field, which is what puts it where a heading goes.
+constexpr int kPageMarginUnits = 24;
+constexpr int kPagePadUnits = 12;
 } // namespace
 
 void init(FontHandle body, FontHandle heading)
@@ -67,9 +82,19 @@ void panel(const Rect& r)
     UIRenderer::drawRect(r.x, r.y, r.w, r.h, kPanel);
 }
 
-float pageHeadingY(int windowH)
+void paperPanel(const Rect& r)
 {
-    return static_cast<float>(windowH) * 0.22f;
+    UIRenderer::drawRect(r.x - 1.0f, r.y - 1.0f, r.w + 2.0f, r.h + 2.0f, kInk);
+    UIRenderer::drawRect(r.x, r.y, r.w, r.h, kPaper);
+    // The margin rule a working notebook carries, inside the left edge.
+    UIRenderer::drawRect(r.x + pad(3), r.y, 1.0f, r.h, kAccent);
+}
+
+float pageHeadingY(int)
+{
+    // The top of the padded field: the heading belongs to the page, not to a fraction of the
+    // window, and not to the frame's own edge.
+    return pad(kPageMarginUnits) + pad(kPagePadUnits);
 }
 
 float pageContentY(int windowH)
@@ -80,6 +105,91 @@ float pageContentY(int windowH)
 float pageRowH()
 {
     return lineHeight() * 1.6f;
+}
+
+float pageColumnW()
+{
+    return pad(kColumnUnits);
+}
+
+float pageColumnLeft(float cx)
+{
+    return cx - pageColumnW() * 0.5f;
+}
+
+Rect bandRow(const Rect& band, float y)
+{
+    const float lh = lineHeight();
+    return Rect{band.x, y - lh * kRowPadY, band.w, lh * kRowH};
+}
+
+Rect pageRow(float cx, float y)
+{
+    return bandRow(Rect{pageColumnLeft(cx), 0.0f, pageColumnW(), 0.0f}, y);
+}
+
+Rect pageTab(float cx, float y, int index, int count)
+{
+    const float w = pageColumnW() / static_cast<float>(std::max(1, count));
+    const float lh = lineHeight();
+    return Rect{pageColumnLeft(cx) + w * static_cast<float>(index), y - lh * kRowPadY, w,
+                lh * kRowH};
+}
+
+float pageStop(const Rect& row, float t)
+{
+    return row.x + row.w * t;
+}
+
+void link(const std::string& s, float x, float y, LinkState state)
+{
+    if (sBody < 0)
+        return;
+    text(s, x, y,
+         state == LinkState::Faint ? kTextDim : (state == LinkState::Hot ? kTextHot : kText));
+    if (state != LinkState::Hot)
+        return;
+    // The marks sit OUTSIDE the label's own width, so lighting a row never nudges its words.
+    const float gap = lineHeight() * kMarkGap;
+    const float open = UIRenderer::measureText(sBody, "[").width;
+    text("[", x - gap - open, y, kAccent);
+    text("]", x + UIRenderer::measureText(sBody, s).width + gap, y, kAccent);
+}
+
+void linkCentered(const std::string& s, float cx, float y, LinkState state)
+{
+    if (sBody < 0)
+        return;
+    link(s, cx - UIRenderer::measureText(sBody, s).width * 0.5f, y, state);
+}
+
+Rect pagePanelRect(int windowW, int windowH)
+{
+    const float margin = pad(kPageMarginUnits);
+    const float inner = pad(kPagePadUnits);
+    const float cx = static_cast<float>(windowW) * 0.5f;
+    return Rect{pageColumnLeft(cx) - inner, margin, pageColumnW() + inner * 2.0f,
+                static_cast<float>(windowH) - margin * 2.0f};
+}
+
+float pageBottom(int windowH)
+{
+    return static_cast<float>(windowH) - pad(kPageMarginUnits) - pad(kPagePadUnits);
+}
+
+Rect pageBand(int windowW, float top, float bottom)
+{
+    const float cx = static_cast<float>(windowW) * 0.5f;
+    return Rect{pageColumnLeft(cx), top, pageColumnW(), bottom - top};
+}
+
+Split pageSplit(int windowW, float top, float bottom, float share)
+{
+    const Rect all = pageBand(windowW, top, bottom);
+    const float gutter = pad(4);
+    const float leftW = (all.w - gutter) * share;
+    return Split{Rect{all.x, top, leftW, all.h},
+                 Rect{all.x + leftW + gutter, top, all.w - leftW - gutter, all.h}};
 }
 
 float titleY(int windowH)
@@ -145,6 +255,20 @@ void textCentered(const std::string& s, float cx, float y, const Color& c)
     text(s, cx - UIRenderer::measureText(sBody, s).width * 0.5f, y, c);
 }
 
+void inkText(const std::string& s, float x, float y, const Color& c)
+{
+    if (sBody < 0)
+        return;
+    UIRenderer::drawText(sBody, s, x, y, c);
+}
+
+void inkTextCentered(const std::string& s, float cx, float y, const Color& c)
+{
+    if (sBody < 0)
+        return;
+    inkText(s, cx - UIRenderer::measureText(sBody, s).width * 0.5f, y, c);
+}
+
 void headingCentered(const std::string& s, float cx, float y, const Color& c)
 {
     if (sHeading < 0)
@@ -158,17 +282,9 @@ Rect entry(const std::string& label, float cx, float y, bool selected, bool enab
 {
     if (sBody < 0)
         return {};
-    const TextSize ts = UIRenderer::measureText(sBody, label);
-    const float lh = lineHeight();
-    const Rect r{cx - ts.width * 0.5f - lh * kRowPadX, y - lh * kRowPadY,
-                 ts.width + lh * kRowPadX * 2.0f, ts.height + lh * kRowPadY * 2.0f};
-
-    // The cursor is a mark in the margin rather than a highlight bar -- a checklist being
-    // worked through, which is the register this game wants.
-    if (selected && enabled)
-        text("-", r.x + lh * 0.4f, y, kAccent);
-    text(label, cx - ts.width * 0.5f, y, !enabled ? kTextDim : (selected ? kTextHot : kText));
-    return r;
+    linkCentered(label, cx, y,
+                 !enabled ? LinkState::Faint : (selected ? LinkState::Hot : LinkState::Idle));
+    return pageRow(cx, y);
 }
 
 bool hit(const Rect& r, float mx, float my)

@@ -92,6 +92,11 @@ void next();
 // Is a held stream live right now? Facing wants to know: a man spraying faces his work.
 bool streaming(EntityManager& em);
 
+// THE GUARD. Contact damage arriving while guarding is paid in stamina at the
+// block exchange rate; a bar too empty to pay breaks the guard and the hit
+// lands whole. Returns the damage that still applies to health.
+int absorbWithGuard(EntityManager& em, int damage, bool guarding);
+
 // Put the tool up. Ends a held stream unconditionally -- called wherever the
 // world moves under him (death, travel, leaving a combat zone), because the
 // stream's own end-of-trigger cleanup lives in update(), and update() does

@@ -16,6 +16,12 @@ one exception at a time, exactly like the folder taxonomy):
    a whole number from the window height) -- fractional sizes blur a pixel face. Enforced
    structurally by rule 1: sizing lives in the one place, reviewed once.
 
+4. ONE PAGE ANATOMY. Full-screen surfaces (src/screens) take their geometry from ScreenStyle's
+   anatomy -- pageRow, pageTab, pageCard, pagePanelRect -- rather than building rects by hand.
+   A screen that cuts its own rect is a screen whose rows, frame and hit areas can disagree,
+   which is how a backing panel ends up narrower than the strip sitting on it. The HUD is a
+   different anatomy (corner-anchored, not a page) and keeps its own boxes.
+
 Run from the repo root; exits 1 with a list of violations.
 """
 
@@ -39,6 +45,8 @@ TTF_LITERAL = re.compile(r'"[^"]*\.ttf"')
 # Alignment is ScreenStyle's idiom: measuring text anywhere else means someone is doing
 # per-site alignment math, which is how boxes stop centring.
 MEASURE = re.compile(r"UIRenderer::measureText|FontManager::lineHeight")
+# A rect built by hand on a page: geometry that answers to nothing but the line it sits on.
+RECT_LITERAL = re.compile(r"screen_style::Rect\s*\{")
 
 
 def main() -> int:
@@ -65,6 +73,9 @@ def main() -> int:
             if MEASURE.search(line):
                 problems.append(f"{rel}:{lineno}: text measuring outside ScreenStyle -- use "
                                 f"textRight/textInBox instead of per-site alignment math")
+            if f.parent.name == "screens" and RECT_LITERAL.search(line):
+                problems.append(f"{rel}:{lineno}: hand-cut rect on a page -- take geometry from "
+                                f"the anatomy (pageRow/pageTab/pageCard/pagePanelRect)")
 
     if problems:
         print(f"check_design: {len(problems)} violation(s)")

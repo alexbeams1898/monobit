@@ -26,6 +26,8 @@ add_library(poe-systems STATIC
     src/renderers/PromptRenderer.cpp
     src/systems/CombatSystem.cpp
     src/ops/NavUtils.cpp
+    src/ops/RecordOps.cpp
+    src/ops/GuideOps.cpp
     src/systems/GaitSystem.cpp
     src/systems/DamageSystem.cpp
     src/systems/SpriteAnimSystem.cpp
@@ -88,6 +90,9 @@ add_executable(poe-tests
     tests/stats_test.cpp
     tests/area_test.cpp
     tests/descent_test.cpp
+    tests/record_test.cpp
+    tests/guide_test.cpp
+    tests/screen_test.cpp
 )
 target_link_libraries(poe-tests PRIVATE poe-systems Catch2::Catch2WithMain)
 add_test(NAME poe-tests COMMAND poe-tests)

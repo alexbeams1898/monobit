@@ -18,6 +18,11 @@
         "recovery_delay": 0.8,
         "recovery_rate": 45.0
     },
+    "block": {
+        "stamina_per_damage": 2.0,
+        "walk_factor": 0.5,
+        "broken_factor": 0.6
+    },
     "defense": {
         "level_scale": 0.4,
         "physical_scale": 0.8,
@@ -38,6 +43,10 @@
         ],
         "inspection_chance_scale": 0.06,
         "inspection_quality_scale": 1.5
+    },
+    "guide": {
+        "kills_for_entry": 1,
+        "kills_for_stats": 10
     },
     "thermos": {
         "sips": 4,

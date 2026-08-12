@@ -39,6 +39,13 @@ inline constexpr Color kPanelEdge{0.75f, 0.72f, 0.62f, 0.5f};
 inline constexpr Color kDamage{0.95f, 0.85f, 0.4f, 1.0f}; // a hit's number
 inline constexpr Color kCallout{1.0f, 1.0f, 1.0f, 1.0f};  // a kill's number
 
+// THE PAPER. A manila sheet for surfaces that read as a DOCUMENT rather than a menu -- the
+// trade's paperwork, in the family of kPanelEdge's khaki. Ink is its text and its border;
+// the accent doubles as the sheet's margin rule.
+inline constexpr Color kPaper{0.78f, 0.72f, 0.57f, 1.0f};
+inline constexpr Color kInk{0.18f, 0.15f, 0.11f, 1.0f};
+inline constexpr Color kInkDim{0.18f, 0.15f, 0.11f, 0.62f}; // a section's body, under its head
+
 // A palette colour at a different strength -- the ONE sanctioned way to vary alpha, so fades
 // never mint new colours.
 Color withAlpha(const Color& c, float a);
@@ -74,12 +81,69 @@ void textInBox(const std::string& s, const Rect& box, const Color& c, bool align
 // block, and whatever needs a box next all draw this, so boxes cannot drift into siblings.
 void panel(const Rect& r);
 
+// A paper sheet: ink frame, manila field, the accent as its margin rule. Its text goes
+// through the ink idioms below.
+void paperPanel(const Rect& r);
+
 // PAGE ANATOMY. Every full-screen surface shares one skeleton -- heading at the same height,
 // content starting the same distance under it, rows on the same rhythm -- so screens are the
 // same page wearing different words. A screen inventing its own proportions is drift.
+//
+// THE FRAME'S RULE: the page is inset from the window by one margin spent on every side, and
+// padded inside by one more; the page's HEAD sits at the top of the padded field and everything
+// else follows it down the row rhythm. So the page is centred, its field is evenly inset, and
+// where the head lands is a consequence of the frame rather than a number chosen twice.
+//
+// The head is whatever names the page: a heading where there is one thing to name, a tab strip
+// where the page has parts. A screen does not wear both -- a title over a strip of tabs that
+// already say where you are is a word spent on nothing.
 float pageHeadingY(int windowH); // where the heading sits
 float pageContentY(int windowH); // where the content begins
 float pageRowH();                // the list rhythm
+
+// THE COLUMN -- the anatomy's horizontal half. The backing panel, the tab strip, every list
+// row and the paper card are all cut from this one measure, so a page's frame can never
+// disagree with what it frames and two screens cannot lay their rows out to different widths.
+// In spacing units, which ride the same ladder as the type.
+float pageColumnW();
+float pageColumnLeft(float cx);
+// One list row at y -- drawn into and hit-tested against the same rect, so a hover can never
+// cover a different area than the row it lights up.
+Rect pageRow(float cx, float y);
+// One cell of a strip of `count` tabs laid across the column.
+Rect pageTab(float cx, float y, int index, int count);
+// A tab stop inside a row -- t running 0..1 across the column, for form rows carrying more
+// than a left label and a right value.
+float pageStop(const Rect& row, float t);
+// A LINK: anything that can be taken -- a menu row, a guide entry, a tab. How this game shows
+// which one is under the cursor happens to the WORDS, not to a bar behind them: the label
+// brightens and takes a bracket either side. Nothing has to be sized or aligned to a shape,
+// and a label of any length carries its own marks.
+enum class LinkState
+{
+    Faint, // there, but not where you are
+    Idle,  // available
+    Hot,   // the one that will be taken
+};
+void link(const std::string& s, float x, float y, LinkState state);
+void linkCentered(const std::string& s, float cx, float y, LinkState state);
+// The page's backing: the column plus its margin.
+Rect pagePanelRect(int windowW, int windowH);
+// Where a page's field ends -- the last line content may occupy.
+float pageBottom(int windowH);
+// A band of the column between two heights -- the whole width of the page's field.
+Rect pageBand(int windowW, float top, float bottom);
+// A page divided down the middle: a pane and, beside it, the list that drives it. `share` is
+// how much of the column the left side takes; the gutter comes out of the middle, so the two
+// sides can never overlap or drift apart.
+struct Split
+{
+    Rect left, right;
+};
+Split pageSplit(int windowW, float top, float bottom, float share);
+// One list row inside a band -- drawn into and hit-tested against the same rect. pageRow is
+// this for a list that owns the whole column.
+Rect bandRow(const Rect& band, float y);
 
 // THE TITLE PAGE deviates on purpose, the genre's shape: the name large in the upper third,
 // the menu low. Named here so the deviation is a standard, not a screen's opinion.
@@ -97,6 +161,11 @@ int bodyFont();
 void text(const std::string& s, float x, float y, const Color& c);
 void textCentered(const std::string& s, float cx, float y, const Color& c);
 void headingCentered(const std::string& s, float cx, float y, const Color& c);
+
+// Text on paper. Ink on a light field carries its own contrast, and a shadow there reads as
+// misregistration rather than depth -- the glyphs alone, no shadow pass.
+void inkText(const std::string& s, float x, float y, const Color& c);
+void inkTextCentered(const std::string& s, float cx, float y, const Color& c);
 
 // One row of a menu, centred, returning the rect it occupied so the caller can hit-test the
 // mouse against exactly what was drawn.

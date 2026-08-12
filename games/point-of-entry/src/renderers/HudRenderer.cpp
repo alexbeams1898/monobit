@@ -92,6 +92,10 @@ void tickPump(int bankedNow, float dt)
     }
 }
 
+// WHO OWNS THE POINTER this frame -- set when the system cursor is taken away, read when the
+// crosshair is drawn, so the two can never both be on screen or both be off it.
+bool sCrosshair = false;
+
 // A cross rather than a filled shape: the thing under the cursor is what you are about to hit,
 // and a solid reticle hides it.
 void reticle(int mouseX, int mouseY)
@@ -189,13 +193,16 @@ void equipped(Engine& engine, const EntityManager& em)
     // STOWED outside a combat zone: the whole box goes quiet -- the kit is
     // carried here, not drawn. Amber under a quarter otherwise: the tank
     // running low decides whether to keep spraying or go earn some back.
-    const bool live = zone::combat(em);
+    const bool live = zone::combat();
     const bool low = max > 0.0f && cur / max < 0.25f;
-    const Color nameCol =
-        live ? screen_style::kTextDim : screen_style::withAlpha(screen_style::kTextDim, 0.45f);
-    const Color ammoCol = !live ? screen_style::withAlpha(screen_style::kTextDim, 0.45f)
-                          : low ? screen_style::kAccent
-                                : screen_style::kTextHot;
+    // The kit fades between carried and drawn on the changeover rather than
+    // snapping, so the eye is handed the moment the trade starts or stops.
+    constexpr float kStowed = 0.45f;
+    const float lit = live ? zone::settle() : 1.0f - zone::settle();
+    const float strength = kStowed + (1.0f - kStowed) * lit;
+    const Color nameCol = screen_style::withAlpha(screen_style::kTextDim, strength);
+    const Color hot = low ? screen_style::kAccent : screen_style::kTextHot;
+    const Color ammoCol = screen_style::withAlpha(hot, hot.a * strength);
     screen_style::textInBox(held.name, screen_style::Rect{bx, by, boxW, rowH}, nameCol,
                             /*alignRight=*/false);
     screen_style::textInBox(ammo, screen_style::Rect{bx, by + rowH, boxW, rowH}, ammoCol,
@@ -282,10 +289,16 @@ void renderWorldOverlays(Engine& engine, EntityManager& em, float camX, float ca
 
 void render(Engine& engine, EntityManager& em)
 {
-    int mx = 0;
-    int my = 0;
-    SDL_GetMouseState(&mx, &my);
-    reticle(mx, my);
+    // Drawn on exactly the frames the HUD took the pointer away from the desktop, from the one
+    // value that decided it. The pointer has ONE owner: a crosshair easing in over a system
+    // cursor that is still there shows two, which is the one thing this may never do.
+    if (sCrosshair)
+    {
+        int mx = 0;
+        int my = 0;
+        SDL_GetMouseState(&mx, &my);
+        reticle(mx, my);
+    }
 
     // Frame time for the purely-visual pump; clamped so a hitch cannot teleport the animation.
     static Uint64 sLastTicks = 0;
@@ -335,11 +348,12 @@ void render(Engine& engine, EntityManager& em)
                                 screen_style::kGain);
 }
 
-void cursorForPhase(bool playing)
+void cursorForPhase(bool crosshair)
 {
     // Derived from the state every frame rather than toggled at each transition: there are
     // several ways into and out of a menu, and one of them will eventually forget.
-    SDL_ShowCursor(playing ? SDL_DISABLE : SDL_ENABLE);
+    sCrosshair = crosshair;
+    SDL_ShowCursor(crosshair ? SDL_DISABLE : SDL_ENABLE);
 }
 
 } // namespace hud

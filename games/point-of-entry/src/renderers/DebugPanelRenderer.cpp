@@ -6,11 +6,14 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ops/LogUtils.h"
+#include "ops/RecordOps.h"
 #include "systems/CombatSystem.h"
 #include "systems/PlayerSystem.h"
 #include "systems/TravelSystem.h"
 
 #include <imgui.h>
+
+#include <string>
 
 namespace debug_panel
 {
@@ -28,6 +31,15 @@ float sWalkSpeed = 120.0f;
 int sZoom = 3;
 
 bool sShowHitAreas = false;
+
+// A creature path's file stem -- enough to name a species in a dev list.
+std::string stemOf(const std::string& path)
+{
+    const size_t slash = path.find_last_of("/\\");
+    const size_t start = slash == std::string::npos ? 0 : slash + 1;
+    const size_t dot = path.find('.', start);
+    return path.substr(start, dot == std::string::npos ? std::string::npos : dot - start);
+}
 } // namespace
 
 bool showHitAreas()
@@ -132,6 +144,12 @@ void render(Engine& engine, EntityManager& em)
                 if (ImGui::Selectable((id + "##warp").c_str()))
                     travel::jumpToWarp(engine, em, id);
         }
+
+        // THE RECORD, raw -- dev visibility until the field guide gives it a page.
+        ImGui::Separator();
+        ImGui::TextUnformatted("Record");
+        for (const auto& [species, n] : record::all())
+            ImGui::TextDisabled("%s: %d", stemOf(species).c_str(), n);
 
         ImGui::Separator();
         ImGui::TextDisabled("F12 writes frame.png beside the exe");

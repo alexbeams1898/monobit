@@ -44,6 +44,11 @@ void item(const std::string& key, const std::string& label, int count)
     sNotes.push_back(Note{key, label, count, kLife, kFlash});
 }
 
+void line(const std::string& key, const std::string& label)
+{
+    item(key, label, 0);
+}
+
 void render(Engine& engine, float dt)
 {
     for (auto& n : sNotes)
@@ -65,7 +70,9 @@ void render(Engine& engine, float dt)
         // The flash lifts the line toward white on every bump -- the "another one" pop.
         const float f = it->flash / kFlash;
         const Color c{0.85f + 0.15f * f, 0.82f + 0.18f * f, 0.7f + 0.3f * f, alpha};
-        screen_style::text("+" + std::to_string(it->count) + "  " + it->label, x, y, c);
+        // A counted line wears its tally; an announcement is just its words.
+        const std::string head = it->count > 0 ? "+" + std::to_string(it->count) + "  " : "";
+        screen_style::text(head + it->label, x, y, c);
         y -= lh * 1.25f;
     }
 }

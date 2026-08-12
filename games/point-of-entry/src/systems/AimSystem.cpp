@@ -20,9 +20,12 @@ float sDirY = 0.0f;
 float sWorldX = 0.0f;
 float sWorldY = 0.0f;
 bool sFiring = false;
+bool sGuarding = false;
 bool sPressed = false;
-// True while a button that was already held at the start of play has not yet been let go.
-bool sStale = false;
+// True while a button that was already held at the start of play has not yet been let go --
+// one per hand, because either button can be the one that closed a menu.
+bool sStaleTrigger = false;
+bool sStaleGuard = false;
 
 // Below this many pixels from the player, the cursor gives no usable direction -- the vector is
 // mostly rounding error and the aim would spin wildly. Hold the last direction instead.
@@ -38,11 +41,17 @@ void update(Engine& engine, EntityManager& em)
     const bool down = (buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
     // A trigger held over from a menu is not an order to fire. It stops being stale the moment it
     // is released, so the first REAL press works normally.
-    if (sStale && !down)
-        sStale = false;
-    const bool live = down && !sStale;
+    if (sStaleTrigger && !down)
+        sStaleTrigger = false;
+    const bool live = down && !sStaleTrigger;
     sPressed = live && !sFiring;
     sFiring = live;
+    // The other hand: RMB is the guard, held like the trigger is held -- and levelled the same
+    // way, so the right-click that closed a menu never surfaces as a raised guard on resume.
+    const bool guardHeld = (buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
+    if (sStaleGuard && !guardHeld)
+        sStaleGuard = false;
+    sGuarding = guardHeld && !sStaleGuard;
 
     // Screen to world. The window is an integer upscale of the internal buffer, so dividing by
     // the zoom converts a window pixel to a world pixel; the camera is the world position of the
@@ -89,14 +98,23 @@ float worldY()
 }
 void requireFreshPress()
 {
-    sStale = true;
+    sStaleTrigger = true;
+    sStaleGuard = true;
     sFiring = false;
     sPressed = false;
+    // Down as well as stale: consumers run after this in the same tick, and none may see the
+    // guard up -- or watch it drop -- for a press that belonged to a menu.
+    sGuarding = false;
 }
 
 bool firing()
 {
     return sFiring;
+}
+
+bool guarding()
+{
+    return sGuarding;
 }
 bool firePressed()
 {

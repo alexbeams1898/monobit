@@ -2,6 +2,7 @@
 
 #include "ecs/ItemConfig.h"
 
+#include <string>
 #include <vector>
 
 #include <entt/entt.hpp>
@@ -90,6 +91,15 @@ struct RestSpot
     float radius = 40.0f;
 };
 
+// A hole the MAP places, naming its seep type. An authored room carrying one
+// is a floor like any other: the hole presses its assault, goes spent, becomes
+// a way down, and leaks -- the same life a generated floor's holes have, which
+// is why the first one is in his own basement and not a special case.
+struct AuthoredSeep
+{
+    std::string kind; // a seep file: what kind of hole, and what comes through
+};
+
 // The authored world's way down: standing in range offers Descend, and
 // interacting generates the floor below. Placed by the map, not the code.
 // A site may also LEAK -- one creature every `interval` seconds, the first
@@ -98,15 +108,18 @@ struct RestSpot
 struct DigSite
 {
     // Stand ON the hole to be offered the way down -- the prompt is the
-    // square underfoot, never the neighbourhood.
-    float radius = 18.0f;
-    int depth = 0;       // the floor this site opens into
-    int hole = -1;       // which of the current floor's holes; -1 = the root
+    // square underfoot, never the neighbourhood. Filled from the dig's config
+    // at placement (descent::siteFeel), never guessed here.
+    float radius = 0.0f;
+    int hole = -1;       // which of this floor's holes it was
     std::string trickle; // creature file it leaks; empty = quiet
-    // A hole leaks only once it has been DESCENDED INTO -- an unopened way
-    // down is a sealed question, not a faucet.
-    bool open = false;
-    float interval = 8.0f;
+    // LEAKING, which is one question: does the floor behind this hole still
+    // have work? An undug floor is all work and leaks hardest; a finished one
+    // has nothing left to send up and the hole falls quiet. Derived every
+    // frame by descent::refreshLeaks -- never latched, so finishing what is
+    // below silences the hole above it as the last of it dies.
+    bool leaking = false;
+    float interval = 0.0f;
     float timer = 0.0f;
     // WHERE THE LEAK SURFACES -- never assumed from the entity's transform: a
     // wall-mounted hole's art sits in the wall, and the one thing a spawner
@@ -194,6 +207,22 @@ struct Vermin
 {
     float contact_damage = 0.0f;
     float speed = 46.0f;
+};
+
+// What kind of creature this body is, named by its creature file path -- the path IS the
+// species identity everywhere (the swarm loads by it, evolution points at it, the record
+// tallies by it), so one id names a species and no parallel enum can drift from the files.
+struct Species
+{
+    std::string path;
+};
+
+// How strongly this individual smells of what is below, rolled once at emergence from a range
+// that runs hotter with depth. The roll multiplied every derived stat and decided whether the
+// evolved form surfaced; it stays on the body so anything later can read how hot this one ran.
+struct Smell
+{
+    int amount = 0;
 };
 
 // The exterminator's sheet: five stats, everything else derived.

@@ -147,3 +147,62 @@ The game stacks vertically in a single landmark building:
   ("one point of entry" now reads as: THE point of entry is the basement
   crack; the wound *branches* below it) and the death section (rest-point
   respawn vs floor reset vs bed-wake).
+
+## Creature stats & THE SMELL [settled in shape, 2026-08-11]
+
+> Named **smell**, not rot: rot names a process (a small theory); smell names
+> only the EVIDENCE, which is all anyone has. Comedic, gross, simple -- the
+> register. It unifies with the root-smell doctrine: stronger with depth AND
+> stronger in hot individuals, one continuous fact. (Read "rot" below as
+> "smell"; the working notes predate the rename.)
+
+**THE SHEET [settled]: resistance / defensiveness / dispersal** -- all real
+trade terms (resistance = survives treatment -> hp; defensiveness = the
+stinging-insect term -> contact; dispersal = movement through a structure ->
+speed). Souls-style cross-feeds: contact also reads body-weight (resistance
+minor), speed also reads temper (defensiveness minor). xp derives from total
+points. Depth adds points through a PER-SPECIES growth spread (ants gain
+dispersal, mice gain resistance -- species deepen along their own character).
+Smell multiplies all derived outputs. Reserved system names: "pressure"
+(infestation pressure = the wave programs), "fecundity" (per-species spawn
+output, if wanted).
+
+- Creatures get a tiny SHEET + base power per species; hp/contact/speed are
+  DERIVED (same derive-at-load doctrine as the player). Depth adds sheet
+  points -- replacing the juice multipliers with one system. Sheet stat
+  names still open; reference: prison-escape's enemy formulas.
+- **ROT**: a per-individual roll (EV-like -- boosts all stats), replacing
+  prison's "essence". Named rot BECAUSE the game never explains what the rot
+  is -- the mechanic knows exactly as much as the man does. Roll range runs
+  hotter with depth; high-rot individuals are worth more (xp, purer drops).
+- **Evolution = enough rot.** `evolves.at_rot` replaces at_depth: the rot
+  transforms bodies, depth governs statistically, and boundary depths get
+  GRADIENTS -- the first evolved form arrives as a surprise among normals.
+- Future scene (not actionable yet): deep floors leak visible rot pools; a
+  creature runs to one, FEEDS (its rot number rises live), and evolves
+  mid-fight if not killed first -- pure emergent consequence of rot being
+  one live number everything derives from. Wants overworld animations.
+
+## The Field Guide [settled in shape, 2026-08-11]
+
+- Called THE FIELD GUIDE -- the trade's real object (the tabbed truck binder,
+  ruler printed on the tab). Entry format mirrors the real thing: Description
+  (size, marks) / Similar Groups (mis-ID risk) / Biology / Habits &
+  Harborage / SIGNS (frass, smear marks, gnaw marks, footprints -- the
+  evidence found BEFORE the animal) / Control. Tabbed by pest group.
+- **The printed guide only knows what the trade knows.** Surface species have
+  full entries from page one. The deep things HAVE NO ENTRY -- the book just
+  ends where they should be. The absence is the horror beat; costs nothing.
+- **He writes the missing entries himself**: penciled pages accruing from his
+  kills and found traces -- measurements, signs, what worked. The
+  best-exterminator motivation as a surface: not reading the record, WRITING
+  it. Rank's verified kills are the same data wearing paper.
+- Signs both directions: known species -- match a trace in the world to the
+  printed page; unknown -- the trace lands in his notes first, unexplained
+  until he meets the thing. No future-knowledge anywhere.
+- **Kills are the key [settled]**: killing is the game's central verb, so
+  per-species KILL TALLIES are the one substrate driving enemy progression --
+  guide entries deepen at kill-count thresholds (his penciled notes grow as
+  the record grows), and achievements/unlocks concerned with enemies read the
+  same tallies. Rank's verified kills, the guide, and achievements are ONE
+  ledger wearing three surfaces -- never three counters.

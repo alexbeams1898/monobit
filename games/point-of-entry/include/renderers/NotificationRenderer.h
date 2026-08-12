@@ -19,6 +19,10 @@ namespace notify
 // Add `count` of `label` under an aggregation key (usually the item path).
 void item(const std::string& key, const std::string& label, int count);
 
+// A plain announcement through the same feed -- a line that is an event, not a tally, so it
+// carries no count. Same keying, same life, same stack.
+void line(const std::string& key, const std::string& label);
+
 // Tick and draw. Called from the HUD's pass with its frame time.
 void render(Engine& engine, float dt);
 

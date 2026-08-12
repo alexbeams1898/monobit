@@ -13,9 +13,11 @@ class EntityManager;
 // held cone answers the floor.
 //
 // THE LAW OF DEPTH: proximity to the source dictates difficulty. Depth is the only dial --
-// it scales wave sizes through the assault curves, JUICES what emerges (the same species,
-// multiplied), and past a species' threshold sends its evolved form instead. All of it reads
-// one config surface (swarm.json curves + creature files); nothing scales per-case.
+// it scales wave sizes through the assault curves, adds each species' growth spread to its
+// stat sheet, and runs THE SMELL hotter: the per-individual roll that multiplies every
+// derived number and, hot enough, surfaces the species' evolved form instead. All of it
+// reads one config surface (swarm.json curves + bestiary formulas + creature files);
+// nothing scales per-case.
 namespace swarm
 {
 
@@ -49,18 +51,14 @@ void begin(const std::string& configPath, const std::vector<Seep>& seeps, int de
 // way down.
 bool seepCleared(const EntityManager& em, int seepIndex);
 
-// The same floor over again -- what dying costs.
-void restart();
-
 // One creature out of a hole, outside any wave program -- what a dig site
 // leaks in the authored world. The full emergence recipe, at current depth.
 void spawnOne(EntityManager& em, const std::string& creaturePath, float x, float y);
 
 void update(EntityManager& em, float dt);
 
+// The aggregate over every hole's own program -- the floor's state, not any one hole's.
 Phase phase();
-int waveNumber(); // the furthest wave any hole has reached
-int totalWaves(); // the longest program on the floor
 int remaining(const EntityManager& em);
 
 } // namespace swarm

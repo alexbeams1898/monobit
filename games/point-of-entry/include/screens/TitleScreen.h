@@ -1,5 +1,6 @@
 #pragma once
 
+#include "screens/ScreenInput.h"
 #include "screens/ScreenStyle.h"
 
 // What greets you. Take the job, carry on with one already started, settings, or leave.
@@ -18,14 +19,6 @@ enum class Action
     Quit
 };
 
-// Mouse for one frame, decoded by the caller so this module stays free of engine input types.
-struct Mouse
-{
-    float x = 0.0f;
-    float y = 0.0f;
-    bool clicked = false;
-};
-
 // Put the cursor back to the top. Call on entering the phase, so it never reopens mid-list.
 void reset();
 
@@ -35,6 +28,6 @@ Action step(bool up, bool down, bool confirm, bool has_save);
 
 // Draw, and resolve the mouse against what was drawn (hover moves the cursor, click commits).
 // Window-space, native resolution.
-Action render(const Mouse& mouse, bool has_save, int windowW, int windowH);
+Action render(const shell_input::Mouse& mouse, bool has_save, int windowW, int windowH);
 
 } // namespace title_screen

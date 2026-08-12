@@ -1,5 +1,6 @@
 #include "systems/PlayerSystem.h"
 
+#include "ecs/BalanceConfig.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ops/CaptureUtils.h"
@@ -213,7 +214,10 @@ void update(Engine& /*engine*/, EntityManager& em, double dt)
 
     if (dx != 0.0f || dy != 0.0f)
     {
-        const float step = debug_panel::walkSpeed() * static_cast<float>(dt);
+        // Guarding slows the walk: holding the block is a stance, not a stroll,
+        // and it keeps block-walking from being free.
+        const float guardSlow = aim::guarding() ? stats::formulas().block.walk_factor : 1.0f;
+        const float step = debug_panel::walkSpeed() * guardSlow * static_cast<float>(dt);
         // The body is a box at his FEET, not a point at his middle: the transform sits in the
         // foot box and the sprite is drawn with its bottom on it (the renderer aligns sprite to
         // collider), so the torso may overlap a wall ABOVE him -- top-down depth -- but his feet

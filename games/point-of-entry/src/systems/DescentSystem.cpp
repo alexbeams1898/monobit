@@ -16,6 +16,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <random>
@@ -35,6 +36,10 @@ constexpr float kPoeSize = 32.0f;
 // worth keeping between visits.
 struct Node
 {
+    // A floor's SPACE comes from one of two places and nothing else about it
+    // differs: an authored level named here, or a seed that rebuilds the same
+    // generated layout every visit.
+    std::string area;
     unsigned seed = 0; // 0 until first generation picks one
     int depth = 0;
     int parent = -1;
@@ -46,8 +51,33 @@ struct Node
 };
 
 std::vector<Node> sNodes;
-int sCurrent = -1;         // node the player stands in; -1 = not in the dig
-std::string sSurfaceLevel; // the authored level the root hangs under
+int sCurrent = -1; // node the player stands in; -1 = not in the dig
+
+// A floor still has work while any of its holes is unspent. A floor with no
+// holes at all has none.
+bool unfinished(int nodeId)
+{
+    if (nodeId < 0 || nodeId >= static_cast<int>(sNodes.size()))
+        return false;
+    for (const bool spent : sNodes[static_cast<std::size_t>(nodeId)].cleared)
+        if (!spent)
+            return true;
+    return false;
+}
+
+// Is there still work behind this way down? A floor nobody has dug yet has ALL
+// of its work ahead of it, which is why an untouched hole leaks hardest: what
+// comes up out of it is the only report he has on what is down there.
+bool workBehind(int hole)
+{
+    if (sCurrent < 0 || hole < 0)
+        return false;
+    const auto& child = sNodes[static_cast<std::size_t>(sCurrent)].child;
+    if (hole >= static_cast<int>(child.size()))
+        return false;
+    const int id = child[static_cast<std::size_t>(hole)];
+    return id < 0 || unfinished(id);
+}
 
 // What a marker becomes: its kind's look and where creatures surface. Rolled
 // from the floor's seed, so a layout is the same holes every time.
@@ -159,6 +189,146 @@ void placeHole(EntityManager& em, const floorgen::Marker& m, const SeepKind* kin
 // Build a node's world into `em`: everything except the player, who is
 // preserved and placed by the caller. GL-free. Reports the floor's way in
 // and where its ascend spot settled.
+// A hole that is already spent comes back as a way down, not a spawner: the
+// hole's OWN art carries the component -- a second sprite would stack and
+// fight. Runs on every arrival, on either kind of floor.
+void restoreSpentHoles(EntityManager& em, int nodeId)
+{
+    Node& node = sNodes[static_cast<std::size_t>(nodeId)];
+    auto& reg = em.registry();
+    for (const auto [e, art] : reg.view<SeepArt>().each())
+    {
+        const auto i = static_cast<std::size_t>(art.hole);
+        if (art.hole < 0 || i >= node.cleared.size() || !node.cleared[i] || reg.all_of<DigSite>(e))
+            continue;
+        DigSite dig;
+        dig.radius = siteFeel().reach;
+        dig.interval = siteFeel().leak_interval;
+        dig.hole = art.hole;
+        dig.trickle = node.leak[i];
+        dig.spawn_x = node.seeps[i].x;
+        dig.spawn_y = node.seeps[i].y;
+        reg.emplace<DigSite>(e, dig);
+    }
+}
+
+// Put him somewhere, the way a cut does it: the camera goes with him and the
+// previous position goes too, so nothing interpolates across the gap.
+void standAt(EntityManager& em, float x, float y)
+{
+    auto& reg = em.registry();
+    const entt::entity p = player::entity();
+    if (!reg.valid(p))
+        return;
+    auto& t = reg.get<Transform>(p);
+    t.x = x;
+    t.y = y;
+    reg.get<PreviousTransform>(p) = PreviousTransform{x, y};
+    if (auto* cam = reg.try_get<Camera>(p))
+    {
+        cam->x = x;
+        cam->y = y;
+        cam->prev_x = x;
+        cam->prev_y = y;
+    }
+}
+
+int indexOfArea(const std::string& area)
+{
+    for (std::size_t i = 0; i < sNodes.size(); ++i)
+        if (sNodes[i].area == area)
+            return static_cast<int>(i);
+    return -1;
+}
+
+// AN AUTHORED LEVEL WITH HOLES IN IT IS A FLOOR. Found by name, so its spent
+// holes and the floors under them persist exactly as a dug floor's do; adopted
+// from the world itself rather than from an event, so it makes no difference
+// whether he walked in, climbed up, or woke here after a bad day.
+//
+// Hole numbers come from a sorted order, so a hole keeps its identity -- and
+// everything spent behind it -- across every visit.
+int adoptArea(EntityManager& em, const std::string& area)
+{
+    auto& reg = em.registry();
+    std::vector<entt::entity> holes;
+    for (const auto e : reg.view<AuthoredSeep, Transform>())
+        holes.push_back(e);
+    if (holes.empty())
+        return -1; // a room with nothing coming into it is not a floor
+    std::sort(holes.begin(), holes.end(),
+              [&](entt::entity a, entt::entity b)
+              {
+                  const auto& ta = reg.get<Transform>(a);
+                  const auto& tb = reg.get<Transform>(b);
+                  return ta.y != tb.y ? ta.y < tb.y : ta.x < tb.x;
+              });
+
+    int id = indexOfArea(area);
+    if (id < 0)
+    {
+        Node node;
+        node.area = area;
+        sNodes.push_back(std::move(node));
+        id = static_cast<int>(sNodes.size()) - 1;
+    }
+    Node& node = sNodes[static_cast<std::size_t>(id)];
+    node.seeps.clear();
+    node.leak.clear();
+    for (std::size_t i = 0; i < holes.size(); ++i)
+    {
+        const auto& at = reg.get<Transform>(holes[i]);
+        const SeepKind kind = loadKind(reg.get<AuthoredSeep>(holes[i]).kind);
+        // A hole wears its KIND'''s face wherever it is: the map says where one
+        // is and what sort, never what it looks like.
+        if (kind.def.ok)
+        {
+            auto& spr = reg.get<Sprite>(holes[i]);
+            spr.texture_path = kind.def.sheet;
+            spr.src_w = kind.def.frame_w;
+            spr.src_h = kind.def.frame_h;
+            spr.layer = 1;
+            reg.remove<SolidColor>(holes[i]);
+        }
+        node.seeps.push_back(swarm::Seep{at.x, at.y, kind.path});
+        node.leak.push_back(kind.first_creature);
+        reg.emplace_or_replace<SeepArt>(holes[i], SeepArt{static_cast<int>(i)});
+    }
+    node.child.resize(node.seeps.size(), -1);
+    node.cleared.resize(node.seeps.size(), false);
+
+    restoreSpentHoles(em, id);
+    swarm::begin("config/swarm.json", node.seeps, node.depth, node.cleared);
+    poe::log().info("descent: '{}' is a floor -- {} hole(s) at depth {}", area, node.seeps.size(),
+                    node.depth);
+    return id;
+}
+
+// The floor he is standing in follows the world. Generated space is whatever
+// dig or ascend put him in; an authored level is a floor when it has holes and
+// is not one when it does not. An authored hole wearing no number yet is how a
+// freshly built level announces itself, so this needs no event to listen for.
+void syncArea(EntityManager& em)
+{
+    const std::string& area = travel::currentArea();
+    if (area.empty())
+        return;
+    auto& reg = em.registry();
+    if (reg.view<AuthoredSeep>().empty())
+    {
+        sCurrent = -1; // a room he is only passing through
+        return;
+    }
+    bool fresh = false;
+    for (const auto e : reg.view<AuthoredSeep>())
+        if (!reg.all_of<SeepArt>(e))
+        {
+            fresh = true;
+            break;
+        }
+    sCurrent = fresh ? adoptArea(em, area) : indexOfArea(area);
+}
+
 bool buildNode(EntityManager& em, int nodeId, float& spawnX, float& spawnY, float& upX, float& upY)
 {
     Node& node = sNodes[static_cast<std::size_t>(nodeId)];
@@ -263,30 +433,34 @@ bool buildNode(EntityManager& em, int nodeId, float& spawnX, float& spawnY, floa
         upY = uy;
     }
 
-    // Already-cleared holes come back as dig sites, not spawners: the hole's
-    // own art carries the component -- a second sprite would stack and fight.
-    for (const auto [e, art] : reg.view<SeepArt>().each())
-        if (art.hole >= 0 && art.hole < static_cast<int>(node.cleared.size()) &&
-            node.cleared[static_cast<std::size_t>(art.hole)])
-        {
-            DigSite dig;
-            dig.depth = node.depth + 1;
-            dig.hole = art.hole;
-            dig.trickle = node.leak[static_cast<std::size_t>(art.hole)];
-            dig.open = node.child[static_cast<std::size_t>(art.hole)] >= 0;
-            dig.spawn_x = node.seeps[static_cast<std::size_t>(art.hole)].x;
-            dig.spawn_y = node.seeps[static_cast<std::size_t>(art.hole)].y;
-            reg.emplace<DigSite>(e, dig);
-        }
-
+    restoreSpentHoles(em, nodeId);
     swarm::begin("config/swarm.json", node.seeps, node.depth, node.cleared);
     return true;
 }
 
 // Enter a node: build, upload, and stand the player at (x,y) -- or at the
 // floor's own way in when the caller passes atWayIn.
+// Arriving on an authored floor is TRAVEL, not generation -- the map already
+// holds the space, and the level's own start is where he lands unless the
+// caller names the spot he is climbing out at.
+bool enterAuthored(Engine& engine, EntityManager& em, int nodeId, bool atWayIn, float x, float y)
+{
+    const std::string area = sNodes[static_cast<std::size_t>(nodeId)].area;
+    if (!travel::enter(engine, em, area))
+    {
+        poe::log().error("descent: could not climb out into '{}'", area);
+        return false;
+    }
+    sCurrent = adoptArea(em, area);
+    if (!atWayIn)
+        standAt(em, x, y);
+    return sCurrent >= 0;
+}
+
 bool enterNode(Engine& engine, EntityManager& em, int nodeId, bool atWayIn, float x, float y)
 {
+    if (!sNodes[static_cast<std::size_t>(nodeId)].area.empty())
+        return enterAuthored(engine, em, nodeId, atWayIn, x, y);
     float sx = 0.0f;
     float sy = 0.0f;
     float ux = 0.0f;
@@ -311,50 +485,44 @@ bool enterNode(Engine& engine, EntityManager& em, int nodeId, bool atWayIn, floa
     em.flow_field.last_player_row = -1;
     auto& reg = em.registry();
     const entt::entity p = player::entity();
-    if (reg.valid(p))
-    {
-        auto& t = reg.get<Transform>(p);
-        t.x = x;
-        t.y = y;
-        reg.get<PreviousTransform>(p) = PreviousTransform{x, y};
-        if (auto* cam = reg.try_get<Camera>(p))
-        {
-            cam->x = x;
-            cam->y = y;
-            cam->prev_x = x;
-            cam->prev_y = y;
-        }
-    }
+    standAt(em, x, y);
     sCurrent = nodeId;
-    poe::log().info("descent: at depth {} (node {}, seed {})", currentDepth(), nodeId,
-                    sNodes[static_cast<std::size_t>(nodeId)].seed);
+    const Node& here = sNodes[static_cast<std::size_t>(nodeId)];
+    poe::log().info("descent: at depth {} (node {}, seed {})", here.depth, nodeId, here.seed);
     return true;
 }
 
 } // namespace
 
+const SiteFeel& siteFeel()
+{
+    // Read once, on the first hole that asks -- after boot has found the
+    // source tree, and never again per site.
+    static const SiteFeel feel = []
+    {
+        SiteFeel f;
+        std::ifstream in("config/swarm.json");
+        const nlohmann::json j =
+            in ? nlohmann::json::parse(in, nullptr, /*allow_exceptions=*/false) : nlohmann::json{};
+        if (j.is_discarded() || !j.is_object())
+            return f;
+        const nlohmann::json site = j.value("dig_site", nlohmann::json::object());
+        f.reach = site.value("reach", f.reach);
+        f.leak_interval = site.value("leak_interval", f.leak_interval);
+        return f;
+    }();
+    return feel;
+}
+
 void reset()
 {
     sNodes.clear();
     sCurrent = -1;
-    sSurfaceLevel.clear();
 }
 
 void leave()
 {
     sCurrent = -1;
-}
-
-bool enterRoot(Engine& engine, EntityManager& em)
-{
-    sSurfaceLevel = travel::currentArea();
-    if (sNodes.empty())
-    {
-        Node root;
-        root.depth = 0;
-        sNodes.push_back(root);
-    }
-    return enterNode(engine, em, 0, /*atWayIn=*/true, 0.0f, 0.0f);
 }
 
 bool dig(Engine& engine, EntityManager& em, int hole)
@@ -394,44 +562,23 @@ bool ascend(Engine& engine, EntityManager& em)
         return false;
     const Node& node = sNodes[static_cast<std::size_t>(sCurrent)];
     if (node.parent < 0)
-    {
-        // The root climbs out into the authored basement -- standing at its
-        // dig site, the other end of the same passage.
-        sCurrent = -1;
-        if (!sSurfaceLevel.empty() && travel::enter(engine, em, sSurfaceLevel))
-        {
-            auto& reg = em.registry();
-            for (const auto [e, site] : reg.view<DigSite>().each())
-            {
-                const entt::entity p = player::entity();
-                if (!reg.valid(p))
-                    break;
-                auto& t = reg.get<Transform>(p);
-                t.x = site.spawn_x;
-                t.y = site.spawn_y + 24.0f;
-                reg.get<PreviousTransform>(p) = PreviousTransform{t.x, t.y};
-                if (auto* cam = reg.try_get<Camera>(p))
-                {
-                    cam->x = t.x;
-                    cam->y = t.y;
-                    cam->prev_x = t.x;
-                    cam->prev_y = t.y;
-                }
-                break;
-            }
-            return true;
-        }
-        poe::log().error("descent: no surface to climb out to");
-        return false;
-    }
+        return false; // the top floor is authored; there is nothing above it to climb to
     const Node& parent = sNodes[static_cast<std::size_t>(node.parent)];
     const swarm::Seep at = parent.seeps[static_cast<std::size_t>(node.parent_hole)];
     return enterNode(engine, em, node.parent, /*atWayIn=*/false, at.x, at.y + 24.0f);
 }
 
+void refreshLeaks(EntityManager& em)
+{
+    for (auto [e, site] : em.registry().view<DigSite>().each())
+        site.leaking = workBehind(site.hole);
+}
+
 void update(Engine& engine, EntityManager& em)
 {
     (void)engine;
+    syncArea(em);
+    refreshLeaks(em);
     if (sCurrent < 0)
         return;
     Node& node = sNodes[static_cast<std::size_t>(sCurrent)];
@@ -446,10 +593,10 @@ void update(Engine& engine, EntityManager& em)
             if (art.hole == static_cast<int>(i))
             {
                 DigSite dig;
-                dig.depth = node.depth + 1;
+                dig.radius = siteFeel().reach;
+                dig.interval = siteFeel().leak_interval;
                 dig.hole = art.hole;
                 dig.trickle = node.leak[i];
-                dig.open = node.child[i] >= 0; // quiet until first descended
                 dig.spawn_x = node.seeps[i].x;
                 dig.spawn_y = node.seeps[i].y;
                 em.registry().emplace<DigSite>(e, dig);
@@ -458,19 +605,9 @@ void update(Engine& engine, EntityManager& em)
     }
 }
 
-bool active()
+bool floorHasWork()
 {
-    return sCurrent >= 0;
-}
-
-int currentDepth()
-{
-    return sCurrent >= 0 ? sNodes[static_cast<std::size_t>(sCurrent)].depth : 0;
-}
-
-bool rootOpened()
-{
-    return !sNodes.empty();
+    return unfinished(sCurrent);
 }
 
 } // namespace descent

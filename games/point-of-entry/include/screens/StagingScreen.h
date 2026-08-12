@@ -1,5 +1,6 @@
 #pragma once
 
+#include "screens/ScreenInput.h"
 #include "screens/ScreenStyle.h"
 
 class EntityManager;
@@ -16,13 +17,6 @@ enum class Action
     Close // back to work
 };
 
-struct Mouse
-{
-    float x = 0.0f;
-    float y = 0.0f;
-    bool clicked = false;
-};
-
 // Back to the top page. Call when the screen opens.
 void reset();
 
@@ -30,6 +24,6 @@ void reset();
 Action step(bool up, bool down, bool confirm, bool back);
 
 // Draw the current page over the dimmed world; resolve the mouse against what was drawn.
-Action render(EntityManager& em, const Mouse& mouse, int windowW, int windowH);
+Action render(EntityManager& em, const shell_input::Mouse& mouse, int windowW, int windowH);
 
 } // namespace staging_screen
