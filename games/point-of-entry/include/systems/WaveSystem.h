@@ -23,12 +23,18 @@ class EntityManager;
 namespace swarm
 {
 
-// One placed hole: where, and what KIND (a seep file path).
+// One placed hole: where, what KIND (a seep file path), and WHOSE floor's program it runs.
+//
+// Depth is the seep's own because a hole does not stop belonging to its floor when it reaches
+// him somewhere else: what comes up a way down is the floor below still pressing, at its own
+// difficulty and out of its own finite program. A hole on the floor he is standing on simply
+// has that floor's depth.
 struct Seep
 {
     float x = 0.0f;
     float y = 0.0f;
     std::string type;
+    int depth = 0;
 };
 
 // Where the whole floor's fight is up to -- the aggregate over every seep's own program.
@@ -45,8 +51,23 @@ enum class Phase
 // depth. A seep whose index is in `cleared` starts SPENT -- its program
 // already exhausted on an earlier visit; the source does not re-press a
 // finished hole.
+// A hole not in `opened` starts SEALED: its program exists but does not run, because a floor
+// answers being disturbed rather than being walked into.
 void begin(const std::string& configPath, const std::vector<Seep>& seeps, int depth,
-           const std::vector<bool>& cleared = {}, const std::vector<int>& killed = {});
+           const std::vector<bool>& cleared = {}, const std::vector<int>& killed = {},
+           const std::vector<bool>& opened = {});
+
+// Point a seep at a different hole's program mid-floor, fast-forwarded past what has already
+// been killed out of it. An empty type seals it instead. This is what lets ONE passage carry
+// the floors below it in turn: when the hole it is running exhausts, the next takes its place
+// without disturbing anything else on the floor.
+void retarget(int seepIndex, const Seep& to, int killed);
+
+// Break a sealed hole open -- from here it presses.
+void wake(int seepIndex);
+
+// Still sealed? A sealed hole is not work and not a way down; it is a question.
+bool seepSealed(int seepIndex);
 
 // KILLING IS THE ONLY PROGRESS. A hole's program is a fixed number of creatures;
 // what has been killed out of it is remembered per hole and the program resumes
@@ -63,7 +84,7 @@ bool seepCleared(const EntityManager& em, int seepIndex);
 
 // One creature out of a hole, outside any wave program -- what a dig site
 // leaks in the authored world. The full emergence recipe, at current depth.
-void spawnOne(EntityManager& em, const std::string& creaturePath, float x, float y);
+entt::entity spawnOne(EntityManager& em, const std::string& creaturePath, float x, float y);
 
 void update(EntityManager& em, float dt);
 

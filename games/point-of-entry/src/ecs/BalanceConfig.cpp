@@ -50,6 +50,9 @@ bool load(const std::string& path)
         bl.value("stamina_per_damage", sFormulas.block.stamina_per_damage);
     sFormulas.block.walk_factor = bl.value("walk_factor", sFormulas.block.walk_factor);
     sFormulas.block.broken_factor = bl.value("broken_factor", sFormulas.block.broken_factor);
+    const auto& fr = j.value("fronts", nlohmann::json::object());
+    sFormulas.fronts.bonus_per_extra =
+        fr.value("bonus_per_extra", sFormulas.fronts.bonus_per_extra);
     const auto& d = j.value("defense", nlohmann::json::object());
     sFormulas.defense.level_scale = d.value("level_scale", sFormulas.defense.level_scale);
     sFormulas.defense.physical_scale = d.value("physical_scale", sFormulas.defense.physical_scale);
@@ -136,6 +139,11 @@ void applyDerivations(EntityManager& em, entt::entity entity)
     const float staFrac = sta.max_stamina > 0.0f ? sta.current / sta.max_stamina : 1.0f;
     sta.max_stamina = newMaxSta;
     sta.current = std::min(newMaxSta, staFrac * newMaxSta);
+}
+
+float frontBonus()
+{
+    return sFormulas.fronts.bonus_per_extra;
 }
 
 } // namespace stats

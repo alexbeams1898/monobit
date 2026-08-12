@@ -37,4 +37,9 @@ struct Def
 // and logs -- a sprite that fails to load should be loud, not a mystery box on screen.
 Def load(const std::string& path);
 
+// The first frame of a named tag, or -1 when the art does not carry it. Art that changes state
+// is asked for the STATE by name -- reordering frames or adding one later then cannot silently
+// point the game at the wrong picture, which a hardcoded index would.
+int frameOf(const Def& def, const std::string& tag);
+
 } // namespace sprite_def

@@ -352,6 +352,18 @@ void render(Engine& engine, EntityManager& em)
                             screen_style::Rect{bx, by, boxW, boxH}, screen_style::kText,
                             /*alignRight=*/true);
 
+    // THE RATE, over the box, whenever holding more than one front is paying more than one
+    // front's worth. Shown while he is deciding rather than in the receipt afterwards: a
+    // multiplier he only learns about at the staging area is not a reason to take a risk.
+    if (const float rate = reward::rate(); rate > 1.0f)
+    {
+        const int tenths = static_cast<int>(std::lround(rate * 10.0f));
+        screen_style::text("x" + std::to_string(tenths / 10) + "." + std::to_string(tenths % 10),
+                           bx + screen_style::pad(2),
+                           by - screen_style::lineHeight() - screen_style::pad(1),
+                           screen_style::kStaminaSpent);
+    }
+
     // GREEN, not the accent red: this is income, and red is the game's alarm colour -- a gain
     // painted like a warning reads as something being taken.
     if (sPending > 0)

@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 
+#include <entt/fwd.hpp>
+
 class Engine;
 class EntityManager;
 
@@ -39,7 +41,12 @@ struct Floor
     int parent_hole = -1;
     std::vector<int> child;    // per hole: node index, -1 = never dug
     std::vector<bool> cleared; // per hole: assault spent?
-    std::vector<int> killed;   // per hole: how much of its program he has taken
+    std::vector<bool> opened;  // per hole: has he broken it open? a sealed hole sends nothing
+    // Per hole: which KIND of hole it is (a seep file). Kept rather than re-derived because a
+    // floor ABOVE has to rebuild this hole's program -- its waves, its fauna, its pacing --
+    // without building the floor it belongs to.
+    std::vector<std::string> kind;
+    std::vector<int> killed; // per hole: how much of its program he has taken
 };
 
 // The whole tree, and where in it he stands (-1 = nowhere). What a save keeps.
@@ -78,17 +85,30 @@ bool ascend(Engine& engine, EntityManager& em);
 
 // Watch the current floor: a hole whose assault exhausts flips into a dig
 // site with a leak previewing what lies below.
-void update(Engine& engine, EntityManager& em);
+void update(Engine& engine, EntityManager& em, float dt);
 
 // Set every dig site's leak from the tree: a way down leaks while the floor
-// BEHIND it still has work -- an unspent hole, or no floor dug there at all --
-// and goes quiet the moment there is nothing left down there to send up. Runs
-// whether or not he is in the dig, because the authored basement's hole is a
-// way down like any other. Called by update.
+// BEHIND it has something running -- a hole he broke open and did not finish --
+// and is quiet otherwise, including when nothing has been dug there at all.
+// Runs whether or not he is in the dig, because the basement's hole is a way
+// down like any other. Called by update.
 void refreshLeaks(EntityManager& em);
 
+// The hole he is standing on that could be broken open, or -1. Sealed holes only: an open one
+// is a fight and a spent one is a way down.
+int openableUnderfoot(const EntityManager& em, float x, float y);
+
+// Break one open: its assault begins, and its art stops pretending to be floor.
+bool open(EntityManager& em, int hole);
+
+// HOW MANY FRONTS he is holding: holes he broke open on this floor that are not yet spent,
+// plus every passage currently carrying something up from below. One is the careful way to
+// work. More than one is a choice, and what it buys is in the sheet's rate.
+int frontsOpen();
+
 // Does the floor he is standing in still have a hole that has not been spent?
-// False in the authored world, and false on a floor whose every hole is done.
+// False in the authored world, on a floor whose every hole is done, and on one he has not
+// broken open yet -- a floor nobody has disturbed is not work.
 bool floorHasWork();
 
 } // namespace descent

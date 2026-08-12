@@ -25,6 +25,13 @@ namespace reward
 // Pay for a kill, straight into the pocket. Called where things finish dying.
 void credit(EntityManager& em, int worth);
 
+// THE RATE THE JOB PAYS AT, from how many fronts he is holding at once. One hole at a time is
+// the careful way and pays plainly; taking two or three on together is worth more, because a
+// man bills the callout rather than the hour and an infestation handled in one visit is one
+// visit. Read by the credit above and shown on the HUD, so the choice is visible while he is
+// making it rather than in the receipt afterwards.
+float rate();
+
 // Rest-spot upkeep (the slow mend while standing there).
 void update(EntityManager& em, float dt);
 

@@ -3,7 +3,9 @@
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
 #include "systems/CombatSystem.h"
+#include "systems/DescentSystem.h"
 #include "systems/PlayerSystem.h"
+#include "systems/RewardSystem.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -115,4 +117,28 @@ TEST_CASE("the guard pays in stamina, breaks when it cannot, and stands aside wh
     // Guard down: the hit passes untouched, whatever the bar holds.
     reg.get<Stamina>(p).current = 100.0f;
     CHECK(tools::absorbWithGuard(em, 10, false) == 10);
+}
+
+// THE RATE THE JOB PAYS AT. One front is the careful way and pays plainly; each one beyond it
+// is a deliberate risk, and this is what the risk buys. (What counts as a front needs a floor
+// underfoot, so the count itself is covered by playing; this pins the arithmetic on top of it.)
+TEST_CASE("holding more fronts pays more per kill", "[reward]")
+{
+    REQUIRE(stats::load("config/stats.json"));
+    const float per = stats::frontBonus();
+    REQUIRE(per > 0.0f);
+
+    // Standing on no floor at all: nothing is open, so the work pays its plain rate.
+    descent::reset();
+    REQUIRE(reward::rate() == 1.0f);
+
+    // The shape the credit applies, independent of where the count comes from.
+    const auto rateFor = [&](int fronts)
+    { return fronts <= 1 ? 1.0f : 1.0f + static_cast<float>(fronts - 1) * per; };
+    CHECK(rateFor(0) == 1.0f);
+    CHECK(rateFor(1) == 1.0f);
+    CHECK(rateFor(2) == Catch::Approx(1.0f + per));
+    CHECK(rateFor(4) == Catch::Approx(1.0f + per * 3.0f));
+    // Each extra front is worth the same as the last -- no runaway on a floor full of holes.
+    CHECK(rateFor(4) - rateFor(3) == Catch::Approx(rateFor(3) - rateFor(2)));
 }

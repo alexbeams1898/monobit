@@ -55,6 +55,12 @@ struct Formulas
     } block;
     struct
     {
+        // What each front BEYOND THE FIRST adds to the rate. Holding one hole at a time is the
+        // careful way and pays plainly.
+        float bonus_per_extra = 0.35f;
+    } fronts;
+    struct
+    {
         // Quality score cutoffs (0-50 roll + Inspection's nudge): below [0] crude, then
         // standard, then fine; past [2] superior.
         float quality_thresholds[3] = {20.0f, 38.0f, 48.0f};
@@ -87,5 +93,9 @@ int defense(const Stats& s);
 // Write the derived attributes (Health, Stamina) onto an entity from its Stats. Call after
 // stats change -- levelling, or first spawn. Preserves current fractions where sensible.
 void applyDerivations(EntityManager& em, entt::entity entity);
+
+// What each front BEYOND THE FIRST adds to the rate the work pays at. Holding two holes at
+// once is a deliberate risk, and this is what it buys.
+float frontBonus();
 
 } // namespace stats

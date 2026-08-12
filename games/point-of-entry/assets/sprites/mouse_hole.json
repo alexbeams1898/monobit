@@ -2,8 +2,19 @@
     "sheet": "assets/sprites/mouse_hole.png",
     "frame_w": 32,
     "frame_h": 32,
-    "frames": 1,
+    "frames": 2,
     "durations": [
+        100,
         100
-    ]
+    ],
+    "anims": {
+        "closed": {
+            "from": 0,
+            "to": 0
+        },
+        "opened": {
+            "from": 1,
+            "to": 1
+        }
+    }
 }

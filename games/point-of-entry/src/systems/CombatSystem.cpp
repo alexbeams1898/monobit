@@ -315,7 +315,9 @@ void spawnDroplet(EntityManager& em, float x, float y, float dx, float dy, const
     spr.src_h = 2;
     spr.layer = 3;
     reg.emplace<Sprite>(e, spr);
-    reg.emplace<SolidColor>(e, SolidColor{0.78f, 0.95f, 0.62f});
+    // Pale and cold: what he sprays is a clean chemical, and it should never be mistaken for
+    // what comes out of the holes.
+    reg.emplace<SolidColor>(e, SolidColor{0.80f, 0.93f, 0.98f});
     // GROWS as it travels and fades with age (the renderer dims a Particle by how far through its
     // life it is), which is what disperses -- a droplet that stayed the same size would read as a
     // bullet. Lifetime is set so it dies about where the cone stops hurting.
@@ -477,6 +479,10 @@ void tickParticles(EntityManager& em, float dt)
         t.y += v.dy * dt;
         const float k = p.age / p.lifetime;
         t.scale = p.start_scale + (p.end_scale - p.start_scale) * k;
+        // Thinning out is what makes a hard-edged particle read as something airborne. Held
+        // full for the first stretch so it has presence, then away.
+        if (auto* spr = reg.try_get<Sprite>(e))
+            spr->alpha = k < 0.35f ? 1.0f : 1.0f - (k - 0.35f) / 0.65f;
     }
     for (const auto e : spent)
         reg.destroy(e);

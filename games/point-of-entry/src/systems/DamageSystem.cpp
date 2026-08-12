@@ -11,6 +11,7 @@
 #include "renderers/NotificationRenderer.h"
 #include "screens/ScreenStyle.h"
 #include "systems/CombatSystem.h"
+#include "systems/DescentSystem.h"
 #include "systems/PickupSystem.h"
 #include "systems/PlayerSystem.h"
 #include "systems/RewardSystem.h"

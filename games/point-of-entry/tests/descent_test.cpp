@@ -24,7 +24,8 @@ std::vector<swarm::Seep> twoSeeps()
 TEST_CASE("a pre-cleared hole starts spent; its neighbour presses", "[descent]")
 {
     EntityManager em;
-    swarm::begin("config/swarm.json", twoSeeps(), 0, {true, false});
+    // Both broken open: a sealed hole sends nothing, which is a different test.
+    swarm::begin("config/swarm.json", twoSeeps(), 0, {true, false}, {}, {true, true});
 
     CHECK(swarm::seepCleared(em, 0));
     CHECK_FALSE(swarm::seepCleared(em, 1));
@@ -56,17 +57,16 @@ TEST_CASE("every hole pre-cleared is a floor already at rest", "[descent]")
     CHECK(em.registry().view<Vermin>().size() == 0);
 }
 
-// A LEAK IS A QUESTION ABOUT THE FLOOR BEHIND IT, never a latch on the hole. Only the
-// no-floor case runs headless: standing on a real floor needs a window, so the rest --
-// undug leaks, finished goes quiet -- is covered by playing it.
-TEST_CASE("a way down with no floor under it stays shut")
+// A LEAK IS A REPORT ON HIS OWN UNFINISHED BUSINESS, never a latch on the hole. Only the
+// no-floor case runs headless: standing on a real floor needs a window, so the rest -- opened
+// and abandoned leaks, finished goes quiet -- is covered by playing it.
+TEST_CASE("a way down is quiet until he leaves something running under it")
 {
     EntityManager em;
     descent::reset();
 
     DigSite site;
     site.hole = 0; // every way down is a hole of some floor
-    site.trickle = "config/creatures/ant.json";
     const entt::entity e = em.registry().create();
     em.registry().emplace<DigSite>(e, site);
 
@@ -91,7 +91,6 @@ TEST_CASE("the work state follows the leak")
 
     const entt::entity e = em.registry().create();
     DigSite site;
-    site.trickle = "config/creatures/ant.json";
     em.registry().emplace<DigSite>(e, site);
 
     SECTION("a quiet way down in an authored room is not the trade's ground")
@@ -108,10 +107,9 @@ TEST_CASE("the work state follows the leak")
         REQUIRE(zone::combat());
     }
 
-    SECTION("a hole with nothing to send up is not, however open it is")
+    SECTION("a passage carrying nothing is furniture")
     {
-        em.registry().get<DigSite>(e).leaking = true;
-        em.registry().get<DigSite>(e).trickle.clear();
+        em.registry().get<DigSite>(e).leaking = false;
         zone::update(em, 1.0f, /*cut=*/false);
         REQUIRE_FALSE(zone::combat());
     }
@@ -124,7 +122,6 @@ TEST_CASE("the changeover waits for something to see")
     zone::reset();
     const entt::entity e = em.registry().create();
     DigSite site;
-    site.trickle = "config/creatures/ant.json";
     site.leaking = true;
     em.registry().emplace<DigSite>(e, site);
 
@@ -189,7 +186,7 @@ TEST_CASE("a hole resumes past what he has killed out of it", "[descent]")
 
     SECTION("a hole nothing has been taken from starts at the beginning")
     {
-        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {});
+        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {}, {true, true});
         CHECK(swarm::phase() != swarm::Phase::Cleared);
         CHECK(swarm::remaining(em) == 0); // nothing has surfaced yet
     }
@@ -197,7 +194,7 @@ TEST_CASE("a hole resumes past what he has killed out of it", "[descent]")
     SECTION("a hole emptied of its whole program is spent, and the floor with it")
     {
         // Far more than any program holds: both holes have nothing left to send.
-        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {100000, 100000});
+        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {100000, 100000}, {true, true});
         CHECK(swarm::seepCleared(em, 0));
         CHECK(swarm::seepCleared(em, 1));
         CHECK(swarm::phase() == swarm::Phase::Cleared);
@@ -205,14 +202,14 @@ TEST_CASE("a hole resumes past what he has killed out of it", "[descent]")
 
     SECTION("a hole part-way through is neither spent nor restarted")
     {
-        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {3, 0});
+        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {3, 0}, {true, true});
         CHECK_FALSE(swarm::seepCleared(em, 0));
         CHECK(swarm::phase() != swarm::Phase::Cleared);
     }
 
     SECTION("progress is reported per hole, and begins empty")
     {
-        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {});
+        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {}, {true, true});
         REQUIRE(swarm::progress().size() == 2);
         CHECK(swarm::progress()[0] == 0);
         CHECK(swarm::progress()[1] == 0);
@@ -220,7 +217,7 @@ TEST_CASE("a hole resumes past what he has killed out of it", "[descent]")
 
     SECTION("a remembered tally is what the hole resumes with")
     {
-        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {4, 7});
+        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {4, 7}, {true, true});
         REQUIRE(swarm::progress().size() == 2);
         CHECK(swarm::progress()[0] == 4);
         CHECK(swarm::progress()[1] == 7);
@@ -254,7 +251,7 @@ TEST_CASE("a resumed hole owes the remainder, then whole waves", "[descent]")
     int firstWave = 0;
     {
         EntityManager em;
-        swarm::begin("config/swarm.json", one, 0, {}, {});
+        swarm::begin("config/swarm.json", one, 0, {}, {}, {true});
         firstWave = surfacedFrom(em, 0);
         REQUIRE(firstWave > 0); // the floor must actually press, or nothing below means anything
     }
@@ -264,15 +261,63 @@ TEST_CASE("a resumed hole owes the remainder, then whole waves", "[descent]")
         EntityManager em;
         const int taken = firstWave / 2;
         REQUIRE(taken > 0);
-        swarm::begin("config/swarm.json", one, 0, {}, {taken});
+        swarm::begin("config/swarm.json", one, 0, {}, {taken}, {true});
         REQUIRE(surfacedFrom(em, 0) == firstWave - taken);
     }
 
     SECTION("a wave killed to the last comes back as the NEXT wave, whole")
     {
         EntityManager em;
-        swarm::begin("config/swarm.json", one, 0, {}, {firstWave});
+        swarm::begin("config/swarm.json", one, 0, {}, {firstWave}, {true});
         // The next wave is a wave of its own size -- never a remainder of the one before it.
         REQUIRE(surfacedFrom(em, 0) >= firstWave);
+    }
+}
+
+// A FLOOR ANSWERS BEING DISTURBED, not being walked into. Until a hole is broken open its
+// program is loaded and silent, so arriving somewhere is a chance to read it rather than a
+// fight that started without him.
+TEST_CASE("a sealed hole sends nothing until it is opened", "[descent]")
+{
+    EntityManager em;
+
+    SECTION("a floor nobody has touched stays quiet however long he stands there")
+    {
+        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {}, {});
+        REQUIRE(swarm::seepSealed(0));
+        REQUIRE(swarm::seepSealed(1));
+        for (int i = 0; i < 600; ++i)
+            swarm::update(em, 1.0f / 60.0f);
+        CHECK(swarm::remaining(em) == 0);
+        // Nor is a sealed hole mistaken for a spent one -- it is a question, not a way down.
+        CHECK_FALSE(swarm::seepCleared(em, 0));
+    }
+
+    SECTION("opening one presses that hole and leaves its neighbour sealed")
+    {
+        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {}, {});
+        swarm::wake(0);
+        CHECK_FALSE(swarm::seepSealed(0));
+        CHECK(swarm::seepSealed(1));
+        for (int i = 0; i < 900; ++i)
+            swarm::update(em, 1.0f / 60.0f);
+        int fromOpened = 0;
+        int fromSealed = 0;
+        for (const auto [e, src] : em.registry().view<SeepSource>().each())
+        {
+            if (src.index == 0)
+                ++fromOpened;
+            if (src.index == 1)
+                ++fromSealed;
+        }
+        CHECK(fromOpened > 0);
+        CHECK(fromSealed == 0);
+    }
+
+    SECTION("a hole opened on an earlier visit is still open on the next")
+    {
+        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {}, {true, false});
+        CHECK_FALSE(swarm::seepSealed(0));
+        CHECK(swarm::seepSealed(1));
     }
 }

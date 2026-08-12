@@ -19,6 +19,8 @@ nlohmann::json encode(const descent::Floor& f)
                           {"parent_hole", f.parent_hole},
                           {"child", f.child},
                           {"cleared", f.cleared},
+                          {"opened", f.opened},
+                          {"kind", f.kind},
                           {"killed", f.killed}};
 }
 
@@ -34,12 +36,17 @@ descent::Floor decodeFloor(const nlohmann::json& j)
     f.parent_hole = j.value("parent_hole", f.parent_hole);
     f.child = j.value("child", std::vector<int>{});
     f.cleared = j.value("cleared", std::vector<bool>{});
+    f.opened = j.value("opened", std::vector<bool>{});
+    f.kind = j.value("kind", std::vector<std::string>{});
     f.killed = j.value("killed", std::vector<int>{});
     // A hole is a hole in both lists or the floor cannot answer for it.
-    const std::size_t holes = std::max({f.child.size(), f.cleared.size(), f.killed.size()});
+    const std::size_t holes = std::max(
+        {f.child.size(), f.cleared.size(), f.opened.size(), f.killed.size(), f.kind.size()});
     f.child.resize(holes, -1);
     f.cleared.resize(holes, false);
+    f.opened.resize(holes, false);
     f.killed.resize(holes, 0);
+    f.kind.resize(holes);
     return f;
 }
 

@@ -42,27 +42,42 @@ struct Node
 {
     Floor floor;
     std::vector<swarm::Seep> seeps; // rebuilt every arrival, same every time
-    std::vector<std::string> leak;  // per hole: the vein's preview creature
+};
+
+// Which floor's hole a seep is running. A floor's own holes own themselves; a passage owns
+// whatever it is currently carrying from below.
+struct Owner
+{
+    int node = -1;
+    int hole = -1;
 };
 
 std::vector<Node> sNodes;
+// Parallel to the swarm's seeps: locals first, then one entry per way down on this floor.
+std::vector<Owner> sSeepOwner;
 int sCurrent = -1; // node the player stands in; -1 = not in the dig
 
-// A floor still has work while any of its holes is unspent. A floor with no
-// holes at all has none.
-bool unfinished(int nodeId)
+// IS ANYTHING ACTUALLY RUNNING on this floor -- a hole he broke open and did not
+// finish? Not "does it have holes left": a floor nobody has disturbed is quiet by
+// definition, because a sealed hole sends nothing. One definition, asked of the
+// floor he stands on (is this work?) and of the floor below a hole (is that hole
+// leaking?), so the two can never disagree about what an unfinished floor is.
+bool workUnderway(int nodeId)
 {
     if (nodeId < 0 || nodeId >= static_cast<int>(sNodes.size()))
         return false;
-    for (const bool spent : sNodes[static_cast<std::size_t>(nodeId)].floor.cleared)
-        if (!spent)
+    const Node& node = sNodes[static_cast<std::size_t>(nodeId)];
+    for (std::size_t i = 0; i < node.floor.cleared.size(); ++i)
+        if (!node.floor.cleared[i] && i < node.floor.opened.size() && node.floor.opened[i])
             return true;
     return false;
 }
 
-// Is there still work behind this way down? A floor nobody has dug yet has ALL
-// of its work ahead of it, which is why an untouched hole leaks hardest: what
-// comes up out of it is the only report he has on what is down there.
+// A WAY DOWN LEAKS BECAUSE HE LEFT SOMETHING RUNNING. Not because a floor exists
+// below it: an undug floor has nothing coming out of it, and a dug one he never
+// broke anything open on has nothing either. What comes up the hole is what he
+// disturbed and walked away from -- so a leak is a report on his own unfinished
+// business, and a quiet hole means there is nothing down there to answer for.
 bool workBehind(int hole)
 {
     if (sCurrent < 0 || hole < 0)
@@ -70,8 +85,7 @@ bool workBehind(int hole)
     const auto& child = sNodes[static_cast<std::size_t>(sCurrent)].floor.child;
     if (hole >= static_cast<int>(child.size()))
         return false;
-    const int id = child[static_cast<std::size_t>(hole)];
-    return id < 0 || unfinished(id);
+    return workUnderway(child[static_cast<std::size_t>(hole)]);
 }
 
 // What a marker becomes: its kind's look and where creatures surface. Rolled
@@ -146,17 +160,39 @@ bool wallInReach(const EntityManager& em, float x, float y)
 
 // Place one hole's art (wall kinds snap their arch to the nearest front wall,
 // spawn moving WITH the art) and return where its creatures surface.
+// A hole's two faces, read from the art by TAG. Missing tags are loud: a hole whose art cannot
+// say which frame is closed would sit there looking open and never react to being opened.
+SeepArt artOf(const SeepKind* kind, int index)
+{
+    SeepArt art;
+    art.hole = index;
+    if (kind == nullptr || !kind->def.ok)
+        return art;
+    const int closed = sprite_def::frameOf(kind->def, "closed");
+    const int open = sprite_def::frameOf(kind->def, "opened");
+    if (closed < 0 || open < 0)
+    {
+        poe::log().error("descent: '{}' has no closed/opened tags -- it cannot be broken open",
+                         kind->def.sheet);
+        return art;
+    }
+    art.closed_x = closed * kind->def.frame_w;
+    art.open_x = open * kind->def.frame_w;
+    return art;
+}
+
 void placeHole(EntityManager& em, const floorgen::Marker& m, const SeepKind* kind, int index,
                float& seepX, float& seepY)
 {
     const entt::entity hole = spawn::box(em, m.x, m.y, kPoeSize, 0.75f, 0.15f, 0.15f);
-    em.registry().emplace<SeepArt>(hole, SeepArt{index});
+    em.registry().emplace<SeepArt>(hole, artOf(kind, index));
     seepX = m.x;
     seepY = m.y;
     if (kind == nullptr || !kind->def.ok)
         return;
     auto& spr = em.registry().get<Sprite>(hole);
     spr.texture_path = kind->def.sheet;
+    spr.src_x = em.registry().get<SeepArt>(hole).closed_x; // sealed until he opens it
     spr.src_w = kind->def.frame_w;
     spr.src_h = kind->def.frame_h;
     spr.layer = 1;
@@ -184,13 +220,38 @@ void placeHole(EntityManager& em, const floorgen::Marker& m, const SeepKind* kin
 // Build a node's world into `em`: everything except the player, who is
 // preserved and placed by the caller. GL-free. Reports the floor's way in
 // and where its ascend spot settled.
-// A hole that is already spent comes back as a way down, not a spawner: the
-// hole's OWN art carries the component -- a second sprite would stack and
-// fight. Runs on every arrival, on either kind of floor.
+// What a floor's holes look like and carry when he walks back into it. A hole he already
+// broke open wears its open face -- placement draws every hole sealed, because that is what a
+// hole is until something happens to it, and this is the something. A hole that is already
+// spent comes back as a way down rather than a spawner: the hole's OWN art carries the
+// component, since a second sprite would stack and fight.
+// Defined below, beside the queue it reads: arriving on a floor needs it, and what it needs
+// to know about the floors beneath is the last thing this file works out.
+void beginFloor(int nodeId);
+
+// IT REEKS WHEN IT IS WORKING. A hole he has opened and not finished, or a passage carrying
+// something up from below, gives off a slow rise of vapour -- and one that has nothing to send
+// gives off none, which is the same thing the Descend prompt is saying, said in the world
+// instead of in words. Puffs alternate their drift so the column wanders as it climbs.
+constexpr float kReekEvery = 0.5f;
+constexpr float kReekRise = 24.0f;
+constexpr float kReekDrift = 9.0f;
+constexpr int kReekBlobs = 5; // a cloud is a LUMP: several offset blobs read as one soft mass
+float sReekTimer = 0.0f;
+int sReekSide = 0;
+
 void restoreSpentHoles(EntityManager& em, int nodeId)
 {
     Node& node = sNodes[static_cast<std::size_t>(nodeId)];
     auto& reg = em.registry();
+    for (const auto [e, art] : reg.view<SeepArt>().each())
+    {
+        const auto i = static_cast<std::size_t>(art.hole);
+        if (art.hole < 0 || i >= node.floor.opened.size() || !node.floor.opened[i])
+            continue;
+        if (auto* spr = reg.try_get<Sprite>(e))
+            spr->src_x = art.open_x;
+    }
     for (const auto [e, art] : reg.view<SeepArt>().each())
     {
         const auto i = static_cast<std::size_t>(art.hole);
@@ -199,9 +260,7 @@ void restoreSpentHoles(EntityManager& em, int nodeId)
             continue;
         DigSite dig;
         dig.radius = siteFeel().reach;
-        dig.interval = siteFeel().leak_interval;
         dig.hole = art.hole;
-        dig.trickle = node.leak[i];
         dig.spawn_x = node.seeps[i].x;
         dig.spawn_y = node.seeps[i].y;
         reg.emplace<DigSite>(e, dig);
@@ -249,33 +308,36 @@ int adoptArea(EntityManager& em, const std::string& area)
     }
     Node& node = sNodes[static_cast<std::size_t>(id)];
     node.seeps.clear();
-    node.leak.clear();
+    node.floor.kind.clear();
     for (std::size_t i = 0; i < holes.size(); ++i)
     {
         const auto& at = reg.get<Transform>(holes[i]);
         const SeepKind kind = loadKind(reg.get<AuthoredSeep>(holes[i]).kind);
         // A hole wears its KIND'''s face wherever it is: the map says where one
         // is and what sort, never what it looks like.
+        const SeepArt art = artOf(&kind, static_cast<int>(i));
         if (kind.def.ok)
         {
             auto& spr = reg.get<Sprite>(holes[i]);
             spr.texture_path = kind.def.sheet;
+            spr.src_x = art.closed_x;
             spr.src_w = kind.def.frame_w;
             spr.src_h = kind.def.frame_h;
             spr.layer = 1;
             reg.remove<SolidColor>(holes[i]);
         }
         node.seeps.push_back(swarm::Seep{at.x, at.y, kind.path});
-        node.leak.push_back(kind.first_creature);
-        reg.emplace_or_replace<SeepArt>(holes[i], SeepArt{static_cast<int>(i)});
+        node.floor.kind.push_back(kind.path);
+        reg.emplace_or_replace<SeepArt>(holes[i], art);
     }
     node.floor.child.resize(node.seeps.size(), -1);
     node.floor.cleared.resize(node.seeps.size(), false);
+    node.floor.opened.resize(node.seeps.size(), false);
     node.floor.killed.resize(node.seeps.size(), 0);
+    node.floor.kind.resize(node.seeps.size());
 
     restoreSpentHoles(em, id);
-    swarm::begin("config/swarm.json", node.seeps, node.floor.depth, node.floor.cleared,
-                 node.floor.killed);
+    beginFloor(id);
     poe::log().info("descent: '{}' is a floor -- {} hole(s) at depth {}", area, node.seeps.size(),
                     node.floor.depth);
     return id;
@@ -341,7 +403,7 @@ bool buildNode(EntityManager& em, int nodeId, float& spawnX, float& spawnY, floa
         totalWeight += k.weight;
 
     node.seeps.clear();
-    node.leak.clear();
+    node.floor.kind.clear();
     std::mt19937 rng(floor.seed * 2654435761u + 97u);
     for (const auto& m : floor.markers)
     {
@@ -382,11 +444,13 @@ bool buildNode(EntityManager& em, int nodeId, float& spawnX, float& spawnY, floa
         placeHole(em, m, kind, static_cast<int>(node.seeps.size()), seepX, seepY);
         node.seeps.push_back(
             swarm::Seep{seepX, seepY, kind != nullptr ? kind->path : std::string{}});
-        node.leak.push_back(kind != nullptr ? kind->first_creature : std::string{});
+        node.floor.kind.push_back(kind != nullptr ? kind->path : std::string{});
     }
     node.floor.child.resize(node.seeps.size(), -1);
     node.floor.cleared.resize(node.seeps.size(), false);
+    node.floor.opened.resize(node.seeps.size(), false);
     node.floor.killed.resize(node.seeps.size(), 0);
+    node.floor.kind.resize(node.seeps.size());
 
     // The way back up, at the way in. No staging area spawns with a floor --
     // setting the kit down is HIS act, placeable when that system lands.
@@ -412,8 +476,7 @@ bool buildNode(EntityManager& em, int nodeId, float& spawnX, float& spawnY, floa
     }
 
     restoreSpentHoles(em, nodeId);
-    swarm::begin("config/swarm.json", node.seeps, node.floor.depth, node.floor.cleared,
-                 node.floor.killed);
+    beginFloor(nodeId);
     return true;
 }
 
@@ -485,6 +548,73 @@ bool enterNode(Engine& engine, EntityManager& em, int nodeId, int atHole)
     poe::log().info("descent: at depth {} (node {}, seed {})", here.floor.depth, nodeId,
                     here.floor.seed);
     return true;
+}
+
+// EVERY UNFINISHED HOLE BENEATH A WAY DOWN, nearest floor first. What he broke open and
+// walked away from is still coming, however far up he goes and however many floors deep the
+// trail of abandoned holes runs -- but a passage is one passage, so they arrive through it in
+// turn rather than all at once.
+std::vector<Owner> queueUnder(int nodeId, std::vector<Owner> found = {})
+{
+    if (nodeId < 0 || nodeId >= static_cast<int>(sNodes.size()))
+        return found;
+    const Node& node = sNodes[static_cast<std::size_t>(nodeId)];
+    for (std::size_t i = 0; i < node.floor.cleared.size(); ++i)
+        if (!node.floor.cleared[i] && i < node.floor.opened.size() && node.floor.opened[i])
+            found.push_back(Owner{nodeId, static_cast<int>(i)});
+    // Breadth before depth: the floor immediately below reaches him before what is under it.
+    for (const int child : node.floor.child)
+        if (child >= 0)
+            found = queueUnder(child, std::move(found));
+    return found;
+}
+
+// START THE FLOOR. Its own holes first, index for index, then ONE PASSAGE PER WAY DOWN --
+// each running the nearest unfinished hole beneath it, at that hole's own depth and out of
+// what is left of its program. A passage is a passage: it carries the floors below in turn,
+// never all at once.
+void beginFloor(int nodeId)
+{
+    Node& node = sNodes[static_cast<std::size_t>(nodeId)];
+    std::vector<swarm::Seep> seeps = node.seeps;
+    for (auto& seep : seeps)
+        seep.depth = node.floor.depth;
+    std::vector<bool> cleared = node.floor.cleared;
+    std::vector<bool> opened = node.floor.opened;
+    std::vector<int> killed = node.floor.killed;
+
+    sSeepOwner.clear();
+    for (std::size_t i = 0; i < node.seeps.size(); ++i)
+        sSeepOwner.push_back(Owner{nodeId, static_cast<int>(i)});
+
+    for (std::size_t i = 0; i < node.floor.cleared.size(); ++i)
+    {
+        if (!node.floor.cleared[i])
+            continue; // not a way down yet, so nothing can come up it
+        const std::vector<Owner> queue = queueUnder(node.floor.child[i]);
+        if (queue.empty())
+            continue;
+        const Owner& head = queue.front();
+        const Node& below = sNodes[static_cast<std::size_t>(head.node)];
+        seeps.push_back(swarm::Seep{node.seeps[i].x, node.seeps[i].y,
+                                    below.floor.kind.at(static_cast<std::size_t>(head.hole)),
+                                    below.floor.depth});
+        cleared.push_back(false);
+        opened.push_back(true); // it was opened down there; the passage only carries it
+        killed.push_back(below.floor.killed.at(static_cast<std::size_t>(head.hole)));
+        sSeepOwner.push_back(head);
+        poe::log().info("descent: a way down carries node {} hole {} (depth {})", head.node,
+                        head.hole, below.floor.depth);
+    }
+    swarm::begin("config/swarm.json", seeps, node.floor.depth, cleared, killed, opened);
+}
+
+int childOf(int hole)
+{
+    if (sCurrent < 0 || hole < 0)
+        return -1;
+    const auto& child = sNodes[static_cast<std::size_t>(sCurrent)].floor.child;
+    return hole < static_cast<int>(child.size()) ? child[static_cast<std::size_t>(hole)] : -1;
 }
 
 } // namespace
@@ -561,6 +691,14 @@ bool dig(Engine& engine, EntityManager& em, int hole)
     if (sCurrent < 0)
         return false;
     const auto cur = static_cast<std::size_t>(sCurrent);
+    // A PASSAGE IN USE CANNOT BE TRAVELLED. What he opened down there is coming up this hole,
+    // and he does not get to walk past it -- leaving a floor unfinished costs him the way back
+    // into it until he has answered for what he started.
+    if (!queueUnder(childOf(hole)).empty())
+    {
+        poe::log().info("descent: hole {} is still delivering -- finish it first", hole);
+        return false;
+    }
     if (hole < 0 || hole >= static_cast<int>(sNodes[cur].floor.child.size()) ||
         !sNodes[cur].floor.cleared[static_cast<std::size_t>(hole)])
     {
@@ -602,48 +740,211 @@ bool ascend(Engine& engine, EntityManager& em)
 void refreshLeaks(EntityManager& em)
 {
     for (auto [e, site] : em.registry().view<DigSite>().each())
-        site.leaking = workBehind(site.hole);
+        site.leaking = !queueUnder(childOf(site.hole)).empty();
 }
 
-void update(Engine& engine, EntityManager& em)
+// One puff above a hole that is doing something: a handful of blobs at different sizes and
+// offsets, drifting at slightly different rates. Square particles read as squares when there
+// is one of them and as a cloud when there are several overlapping and none of them agree --
+// so the variation IS the effect, not decoration on it.
+void reek(EntityManager& em, float x, float y)
+{
+    static std::mt19937 rng(0x5EEDu); // cosmetic only: nothing here is saved or replayed
+    std::uniform_real_distribution<float> spread(-5.0f, 5.0f);
+    std::uniform_real_distribution<float> lift(-4.0f, 2.0f);
+    std::uniform_real_distribution<float> size(3.0f, 7.0f);
+    std::uniform_real_distribution<float> vary(-0.06f, 0.06f);
+    std::uniform_real_distribution<float> wander(-4.0f, 4.0f);
+    std::uniform_real_distribution<float> live(0.85f, 1.35f);
+    std::uniform_real_distribution<float> turn(0.0f, 360.0f);
+
+    auto& reg = em.registry();
+    sReekSide = 1 - sReekSide;
+    const float lean = sReekSide == 0 ? kReekDrift : -kReekDrift;
+    for (int i = 0; i < kReekBlobs; ++i)
+    {
+        const float tone = vary(rng);
+        const entt::entity blob = spawn::box(em, x + spread(rng), y - 10.0f + lift(rng), size(rng),
+                                             0.52f + tone, 0.60f + tone, 0.30f + tone);
+        reg.emplace<Velocity>(blob, Velocity{lean + wander(rng), -kReekRise + wander(rng)});
+        Particle p;
+        p.lifetime = live(rng);
+        p.start_scale = 0.45f;
+        p.end_scale = 1.6f; // thins out as it goes, the way vapour does
+        reg.emplace<Particle>(blob, p);
+        auto& spr = reg.get<Sprite>(blob);
+        spr.layer = 3;
+        // Turned off the grid: axis-aligned squares read as squares however many you stack,
+        // and squares at odd angles overlap into something lumpy.
+        spr.rotation = turn(rng);
+    }
+}
+
+void update(Engine& engine, EntityManager& em, float dt)
 {
     (void)engine;
     syncArea(em);
     refreshLeaks(em);
-    // The floor keeps what its holes have lost, taken from the swarm every
-    // frame rather than at some exit: quitting is an exit nobody gets to run
-    // code on, so the tree must already be right when it happens.
-    if (sCurrent >= 0)
-        sNodes[static_cast<std::size_t>(sCurrent)].floor.killed = swarm::progress();
+    // WHAT EACH SEEP HAS LOST GOES TO THE FLOOR THAT OWNS IT -- a passage's kills belong to
+    // the floor below, not to the one he is standing on. Taken every frame rather than at some
+    // exit, because quitting is an exit nobody gets to run code on.
+    const std::vector<int>& lost = swarm::progress();
+    for (std::size_t i = 0; i < sSeepOwner.size() && i < lost.size(); ++i)
+    {
+        const Owner& owner = sSeepOwner[i];
+        if (owner.node < 0 || owner.node >= static_cast<int>(sNodes.size()))
+            continue;
+        auto& killed = sNodes[static_cast<std::size_t>(owner.node)].floor.killed;
+        if (static_cast<std::size_t>(owner.hole) < killed.size())
+            killed[static_cast<std::size_t>(owner.hole)] = lost[i];
+    }
     if (sCurrent < 0)
         return;
     Node& node = sNodes[static_cast<std::size_t>(sCurrent)];
-    for (std::size_t i = 0; i < node.floor.cleared.size(); ++i)
+    for (std::size_t s = 0; s < sSeepOwner.size(); ++s)
     {
-        if (node.floor.cleared[i] || !swarm::seepCleared(em, static_cast<int>(i)))
+        const Owner owner = sSeepOwner[s];
+        if (owner.node < 0)
             continue;
-        // The hole is spent: from spawner to way down, leaking its preview.
-        // The hole's own art carries the component -- no second sprite.
-        node.floor.cleared[i] = true;
+        auto& ownerCleared = sNodes[static_cast<std::size_t>(owner.node)].floor.cleared;
+        const auto oh = static_cast<std::size_t>(owner.hole);
+        if (oh >= ownerCleared.size() || ownerCleared[oh] ||
+            !swarm::seepCleared(em, static_cast<int>(s)))
+            continue;
+        ownerCleared[oh] = true;
+        if (owner.node != sCurrent)
+        {
+            // A passage finished what it was carrying; the next thing below takes its place.
+            poe::log().info("descent: node {} hole {} spent from above", owner.node, owner.hole);
+            continue;
+        }
+        const std::size_t i = oh;
+        // The hole is spent: from spawner to way down. The hole's own art carries the
+        // component -- a second sprite would stack and fight.
         for (const auto [e, art] : em.registry().view<SeepArt>().each())
             if (art.hole == static_cast<int>(i))
             {
                 DigSite dig;
                 dig.radius = siteFeel().reach;
-                dig.interval = siteFeel().leak_interval;
                 dig.hole = art.hole;
-                dig.trickle = node.leak[i];
                 dig.spawn_x = node.seeps[i].x;
                 dig.spawn_y = node.seeps[i].y;
                 em.registry().emplace<DigSite>(e, dig);
             }
-        poe::log().info("descent: hole {} spent -- diggable, leaking '{}'", i, node.leak[i]);
+        poe::log().info("descent: hole {} spent -- a way down now", i);
     }
+
+    // The floor's own smell, from exactly what is producing: an unspent hole he opened, or a
+    // way down with something coming up it.
+    sReekTimer += dt;
+    if (sReekTimer >= kReekEvery)
+    {
+        sReekTimer = 0.0f;
+        for (std::size_t i = 0; i < node.seeps.size(); ++i)
+        {
+            const bool pressing = i < node.floor.opened.size() && node.floor.opened[i] &&
+                                  i < node.floor.cleared.size() && !node.floor.cleared[i];
+            const bool carrying = i < node.floor.cleared.size() && node.floor.cleared[i] &&
+                                  !queueUnder(node.floor.child[i]).empty();
+            if (pressing || carrying)
+                reek(em, node.seeps[i].x, node.seeps[i].y);
+        }
+    }
+
+    // Each passage carries the nearest thing still running below it. When that finishes -- or
+    // when he opens something new down there -- the passage picks up whatever is next without
+    // disturbing the floor he is standing on.
+    for (std::size_t s = node.seeps.size(); s < sSeepOwner.size(); ++s)
+    {
+        const int hole = static_cast<int>(s - node.seeps.size());
+        int passage = -1;
+        int seen = 0;
+        for (std::size_t i = 0; i < node.floor.cleared.size(); ++i)
+            if (node.floor.cleared[i] && !queueUnder(node.floor.child[i]).empty() && seen++ == hole)
+            {
+                passage = static_cast<int>(i);
+                break;
+            }
+        const std::vector<Owner> queue =
+            passage >= 0 ? queueUnder(node.floor.child[static_cast<std::size_t>(passage)])
+                         : std::vector<Owner>{};
+        if (queue.empty())
+        {
+            swarm::retarget(static_cast<int>(s), swarm::Seep{}, 0);
+            sSeepOwner[s] = Owner{};
+            continue;
+        }
+        const Owner& head = queue.front();
+        if (head.node == sSeepOwner[s].node && head.hole == sSeepOwner[s].hole)
+            continue;
+        const Node& below = sNodes[static_cast<std::size_t>(head.node)];
+        swarm::retarget(static_cast<int>(s),
+                        swarm::Seep{node.seeps[static_cast<std::size_t>(passage)].x,
+                                    node.seeps[static_cast<std::size_t>(passage)].y,
+                                    below.floor.kind.at(static_cast<std::size_t>(head.hole)),
+                                    below.floor.depth},
+                        below.floor.killed.at(static_cast<std::size_t>(head.hole)));
+        sSeepOwner[s] = head;
+    }
+}
+
+int openableUnderfoot(const EntityManager& em, float x, float y)
+{
+    if (sCurrent < 0)
+        return -1;
+    const Node& node = sNodes[static_cast<std::size_t>(sCurrent)];
+    const float reach = siteFeel().reach;
+    for (std::size_t i = 0; i < node.seeps.size(); ++i)
+    {
+        if (i < node.floor.opened.size() && node.floor.opened[i])
+            continue; // already answered, one way or the other
+        const float dx = x - node.seeps[i].x;
+        const float dy = y - node.seeps[i].y;
+        if (dx * dx + dy * dy < reach * reach)
+            return static_cast<int>(i);
+    }
+    (void)em;
+    return -1;
+}
+
+bool open(EntityManager& em, int hole)
+{
+    if (sCurrent < 0 || hole < 0)
+        return false;
+    Node& node = sNodes[static_cast<std::size_t>(sCurrent)];
+    const auto i = static_cast<std::size_t>(hole);
+    if (i >= node.floor.opened.size() || node.floor.opened[i])
+        return false;
+    node.floor.opened[i] = true;
+    swarm::wake(hole);
+    // The art stops pretending to be floor.
+    for (const auto [e, art] : em.registry().view<SeepArt>().each())
+        if (art.hole == hole)
+            if (auto* spr = em.registry().try_get<Sprite>(e))
+                spr->src_x = art.open_x;
+    poe::log().info("descent: hole {} opened -- it answers now", hole);
+    return true;
+}
+
+int frontsOpen()
+{
+    if (sCurrent < 0)
+        return 0;
+    const Node& node = sNodes[static_cast<std::size_t>(sCurrent)];
+    int fronts = 0;
+    for (std::size_t i = 0; i < node.floor.cleared.size(); ++i)
+        if (!node.floor.cleared[i] && i < node.floor.opened.size() && node.floor.opened[i])
+            ++fronts;
+    // A passage is a front too: something is coming up it, and he is standing in front of it.
+    for (std::size_t i = 0; i < node.floor.cleared.size(); ++i)
+        if (node.floor.cleared[i] && !queueUnder(node.floor.child[i]).empty())
+            ++fronts;
+    return fronts;
 }
 
 bool floorHasWork()
 {
-    return unfinished(sCurrent);
+    return workUnderway(sCurrent);
 }
 
 } // namespace descent

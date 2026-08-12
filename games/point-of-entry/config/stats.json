@@ -54,5 +54,8 @@
             "config/fills/coffee.json",
             "config/fills/soup.json"
         ]
+    },
+    "fronts": {
+        "bonus_per_extra": 0.35
     }
 }

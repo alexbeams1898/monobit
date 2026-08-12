@@ -44,4 +44,12 @@ Def load(const std::string& path)
     return d;
 }
 
+int frameOf(const Def& def, const std::string& tag)
+{
+    for (const auto& anim : def.anims)
+        if (anim.name == tag)
+            return anim.from;
+    return -1;
+}
+
 } // namespace sprite_def

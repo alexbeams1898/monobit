@@ -250,7 +250,7 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // at the top of every frame, including the frames a cut owns: a state that
     // stood down with the rest of the tick would go on describing the room he
     // left while he is already looking at the one he arrived in.
-    descent::update(engine, em);
+    descent::update(engine, em, static_cast<float>(dt));
     zone::update(em, static_cast<float>(dt), travel::active() || sDeathBeat != DeathBeat::None);
 
     // WRITTEN DOWN WHENEVER THE GROUND CHANGES. A room crossed, a floor dug or
@@ -324,7 +324,20 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
             return;
         }
     }
-    else if (const entt::entity dig = digSiteInRange(em); dig != entt::null)
+    else if (const auto& at = em.registry().get<Transform>(player::entity());
+             descent::openableUnderfoot(em, at.x, at.y) >= 0)
+    {
+        // BREAKING IT OPEN is his act. A floor answers being disturbed, so nothing presses
+        // until he decides which hole to disturb -- and he can read the room first.
+        prompt::offer("Open");
+        if (player::consumeInteract())
+        {
+            descent::open(em, descent::openableUnderfoot(em, at.x, at.y));
+            aim::requireFreshPress();
+        }
+    }
+    else if (const entt::entity dig = digSiteInRange(em);
+             dig != entt::null && !em.registry().get<DigSite>(dig).leaking)
     {
         // THE WAY DOWN. Descending is a deliberate act, never a walk-on: you
         // do not fall into the wound by accident.
@@ -354,20 +367,6 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     FlowFieldSystem::update(em, pt.x, pt.y);
     chase::update(em, static_cast<float>(dt));
     swarm::update(em, static_cast<float>(dt));
-
-    // THE FIRST POINT OF ENTRY LEAKS. A dig site with a trickle lets one
-    // through every so often; they accumulate until he leaves the room.
-    for (const auto [e, site] : em.registry().view<DigSite>().each())
-    {
-        if (site.trickle.empty() || !site.leaking)
-            continue;
-        site.timer += static_cast<float>(dt);
-        if (site.timer >= site.interval)
-        {
-            site.timer = 0.0f;
-            swarm::spawnOne(em, site.trickle, site.spawn_x, site.spawn_y);
-        }
-    }
 
     // THE TRADE HAS ITS PLACE: the weapon fires only where vermin can reach
     // him. At the bar he is a man carrying equipment, not a man spraying it --

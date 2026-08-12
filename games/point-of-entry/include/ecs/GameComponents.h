@@ -100,30 +100,28 @@ struct AuthoredSeep
     std::string kind; // a seep file: what kind of hole, and what comes through
 };
 
-// The authored world's way down: standing in range offers Descend, and
-// interacting generates the floor below. Placed by the map, not the code.
-// A site may also LEAK -- one creature every `interval` seconds, the first
-// true point of entry showing what it is. They accumulate until he leaves
-// the room (an area swap destroys everything but him).
+// A WAY DOWN, and a PASSAGE. Standing on it offers Descend, and digging opens
+// the floor below. It also carries: an unfinished hole anywhere beneath it is
+// still pressing, and this is the mouth it reaches him through -- one hole at
+// a time, out of that hole's own finite program, so what comes up is the work
+// he walked away from rather than anything new.
 struct DigSite
 {
     // Stand ON the hole to be offered the way down -- the prompt is the
     // square underfoot, never the neighbourhood. Filled from the dig's config
     // at placement (descent::siteFeel), never guessed here.
     float radius = 0.0f;
-    int hole = -1;       // which of this floor's holes it was
-    std::string trickle; // creature file it leaks; empty = quiet
-    // LEAKING, which is one question: does the floor behind this hole still
-    // have work? An undug floor is all work and leaks hardest; a finished one
-    // has nothing left to send up and the hole falls quiet. Derived every
-    // frame by descent::refreshLeaks -- never latched, so finishing what is
-    // below silences the hole above it as the last of it dies.
+    int hole = -1; // which of this floor's holes it was
+    // LEAKING, which is one question: did he leave something RUNNING down
+    // there? A floor he never dug, or dug and never broke anything open on,
+    // sends nothing -- a sealed hole is sealed at every depth. What comes up
+    // is what he disturbed and walked away from. Derived every frame by
+    // descent::refreshLeaks, so finishing what is below silences the hole
+    // above it as the last of it dies.
     bool leaking = false;
-    float interval = 0.0f;
-    float timer = 0.0f;
-    // WHERE THE LEAK SURFACES -- never assumed from the entity's transform: a
-    // wall-mounted hole's art sits in the wall, and the one thing a spawner
-    // may never be is somewhere other than where it spawns.
+    // THE MOUTH -- never assumed from the entity's transform: a wall-mounted
+    // hole's art sits in the wall, and what comes up a passage may never
+    // arrive somewhere other than where the passage is.
     float spawn_x = 0.0f;
     float spawn_y = 0.0f;
 };
@@ -137,9 +135,15 @@ struct AscendSite
 // A placed hole's art, tagged with which of the floor's holes it draws. When
 // the hole is spent this same entity becomes its dig site -- one sprite, one
 // spot, nothing stacked to flicker.
+// A hole's own art, and which of the floor's holes it is. It carries both of its faces so
+// opening one is a frame swap rather than a reload: CLOSED is the outline with the cavity
+// drawn out of it, so the floor shows through and a sealed hole matches whatever ground it
+// sits in; OPEN is the hole itself.
 struct SeepArt
 {
     int hole = -1;
+    int closed_x = 0; // pixel offset of the closed frame on the sheet
+    int open_x = 0;
 };
 
 // What a creature pays when it dies. On the creature, not in a table here -- the config that

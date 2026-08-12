@@ -78,8 +78,11 @@ struct ActiveSeep
 {
     Seep at;
     SeepProgram program;
+    int depth = 0;
     int wave = 0;
     int to_emerge = 0;
+    // Sealed: the program is loaded and waiting, and nothing comes up until he opens it.
+    bool sealed_shut = true;
     // What is left of a wave he was part-way through when he last walked out.
     // 0 = the next wave musters whole.
     int owed = 0;
@@ -130,6 +133,35 @@ std::unordered_map<std::string, std::size_t> sCreatureIndex;
 std::unordered_map<std::string, SeepProgram> sSeepTypes;
 std::vector<ActiveSeep> sSeeps;
 int sDepth = 0;
+
+// The assault curves as authored, kept rather than pre-baked: a passage carrying a deeper
+// floor's hole needs that floor's program, which cannot be recovered from one already bent to
+// the depth he happens to be standing at.
+struct Curves
+{
+    int waves = 3;
+    int per_wave = 6;
+    float growth = 1.4f;
+    float spacing = 0.25f;
+    float breath = 3.0f;
+    float waves_per_depth = 0.34f;
+    float per_wave_per_depth = 1.5f;
+    float spacing_per_depth = 0.01f;
+    float breath_per_depth = 0.1f;
+};
+Curves sCurves;
+
+SeepProgram programAt(int depth)
+{
+    const auto d = static_cast<float>(depth);
+    SeepProgram p;
+    p.waves = sCurves.waves + static_cast<int>(sCurves.waves_per_depth * d);
+    p.per_wave = sCurves.per_wave + static_cast<int>(sCurves.per_wave_per_depth * d);
+    p.growth = sCurves.growth;
+    p.spacing = std::max(0.05f, sCurves.spacing - sCurves.spacing_per_depth * d);
+    p.breath = std::max(1.0f, sCurves.breath - sCurves.breath_per_depth * d);
+    return p;
+}
 Bestiary sBestiary;
 std::mt19937 sRng{std::random_device{}()};
 float sSurgeSpeed = 150.0f;
@@ -144,10 +176,10 @@ std::vector<int> sKilled;
 SeepProgram sBaseProgram;
 
 // THE SMELL: the law of depth on bodies, one roll per individual at emergence.
-int rollSmell()
+int rollSmell(int depth)
 {
-    const int lo = sBestiary.smell.base_min + sBestiary.smell.min_per_depth * sDepth;
-    const int hi = sBestiary.smell.base_max + sBestiary.smell.max_per_depth * sDepth;
+    const int lo = sBestiary.smell.base_min + sBestiary.smell.min_per_depth * depth;
+    const int hi = sBestiary.smell.base_max + sBestiary.smell.max_per_depth * depth;
     std::uniform_int_distribution<int> roll(lo, std::max(lo, hi));
     return roll(sRng);
 }
@@ -163,12 +195,12 @@ struct Derived
     int xp = 1;
 };
 
-Derived derive(const Creature& kind, int smell)
+Derived derive(const Creature& kind, int smell, int depth)
 {
-    const auto res = static_cast<float>(kind.sheet.resistance + kind.growth.resistance * sDepth);
+    const auto res = static_cast<float>(kind.sheet.resistance + kind.growth.resistance * depth);
     const auto dfn =
-        static_cast<float>(kind.sheet.defensiveness + kind.growth.defensiveness * sDepth);
-    const auto dsp = static_cast<float>(kind.sheet.dispersal + kind.growth.dispersal * sDepth);
+        static_cast<float>(kind.sheet.defensiveness + kind.growth.defensiveness * depth);
+    const auto dsp = static_cast<float>(kind.sheet.dispersal + kind.growth.dispersal * depth);
     const float mul = 1.0f + static_cast<float>(smell) / 100.0f;
     Derived d;
     d.hp = std::max(
@@ -249,23 +281,24 @@ std::size_t loadCreature(const std::string& path)
     return idx;
 }
 
-SeepProgram loadSeepType(const std::string& path)
+SeepProgram loadSeepType(const std::string& path, int depth)
 {
-    if (const auto it = sSeepTypes.find(path); it != sSeepTypes.end())
+    const std::string key = path + "@" + std::to_string(depth);
+    if (const auto it = sSeepTypes.find(key); it != sSeepTypes.end())
         return it->second;
-    SeepProgram program = sBaseProgram;
+    SeepProgram program = programAt(depth);
     std::ifstream in(path);
     if (!in)
     {
         poe::log().error("swarm: no seep file at '{}' -- using floor defaults", path);
-        sSeepTypes.emplace(path, program);
+        sSeepTypes.emplace(key, program);
         return program;
     }
     const nlohmann::json j = nlohmann::json::parse(in, nullptr, /*allow_exceptions=*/false);
     if (j.is_discarded())
     {
         poe::log().error("swarm: seep file '{}' is not valid JSON", path);
-        sSeepTypes.emplace(path, program);
+        sSeepTypes.emplace(key, program);
         return program;
     }
     for (const auto& entry : j.value("creatures", nlohmann::json::array()))
@@ -283,7 +316,7 @@ SeepProgram loadSeepType(const std::string& path)
     program.growth = w.value("growth", program.growth);
     program.spacing = w.value("spacing", program.spacing);
     program.breath = w.value("breath", program.breath);
-    sSeepTypes.emplace(path, program);
+    sSeepTypes.emplace(key, program);
     return program;
 }
 
@@ -328,7 +361,7 @@ std::size_t pickCreature(const ActiveSeep& seep, unsigned n)
 // Enough smell transforms bodies: a hot individual comes through as the species' worse self,
 // re-rolled for the new form. The walk can chain, so the hottest rolls of a deep dig arrive
 // two evolutions past the surface form.
-std::size_t resolveForm(std::size_t idx, int& smell)
+std::size_t resolveForm(std::size_t idx, int& smell, int depth)
 {
     while (!sCreatures[idx].evolves_into.empty() && sCreatures[idx].evolves_at_smell > 0 &&
            smell >= sCreatures[idx].evolves_at_smell)
@@ -337,15 +370,16 @@ std::size_t resolveForm(std::size_t idx, int& smell)
         if (it == sCreatureIndex.end())
             break;
         idx = it->second;
-        smell = rollSmell();
+        smell = rollSmell(depth);
     }
     return idx;
 }
 
-void emerge(EntityManager& em, float atX, float atY, int seepIndex, std::size_t kindIndex)
+entt::entity emerge(EntityManager& em, float atX, float atY, int seepIndex, std::size_t kindIndex,
+                    int depth)
 {
-    int smell = rollSmell();
-    kindIndex = resolveForm(kindIndex, smell);
+    int smell = rollSmell(depth);
+    kindIndex = resolveForm(kindIndex, smell, depth);
     const Creature& kind = sCreatures[kindIndex];
 
     auto& reg = em.registry();
@@ -388,7 +422,7 @@ void emerge(EntityManager& em, float atX, float atY, int seepIndex, std::size_t 
     reg.emplace<Velocity>(e, Velocity{});
     sprite_anim::attach(em, e, kind.def);
 
-    const Derived d = derive(kind, smell);
+    const Derived d = derive(kind, smell, depth);
     reg.emplace<Health>(e, Health{d.hp, d.hp});
     reg.emplace<Vermin>(e, Vermin{d.contact, d.speed});
     // The resolved form's path, so an evolved individual goes on the record as what it became.
@@ -401,6 +435,7 @@ void emerge(EntityManager& em, float atX, float atY, int seepIndex, std::size_t 
     reg.emplace<Surge>(e, Surge{std::cos(angle), std::sin(angle), sSurgeSpeed,
                                 sSurgeDuration * (0.7f + std::fmod(n, 7.0f) * 0.09f)});
     reg.emplace<SeepSource>(e, SeepSource{seepIndex});
+    return e;
 }
 
 // Anything this hole scheduled still standing? Its next wave waits until the answer is no --
@@ -462,7 +497,8 @@ void fastForward(ActiveSeep& seep, int killed)
 } // namespace
 
 void begin(const std::string& configPath, const std::vector<Seep>& seeps, int depth,
-           const std::vector<bool>& cleared, const std::vector<int>& killed)
+           const std::vector<bool>& cleared, const std::vector<int>& killed,
+           const std::vector<bool>& opened)
 {
     sDepth = depth;
     sCreatures.clear();
@@ -481,15 +517,18 @@ void begin(const std::string& configPath, const std::vector<Seep>& seeps, int de
     const auto& base = j.value("base", nlohmann::json::object());
     const auto& per = j.value("per_depth", nlohmann::json::object());
     const auto d = static_cast<float>(depth);
-    sBaseProgram = SeepProgram{};
-    sBaseProgram.waves = base.value("waves", 3) + static_cast<int>(per.value("waves", 0.34f) * d);
-    sBaseProgram.per_wave =
-        base.value("per_wave", 6) + static_cast<int>(per.value("per_wave", 1.5f) * d);
-    sBaseProgram.growth = base.value("growth", 1.4f);
-    sBaseProgram.spacing =
-        std::max(0.05f, base.value("spacing", 0.25f) - per.value("spacing", 0.01f) * d);
-    sBaseProgram.breath =
-        std::max(1.0f, base.value("breath", 3.0f) - per.value("breath", 0.1f) * d);
+    sCurves = Curves{};
+    sCurves.waves = base.value("waves", sCurves.waves);
+    sCurves.per_wave = base.value("per_wave", sCurves.per_wave);
+    sCurves.growth = base.value("growth", sCurves.growth);
+    sCurves.spacing = base.value("spacing", sCurves.spacing);
+    sCurves.breath = base.value("breath", sCurves.breath);
+    sCurves.waves_per_depth = per.value("waves", sCurves.waves_per_depth);
+    sCurves.per_wave_per_depth = per.value("per_wave", sCurves.per_wave_per_depth);
+    sCurves.spacing_per_depth = per.value("spacing", sCurves.spacing_per_depth);
+    sCurves.breath_per_depth = per.value("breath", sCurves.breath_per_depth);
+    sBaseProgram = programAt(depth);
+    (void)d;
 
     const auto& b = j.value("bestiary", nlohmann::json::object());
     const auto& bh = b.value("hp", nlohmann::json::object());
@@ -522,11 +561,14 @@ void begin(const std::string& configPath, const std::vector<Seep>& seeps, int de
     {
         ActiveSeep active;
         active.at = seep;
-        active.program = loadSeepType(seep.type);
+        active.depth = seep.depth;
+        active.program = loadSeepType(seep.type, seep.depth);
         sSeeps.push_back(std::move(active));
     }
     restart();
     sKilled.assign(sSeeps.size(), 0);
+    for (std::size_t i = 0; i < sSeeps.size(); ++i)
+        sSeeps[i].sealed_shut = i >= opened.size() || !opened[i];
     // What he has already taken out of each hole: the program resumes past it,
     // so a floor revisited is the floor he left rather than the floor he found.
     for (std::size_t i = 0; i < sSeeps.size() && i < killed.size(); ++i)
@@ -557,7 +599,7 @@ void countKill(const EntityManager& em, entt::entity dead)
 {
     const auto* source = em.registry().try_get<SeepSource>(dead);
     if (source == nullptr || source->index < 0)
-        return; // a trickle's creature answers to no hole's program
+        return; // belongs to no hole's program -- nothing to advance
     const auto i = static_cast<std::size_t>(source->index);
     if (i < sKilled.size())
         ++sKilled[i];
@@ -568,13 +610,14 @@ const std::vector<int>& progress()
     return sKilled;
 }
 
-void spawnOne(EntityManager& em, const std::string& creaturePath, float x, float y)
+entt::entity spawnOne(EntityManager& em, const std::string& creaturePath, float x, float y)
 {
     const std::size_t idx = loadCreature(creaturePath);
     if (idx == static_cast<std::size_t>(-1))
-        return;
-    // Belongs to no seep's kill gate -- the trickle answers to no wave clock.
-    emerge(em, x, y, -1, idx);
+        return entt::null;
+    // Belongs to no hole ON THIS FLOOR -- what it costs is the floor below's, and the caller
+    // is what says so.
+    return emerge(em, x, y, -1, idx, sDepth);
 }
 
 void update(EntityManager& em, float dt)
@@ -585,7 +628,7 @@ void update(EntityManager& em, float dt)
     for (int i = 0; i < static_cast<int>(sSeeps.size()); ++i)
     {
         auto& seep = sSeeps[static_cast<std::size_t>(i)];
-        if (seep.done)
+        if (seep.done || seep.sealed_shut)
             continue;
         if (seep.emerging)
         {
@@ -595,7 +638,7 @@ void update(EntityManager& em, float dt)
                 if (const std::size_t kind = pickCreature(seep, sSpawnCounter);
                     kind != static_cast<std::size_t>(-1))
                 {
-                    emerge(em, seep.at.x, seep.at.y, i, kind);
+                    emerge(em, seep.at.x, seep.at.y, i, kind, seep.depth);
                     if (seep.to_emerge == countForWave(seep.program, seep.wave))
                         poe::log().info("swarm:   seep[{}] first emergence at ({:.0f},{:.0f})", i,
                                         seep.at.x, seep.at.y);
@@ -652,6 +695,51 @@ Phase phase()
     if (anyEmerging)
         return Phase::Emerging;
     return anyMidProgram ? Phase::Fighting : Phase::Breath;
+}
+
+void retarget(int seepIndex, const Seep& to, int killed)
+{
+    if (seepIndex < 0 || seepIndex >= static_cast<int>(sSeeps.size()))
+        return;
+    ActiveSeep& seep = sSeeps[static_cast<std::size_t>(seepIndex)];
+    if (to.type.empty())
+    {
+        seep.sealed_shut = true; // nothing left below it to carry
+        return;
+    }
+    seep.at = to;
+    seep.depth = to.depth;
+    seep.program = loadSeepType(to.type, to.depth);
+    seep.wave = 0;
+    seep.to_emerge = 0;
+    seep.owed = 0;
+    seep.emerging = false;
+    seep.sealed_shut = false;
+    seep.done = seep.program.entries.empty();
+    seep.timer = seep.program.breath;
+    fastForward(seep, killed);
+    if (static_cast<std::size_t>(seepIndex) < sKilled.size())
+        sKilled[static_cast<std::size_t>(seepIndex)] = killed;
+}
+
+void wake(int seepIndex)
+{
+    if (seepIndex < 0 || seepIndex >= static_cast<int>(sSeeps.size()))
+        return;
+    auto& seep = sSeeps[static_cast<std::size_t>(seepIndex)];
+    if (!seep.sealed_shut)
+        return;
+    seep.sealed_shut = false;
+    // It presses after a breath, not on the same step he opened it on.
+    seep.timer = seep.program.breath;
+    poe::log().info("swarm: seep[{}] broken open", seepIndex);
+}
+
+// Is this hole sending anything, or could it be? A sealed one is neither.
+bool seepSealed(int seepIndex)
+{
+    return seepIndex < 0 || seepIndex >= static_cast<int>(sSeeps.size()) ||
+           sSeeps[static_cast<std::size_t>(seepIndex)].sealed_shut;
 }
 
 int remaining(const EntityManager& em)

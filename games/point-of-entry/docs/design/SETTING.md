@@ -50,12 +50,13 @@ The game stacks vertically in a single landmark building:
 - **Holes advertise.** Seeps are typed; the hole's kind — its art, what
   trickles out, what you can hear — is the preview. Picking a path is reading
   the infestation. Special floors (gifts, bosses) are special-looking holes.
-- **Depth composes; the vein seasons.** The floor number carries the authored
-  structure: species bands as acts, boss floors as act boundaries, shaped
-  beats around them (breather before, gift after). Entering a kind of hole
-  only *boosts* that kind on the next floor — one floor of decaying memory,
-  and every floor guarantees at least one off-theme hole, so lock-in is
-  impossible by construction. The Law of Depth stays the strongest axis:
+- **Depth composes.** The floor number carries the authored structure: species
+  bands as acts, boss floors as act boundaries, shaped beats around them
+  (breather before, gift after). *(The "vein seasons" rule that stood here --
+  a hole kind only BOOSTING its own kind on the next floor, with a guaranteed
+  off-theme hole -- is superseded by "How the descent works" below: a kind of
+  hole now leads to its own kind of floor, and lock-in is prevented instead by
+  wall holes not descending at all.)* The Law of Depth stays the strongest axis:
   species evolve out from under their own theme as you go down.
 - **The "root smell."** Proximity to the source is something he can smell —
   the Law of Depth made diegetic. Descending is following a scent gradient to
@@ -206,3 +207,101 @@ output, if wanted).
   the record grows), and achievements/unlocks concerned with enemies read the
   same tallies. Rank's verified kills, the guide, and achievements are ONE
   ledger wearing three surfaces -- never three counters.
+
+## How the descent works [settled in shape, 2026-08-12]
+
+The floor-by-floor rules, settled while building them. Everything here is
+running in the game unless marked otherwise.
+
+**Holes are opened deliberately.** A point of entry has three states, and each
+says one thing: SEALED is a question, OPEN is a fight, SPENT is a way down.
+Sealed art is the hole's outline with the floor showing through it -- the same
+sealed drawing works on every tileset because the "fill" is whatever ground it
+sits in. A floor answers being DISTURBED, not being walked into: nothing
+presses until he breaks something open, so arriving somewhere is a chance to
+read the room and choose which hole to take, and the pressure that follows is
+pressure he chose.
+
+**Killing is the only progress.** A hole's program is a fixed number of
+creatures; what he has killed out of it is remembered per hole, and the
+program resumes past it. Leaving a floor -- by the stairs, by dying, by
+quitting -- costs nothing and gains nothing. Anything that emerged and was NOT
+killed simply comes up again, which is what makes walking out and back in
+worth no XP, and what let the anti-grind rule cost the player nothing.
+
+**A leak is unfinished business.** A way down is quiet unless something is
+running below it. Not "a floor exists down there": a floor he never dug, or
+dug and never broke anything open on, sends nothing. What comes up a hole is
+what he disturbed and walked away from -- so a leaking hole is a report on his
+own unfinished work, and a quiet one means there is nothing to answer for.
+
+**A way down is a PASSAGE.** What is unfinished below reaches him THROUGH it:
+the actual hole from below, at that floor's depth, out of that hole's own
+remaining program. Not a trickle and not a decoration -- he is fighting floor
+three's hole in floor two's room. It chains: open something on three, run up,
+open something on two, run up, and both are still trying to reach him. But a
+passage is one passage, so they arrive in turn, nearest floor first, never as
+a merged blob. Each way down on a floor carries its own queue, so running from
+several branches stacks pressure without ever collapsing into one wave.
+
+**A passage in use is not a way down.** He cannot descend a hole that is
+delivering. That is what leaving a floor unfinished costs: not a scolding, not
+lost progress -- just no way back in until he has answered for what he
+started, and what he started is currently coming up the stairs.
+
+**It reeks while it works.** Anything producing -- an opened hole not yet
+spent, a passage carrying something up -- gives off a slow rise of vapour.
+Same knowledge that decides whether the way down is offered, said in the world
+instead of in words: lines over it means busy, no lines means it is a way
+down.
+
+**Holding more fronts pays more.** Extermination points are rated by how many
+fronts he is holding at once: an unspent hole he opened, or a passage carrying
+something up, each counts. One at a time is the careful way and pays plainly.
+A man bills the callout, not the hour, and an infestation handled in one visit
+is one visit. The rate shows on the HUD while he is deciding, because a
+multiplier he only learns about at the staging area is not a reason to take a
+risk.
+
+**A kind of hole leads to its own kind of floor.** Each point-of-entry type
+pairs with the floor type(s) it opens into -- an ant hole into the default
+space, a gnaw hole into a warren -- and a floor type carries its own room
+templates, its own mix of holes, and its own look. *(Not built.)*
+
+**Wall holes go sideways; floor holes go down.** A wall-placed point of entry
+is a run through a cavity, not a way underneath: it opens a floor at the SAME
+depth. Lateral floors pay in goods, guide entries and rank rather than
+progress, and sealing what he does not follow is exclusion work either way.
+This is also what makes lock-in impossible -- depth is governed entirely by
+floor holes, so no amount of following one kind of trail can trap him in it.
+*(Not built.)*
+
+**Deep floors may have no way down at all.** Past a certain depth a floor can
+be a dead end that must be cleared and then LEFT sideways, hunting the branch
+that continues. The exit is guaranteed by DISTANCE, never by a dice roll: past
+K lateral hops a way down must exist, and K grows with depth. Stranding is
+therefore impossible by construction rather than by a check that notices it
+afterwards. *(Not built.)*
+
+**Breakers.** Deep creatures -- the ones the smell has made smarter -- can run
+at a sealed hole and break it open themselves, letting their own kind in. It
+is the counterweight to deliberate opening: unopposed, a careful player fights
+exactly one hole forever, which is safe to the point of being tension-free.
+It also gives SMELL a second axis: a hot roll stops meaning only bigger
+numbers and starts meaning *this one knows what a sealed hole is*. Needs a
+tell and a wind-up, or it is an unavoidable tax rather than a threat.
+*(Not built.)*
+
+### Still open
+
+- **Does the leak point toward the way down?** If the smell is stronger on the
+  hole that leads toward the exit, a dead-end maze is tracking a scent and
+  stays legible. If not, it is genuine search -- and then K has to stay small
+  or it is a slog. The root smell already exists in the fiction for exactly
+  this.
+- **The gadget.** The pitch has the floor generating when the robot is sent
+  in; today Descend generates it directly. It is a pacing gate, the diegetic
+  reason procedural space is procedural, and a thing he can upgrade -- and it
+  sits on the same seam floor types would.
+- **How fast K grows with depth**, which is the difference between a flavour
+  and a whole mode.

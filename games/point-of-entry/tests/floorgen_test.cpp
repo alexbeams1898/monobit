@@ -241,7 +241,8 @@ TEST_CASE("what emerges can actually move", "[bestiary]")
     em.tile_map.tiles.assign(100, TileMap::Tile{0, true});
 
     swarm::begin("config/swarm.json",
-                 {swarm::Seep{160.0f, 160.0f, "config/seeps/foundation_crack.json"}}, 0);
+                 {swarm::Seep{160.0f, 160.0f, "config/seeps/foundation_crack.json"}}, 0, {}, {},
+                 {true});
     for (int i = 0; i < 600 && em.registry().view<Vermin>().size() == 0; ++i)
         swarm::update(em, 0.016f);
     REQUIRE(em.registry().view<Vermin>().size() > 0);

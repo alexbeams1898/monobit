@@ -6,6 +6,7 @@
 #include "ecs/GameComponents.h"
 #include "ops/LogUtils.h"
 #include "renderers/FloaterRenderer.h"
+#include "systems/DescentSystem.h"
 #include "systems/PlayerSystem.h"
 
 #include <algorithm>
@@ -31,6 +32,12 @@ int priceAt(int level)
 
 } // namespace
 
+float rate()
+{
+    const int fronts = descent::frontsOpen();
+    return fronts <= 1 ? 1.0f : 1.0f + static_cast<float>(fronts - 1) * stats::frontBonus();
+}
+
 void credit(EntityManager& em, int worth)
 {
     if (worth <= 0)
@@ -39,7 +46,8 @@ void credit(EntityManager& em, int worth)
     const entt::entity p = player::entity();
     if (!reg.valid(p))
         return;
-    reg.get_or_emplace<Earnings>(p, Earnings{}).banked += worth;
+    reg.get_or_emplace<Earnings>(p, Earnings{}).banked +=
+        std::max(1, static_cast<int>(std::lround(static_cast<float>(worth) * rate())));
 }
 
 void update(EntityManager& em, float dt)
