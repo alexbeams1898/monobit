@@ -32,6 +32,10 @@ int fillIndex();
 void setFill(EntityManager& em, int index);
 
 int sipsLeft();
+
+// Put a remembered thermos back: what is in it, and how much of it is left.
+// Straight state, not the staging area's act -- resuming is not a rest.
+void restore(int fill, int sips);
 int sipsMax();
 
 // Drink one, if any remain and it would do anything. Returns true if he drank.

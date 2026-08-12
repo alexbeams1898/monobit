@@ -16,6 +16,7 @@
 #include "ops/LogUtils.h"
 #include "ops/NavUtils.h"
 #include "ops/RecordOps.h"
+#include "ops/SaveOps.h"
 #include "ops/SpawnUtils.h"
 #include "ops/ZoneUtils.h"
 #include "renderers/DebugPanelRenderer.h"
@@ -45,6 +46,7 @@
 #include "systems/TileMapRenderer.h"
 #include "systems/TravelSystem.h"
 #include "systems/WaveSystem.h"
+#include "utils/CrashHandler.h"
 
 #include <nlohmann/json.hpp>
 
@@ -226,6 +228,9 @@ void deathReturn(Engine& engine, EntityManager& em)
 // The world only ticks while it is being PLAYED: not behind the title, and not behind the
 // pause screen. Pausing is a thing the world does, not a phase the program enters, so it is a
 // flag checked here rather than a separate branch of the shell.
+std::string sWrittenArea;
+int sWrittenNode = -1;
+
 void gameUpdate(Engine& engine, EntityManager& em, double dt)
 {
     // Entering play swallows whatever the trigger was doing on the menu. Derived from the state
@@ -246,6 +251,19 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // left while he is already looking at the one he arrived in.
     descent::update(engine, em);
     zone::update(em, static_cast<float>(dt), travel::active() || sDeathBeat != DeathBeat::None);
+
+    // WRITTEN DOWN WHENEVER THE GROUND CHANGES. A room crossed, a floor dug or
+    // climbed: that is when the things a save keeps actually move, and it costs
+    // a small document. Quitting is therefore never a thing he has to remember
+    // to do -- there is no save verb anywhere in this game.
+    if (const std::string here = travel::currentArea();
+        here != sWrittenArea || descent::standing() != sWrittenNode)
+    {
+        sWrittenArea = here;
+        sWrittenNode = descent::standing();
+        if (sApp.world_built)
+            save_ops::persist(em);
+    }
 
     // The death beat owns the clock while it runs: the world holds its breath, the floor is
     // flooded back under cover of the black, and play resumes only once the fade-in ends.
@@ -412,22 +430,31 @@ void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, 
     capture::writeIfRequested(engine.windowWidth(), engine.windowHeight());
 }
 
-// A new job from the title. The authored world is home when the map declares
-// a start; the bare generated floor stays as the fallback while it does not.
+// GOING TO WORK, which is one act whether or not he has been before: put the
+// world up, then put back whatever a previous sitting wrote down. There is no
+// second entry point for "continue" because there is nothing for the player to
+// decide -- either the disk has a job on it or it does not.
 bool buildWorld(Engine& engine)
 {
     auto& em = engine.entityManager();
-    em.registry().clear(); // a previous job's world -- and its man; a new job is a new sheet
+    em.registry().clear();
     descent::reset();
     zone::reset();
-    record::reset(); // a new job is a new record
+    record::reset();
+    hud::reset(); // the readout remembers one sitting, and this is a new one
     loadConfigs();
     ensurePlayer(em, 0.0f, 0.0f);
+    if (save_ops::resume(engine, em))
+    {
+        sApp.world_built = true;
+        return true;
+    }
     if (const std::string start = area::startLevel("assets/maps/world.ldtk"); !start.empty())
     {
         if (travel::enter(engine, em, start))
         {
             sApp.world_built = true;
+            save_ops::persist(em); // a first morning is a job like any other
             return true;
         }
     }
@@ -440,8 +467,7 @@ void enactTitle(Engine& engine, title_screen::Action a)
 {
     switch (a)
     {
-    case title_screen::Action::NewJob:
-    case title_screen::Action::Continue: // no saves yet; both mean "go in" for now
+    case title_screen::Action::Work:
         if (buildWorld(engine))
             sApp.phase = app::Phase::Playing;
         break;
@@ -459,6 +485,10 @@ void enactTitle(Engine& engine, title_screen::Action a)
 
 void enactPause(Engine& engine, pause_screen::Action a)
 {
+    // Anything that ends the sitting writes first: leaving for the title and
+    // closing the game are both the last moment his work still exists in memory.
+    if (a == pause_screen::Action::Leave || a == pause_screen::Action::Quit)
+        save_ops::persist(engine.entityManager());
     switch (a)
     {
     case pause_screen::Action::Resume:
@@ -529,9 +559,9 @@ void gameRenderUI(Engine& engine, EntityManager& em)
     case app::Phase::Title:
     {
         // Keyboard first, then the mouse over what was drawn -- either may commit.
-        enactTitle(engine, title_screen::step(in.up, in.down, in.confirm, /*has_save=*/false));
+        enactTitle(engine, title_screen::step(in.up, in.down, in.confirm));
         if (sApp.phase == app::Phase::Title)
-            enactTitle(engine, title_screen::render(in.mouse, /*has_save=*/false, ww, wh));
+            enactTitle(engine, title_screen::render(in.mouse, ww, wh));
         break;
     }
     case app::Phase::Settings:
@@ -559,6 +589,10 @@ void gameRenderUI(Engine& engine, EntityManager& em)
         if (!sApp.paused && in.menu)
         {
             sApp.paused = true;
+            // Kills land between rooms and the record is the one thing that is
+            // his rather than the job's -- so stopping counts as a stopping
+            // point, and quitting from here can never cost him the morning.
+            save_ops::persist(em);
             pause_screen::reset();
         }
         else if (sApp.paused)
@@ -602,6 +636,11 @@ int main(int argc, char* argv[])
     // Going borderless bypasses the compositor and gets a real present. (Wayworn does the
     // same; prison-escape does not, and shows the same hitch.)
     engine.setWindowMode(Engine::WindowMode::BorderlessFullscreen);
+    // FIRST, before anything can fault: a crash that happens earlier than this
+    // is a crash nobody gets to read about.
+    engine::crash::install("poe");
+    poe::log().info("boot: crash handler armed");
+
     if (!engine.init("Point of Entry", 1280, 720))
         return 1;
 

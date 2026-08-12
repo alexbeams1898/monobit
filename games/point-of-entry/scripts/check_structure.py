@@ -28,8 +28,9 @@ SRC = ROOT / "src"
 
 ALLOWED_DIRS = {"ecs", "ops", "renderers", "screens", "systems"}
 # The spine: worldgen and future top-level loaders. Additions here should be rare and deliberate.
-TOP_HEADERS = {"FloorGen.h", "SpriteDefLoader.h", "AreaLoader.h"}
-TOP_SOURCES = {"FloorGen.cpp", "SpriteDefLoader.cpp", "AreaLoader.cpp", "main.cpp"}
+TOP_HEADERS = {"FloorGen.h", "SpriteDefLoader.h", "AreaLoader.h", "SaveGame.h"}
+TOP_SOURCES = {"FloorGen.cpp", "SpriteDefLoader.cpp", "AreaLoader.cpp", "SaveGame.cpp",
+               "main.cpp"}
 SUFFIX_RULES = {"systems": "System.h", "renderers": "Renderer.h"}
 # ops are operations or utilities and say which; screens are either a screen (XScreen, XDialog,
 # XMenu) or shared screen infrastructure (ScreenX) -- the reference uses both shapes.

@@ -23,6 +23,11 @@ const std::map<std::string, int>& all()
     return sKills;
 }
 
+void restore(const std::map<std::string, int>& tallies)
+{
+    sKills = tallies;
+}
+
 void reset()
 {
     sKills.clear();

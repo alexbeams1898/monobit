@@ -14,6 +14,7 @@
 #include "systems/PickupSystem.h"
 #include "systems/PlayerSystem.h"
 #include "systems/RewardSystem.h"
+#include "systems/WaveSystem.h"
 
 #include <algorithm>
 #include <cmath>
@@ -199,6 +200,10 @@ void reapDead(EntityManager& em, float dt)
         tools::creditKill(em);
         if (const auto* worth = reg.try_get<Worth>(e))
             reward::credit(em, worth->xp);
+        // The hole it came out of counts it too: a program advances by what he
+        // kills out of it, never by time spent or ground walked.
+        swarm::countKill(em, e);
+
         // The kill goes on the record by species -- the one ledger everything later reads. The
         // tally reaching the guide's entry gate is announced through the feed: the book fills
         // in the field, not silently behind the pause screen.

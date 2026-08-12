@@ -80,6 +80,9 @@ struct ActiveSeep
     SeepProgram program;
     int wave = 0;
     int to_emerge = 0;
+    // What is left of a wave he was part-way through when he last walked out.
+    // 0 = the next wave musters whole.
+    int owed = 0;
     float timer = 0.0f;
     bool emerging = false;
     bool done = false;
@@ -132,6 +135,10 @@ std::mt19937 sRng{std::random_device{}()};
 float sSurgeSpeed = 150.0f;
 float sSurgeDuration = 0.35f;
 unsigned sSpawnCounter = 0;
+
+// Per hole: how many of its program have been killed. The one thing a visit
+// leaves behind, and the reason walking out and back in is worth nothing.
+std::vector<int> sKilled;
 
 // Assault defaults at this depth, before any per-seep overrides.
 SeepProgram sBaseProgram;
@@ -416,16 +423,46 @@ void restart()
     {
         seep.wave = 0;
         seep.to_emerge = 0;
+        seep.owed = 0;
         seep.timer = seep.program.breath;
         seep.emerging = false;
         seep.done = seep.program.entries.empty();
     }
 }
 
+// Wind one hole's program forward past the creatures it has already lost. The
+// program is a fixed sequence, so `killed` is simply how far into it he got.
+//
+// This moves the hole's PLACE in its program and never its clock: arriving on a
+// floor is a fresh muster for every hole on it, so one carrying a remainder
+// still waits its breath alongside the untouched ones. Waves count from one --
+// the muster steps into the next before reading its size -- so `wave` is left
+// pointing at the one BEFORE whatever is still owed.
+void fastForward(ActiveSeep& seep, int killed)
+{
+    int left = killed;
+    int wave = 1;
+    for (; wave <= seep.program.waves; ++wave)
+    {
+        const int count = countForWave(seep.program, wave);
+        if (left < count)
+            break;
+        left -= count;
+    }
+    if (wave > seep.program.waves)
+    {
+        seep.wave = seep.program.waves;
+        seep.done = true;
+        return;
+    }
+    seep.wave = wave - 1;
+    seep.owed = countForWave(seep.program, wave) - left;
+}
+
 } // namespace
 
 void begin(const std::string& configPath, const std::vector<Seep>& seeps, int depth,
-           const std::vector<bool>& cleared)
+           const std::vector<bool>& cleared, const std::vector<int>& killed)
 {
     sDepth = depth;
     sCreatures.clear();
@@ -489,6 +526,14 @@ void begin(const std::string& configPath, const std::vector<Seep>& seeps, int de
         sSeeps.push_back(std::move(active));
     }
     restart();
+    sKilled.assign(sSeeps.size(), 0);
+    // What he has already taken out of each hole: the program resumes past it,
+    // so a floor revisited is the floor he left rather than the floor he found.
+    for (std::size_t i = 0; i < sSeeps.size() && i < killed.size(); ++i)
+    {
+        sKilled[i] = killed[i];
+        fastForward(sSeeps[i], killed[i]);
+    }
     // Spent holes stay spent across visits -- the source does not re-press a
     // hole whose assault it already exhausted.
     for (std::size_t i = 0; i < sSeeps.size() && i < cleared.size(); ++i)
@@ -506,6 +551,21 @@ bool seepCleared(const EntityManager& em, int seepIndex)
     if (seepIndex < 0 || seepIndex >= static_cast<int>(sSeeps.size()))
         return false;
     return sSeeps[static_cast<std::size_t>(seepIndex)].done && livingFrom(em, seepIndex) == 0;
+}
+
+void countKill(const EntityManager& em, entt::entity dead)
+{
+    const auto* source = em.registry().try_get<SeepSource>(dead);
+    if (source == nullptr || source->index < 0)
+        return; // a trickle's creature answers to no hole's program
+    const auto i = static_cast<std::size_t>(source->index);
+    if (i < sKilled.size())
+        ++sKilled[i];
+}
+
+const std::vector<int>& progress()
+{
+    return sKilled;
 }
 
 void spawnOne(EntityManager& em, const std::string& creaturePath, float x, float y)
@@ -562,7 +622,8 @@ void update(EntityManager& em, float dt)
             seep.done = true;
             continue;
         }
-        seep.to_emerge = countForWave(seep.program, seep.wave);
+        seep.to_emerge = seep.owed > 0 ? seep.owed : countForWave(seep.program, seep.wave);
+        seep.owed = 0;
         seep.emerging = true;
         seep.timer = 0.0f;
         poe::log().info("swarm: a seep begins wave {} of {} ({} of them)", seep.wave,

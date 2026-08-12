@@ -281,6 +281,18 @@ void enemyBars(Engine& engine, const EntityManager& em, float camX, float camY, 
 
 } // namespace
 
+// The display's memory of the pocket belongs to ONE SITTING. A job put back from disk arrives
+// with its total already earned, and a pump that remembered the last total it drew would read
+// the whole difference as income and animate it in -- money he earned yesterday, pouring in
+// again because the renderer had no way to know a world had been torn down under it.
+void reset()
+{
+    sLastBanked = -1;
+    sPending = 0;
+    sHold = 0.0f;
+    sPumpCarry = 0.0f;
+}
+
 void renderWorldOverlays(Engine& engine, EntityManager& em, float camX, float camY, int zoom)
 {
     enemyBars(engine, em, camX, camY, zoom);

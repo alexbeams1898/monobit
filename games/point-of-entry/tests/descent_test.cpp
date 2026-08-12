@@ -179,3 +179,100 @@ TEST_CASE("the work state asks only whether anything can reach him")
         REQUIRE_FALSE(zone::combat());
     }
 }
+
+// KILLING IS THE ONLY PROGRESS. What a hole has lost is what advances it, so walking out of a
+// floor and back in -- or quitting and coming back -- resumes the assault rather than
+// re-running it. A creature that emerged and escaped was not killed, so it comes up again.
+TEST_CASE("a hole resumes past what he has killed out of it", "[descent]")
+{
+    EntityManager em;
+
+    SECTION("a hole nothing has been taken from starts at the beginning")
+    {
+        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {});
+        CHECK(swarm::phase() != swarm::Phase::Cleared);
+        CHECK(swarm::remaining(em) == 0); // nothing has surfaced yet
+    }
+
+    SECTION("a hole emptied of its whole program is spent, and the floor with it")
+    {
+        // Far more than any program holds: both holes have nothing left to send.
+        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {100000, 100000});
+        CHECK(swarm::seepCleared(em, 0));
+        CHECK(swarm::seepCleared(em, 1));
+        CHECK(swarm::phase() == swarm::Phase::Cleared);
+    }
+
+    SECTION("a hole part-way through is neither spent nor restarted")
+    {
+        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {3, 0});
+        CHECK_FALSE(swarm::seepCleared(em, 0));
+        CHECK(swarm::phase() != swarm::Phase::Cleared);
+    }
+
+    SECTION("progress is reported per hole, and begins empty")
+    {
+        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {});
+        REQUIRE(swarm::progress().size() == 2);
+        CHECK(swarm::progress()[0] == 0);
+        CHECK(swarm::progress()[1] == 0);
+    }
+
+    SECTION("a remembered tally is what the hole resumes with")
+    {
+        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {4, 7});
+        REQUIRE(swarm::progress().size() == 2);
+        CHECK(swarm::progress()[0] == 4);
+        CHECK(swarm::progress()[1] == 7);
+    }
+}
+
+// The arithmetic itself, watched rather than asserted about: run the floor's clock and count
+// what actually surfaces. Both of the fast-forward's early bugs -- waves counted from zero, and
+// a resumed hole skipping the breath every other hole waits -- were invisible to a test that
+// only asked whether a hole was spent.
+namespace
+{
+// Run one hole's clock until it has finished mustering a wave, and report how many it sent.
+int surfacedFrom(EntityManager& em, int hole, float seconds = 30.0f)
+{
+    for (float t = 0.0f; t < seconds; t += 0.05f)
+        swarm::update(em, 0.05f);
+    int n = 0;
+    for (auto [e, vermin, source] : em.registry().view<Vermin, SeepSource>().each())
+        if (source.index == hole)
+            ++n;
+    return n;
+}
+} // namespace
+
+TEST_CASE("a resumed hole owes the remainder, then whole waves", "[descent]")
+{
+    const std::vector<swarm::Seep> one{
+        swarm::Seep{160.0f, 160.0f, "config/seeps/foundation_crack.json"}};
+
+    int firstWave = 0;
+    {
+        EntityManager em;
+        swarm::begin("config/swarm.json", one, 0, {}, {});
+        firstWave = surfacedFrom(em, 0);
+        REQUIRE(firstWave > 0); // the floor must actually press, or nothing below means anything
+    }
+
+    SECTION("part-way through a wave, only the rest of THAT wave comes up")
+    {
+        EntityManager em;
+        const int taken = firstWave / 2;
+        REQUIRE(taken > 0);
+        swarm::begin("config/swarm.json", one, 0, {}, {taken});
+        REQUIRE(surfacedFrom(em, 0) == firstWave - taken);
+    }
+
+    SECTION("a wave killed to the last comes back as the NEXT wave, whole")
+    {
+        EntityManager em;
+        swarm::begin("config/swarm.json", one, 0, {}, {firstWave});
+        // The next wave is a wave of its own size -- never a remainder of the one before it.
+        REQUIRE(surfacedFrom(em, 0) >= firstWave);
+    }
+}

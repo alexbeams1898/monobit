@@ -34,19 +34,14 @@ constexpr float kPoeSize = 32.0f;
 
 // One dug floor. The seed rebuilds its exact layout; `cleared` is the state
 // worth keeping between visits.
+// A floor's SPACE comes from one of two places and nothing else about it
+// differs: an authored level, or a seed that rebuilds the same generated layout
+// every visit. What persists is the Floor; the rest is rebuilt from it, which
+// is why it lives out here rather than in the saved half.
 struct Node
 {
-    // A floor's SPACE comes from one of two places and nothing else about it
-    // differs: an authored level named here, or a seed that rebuilds the same
-    // generated layout every visit.
-    std::string area;
-    unsigned seed = 0; // 0 until first generation picks one
-    int depth = 0;
-    int parent = -1;
-    int parent_hole = -1;
-    std::vector<int> child;         // per hole: node index, -1 = never dug
-    std::vector<bool> cleared;      // per hole: assault spent?
-    std::vector<swarm::Seep> seeps; // rebuilt every generation, same every time
+    Floor floor;
+    std::vector<swarm::Seep> seeps; // rebuilt every arrival, same every time
     std::vector<std::string> leak;  // per hole: the vein's preview creature
 };
 
@@ -59,7 +54,7 @@ bool unfinished(int nodeId)
 {
     if (nodeId < 0 || nodeId >= static_cast<int>(sNodes.size()))
         return false;
-    for (const bool spent : sNodes[static_cast<std::size_t>(nodeId)].cleared)
+    for (const bool spent : sNodes[static_cast<std::size_t>(nodeId)].floor.cleared)
         if (!spent)
             return true;
     return false;
@@ -72,7 +67,7 @@ bool workBehind(int hole)
 {
     if (sCurrent < 0 || hole < 0)
         return false;
-    const auto& child = sNodes[static_cast<std::size_t>(sCurrent)].child;
+    const auto& child = sNodes[static_cast<std::size_t>(sCurrent)].floor.child;
     if (hole >= static_cast<int>(child.size()))
         return false;
     const int id = child[static_cast<std::size_t>(hole)];
@@ -199,7 +194,8 @@ void restoreSpentHoles(EntityManager& em, int nodeId)
     for (const auto [e, art] : reg.view<SeepArt>().each())
     {
         const auto i = static_cast<std::size_t>(art.hole);
-        if (art.hole < 0 || i >= node.cleared.size() || !node.cleared[i] || reg.all_of<DigSite>(e))
+        if (art.hole < 0 || i >= node.floor.cleared.size() || !node.floor.cleared[i] ||
+            reg.all_of<DigSite>(e))
             continue;
         DigSite dig;
         dig.radius = siteFeel().reach;
@@ -212,31 +208,10 @@ void restoreSpentHoles(EntityManager& em, int nodeId)
     }
 }
 
-// Put him somewhere, the way a cut does it: the camera goes with him and the
-// previous position goes too, so nothing interpolates across the gap.
-void standAt(EntityManager& em, float x, float y)
-{
-    auto& reg = em.registry();
-    const entt::entity p = player::entity();
-    if (!reg.valid(p))
-        return;
-    auto& t = reg.get<Transform>(p);
-    t.x = x;
-    t.y = y;
-    reg.get<PreviousTransform>(p) = PreviousTransform{x, y};
-    if (auto* cam = reg.try_get<Camera>(p))
-    {
-        cam->x = x;
-        cam->y = y;
-        cam->prev_x = x;
-        cam->prev_y = y;
-    }
-}
-
 int indexOfArea(const std::string& area)
 {
     for (std::size_t i = 0; i < sNodes.size(); ++i)
-        if (sNodes[i].area == area)
+        if (sNodes[i].floor.area == area)
             return static_cast<int>(i);
     return -1;
 }
@@ -268,7 +243,7 @@ int adoptArea(EntityManager& em, const std::string& area)
     if (id < 0)
     {
         Node node;
-        node.area = area;
+        node.floor.area = area;
         sNodes.push_back(std::move(node));
         id = static_cast<int>(sNodes.size()) - 1;
     }
@@ -294,13 +269,15 @@ int adoptArea(EntityManager& em, const std::string& area)
         node.leak.push_back(kind.first_creature);
         reg.emplace_or_replace<SeepArt>(holes[i], SeepArt{static_cast<int>(i)});
     }
-    node.child.resize(node.seeps.size(), -1);
-    node.cleared.resize(node.seeps.size(), false);
+    node.floor.child.resize(node.seeps.size(), -1);
+    node.floor.cleared.resize(node.seeps.size(), false);
+    node.floor.killed.resize(node.seeps.size(), 0);
 
     restoreSpentHoles(em, id);
-    swarm::begin("config/swarm.json", node.seeps, node.depth, node.cleared);
+    swarm::begin("config/swarm.json", node.seeps, node.floor.depth, node.floor.cleared,
+                 node.floor.killed);
     poe::log().info("descent: '{}' is a floor -- {} hole(s) at depth {}", area, node.seeps.size(),
-                    node.depth);
+                    node.floor.depth);
     return id;
 }
 
@@ -346,13 +323,13 @@ bool buildNode(EntityManager& em, int nodeId, float& spawnX, float& spawnY, floa
     em.tile_config = TileConfig{}; // the floor's own tile vocabulary
 
     const floorgen::Floor floor =
-        floorgen::generate(em, "config/floor.json", "config/rooms", node.seed);
+        floorgen::generate(em, "config/floor.json", "config/rooms", node.floor.seed);
     if (!floor.ok)
     {
-        poe::log().error("descent: could not build floor at depth {}", node.depth);
+        poe::log().error("descent: could not build floor at depth {}", node.floor.depth);
         return false;
     }
-    node.seed = floor.seed; // first generation picks; every later visit repeats
+    node.floor.seed = floor.seed; // first generation picks; every later visit repeats
     spawnX = floor.spawn_x;
     spawnY = floor.spawn_y;
 
@@ -407,8 +384,9 @@ bool buildNode(EntityManager& em, int nodeId, float& spawnX, float& spawnY, floa
             swarm::Seep{seepX, seepY, kind != nullptr ? kind->path : std::string{}});
         node.leak.push_back(kind != nullptr ? kind->first_creature : std::string{});
     }
-    node.child.resize(node.seeps.size(), -1);
-    node.cleared.resize(node.seeps.size(), false);
+    node.floor.child.resize(node.seeps.size(), -1);
+    node.floor.cleared.resize(node.seeps.size(), false);
+    node.floor.killed.resize(node.seeps.size(), 0);
 
     // The way back up, at the way in. No staging area spawns with a floor --
     // setting the kit down is HIS act, placeable when that system lands.
@@ -434,7 +412,8 @@ bool buildNode(EntityManager& em, int nodeId, float& spawnX, float& spawnY, floa
     }
 
     restoreSpentHoles(em, nodeId);
-    swarm::begin("config/swarm.json", node.seeps, node.depth, node.cleared);
+    swarm::begin("config/swarm.json", node.seeps, node.floor.depth, node.floor.cleared,
+                 node.floor.killed);
     return true;
 }
 
@@ -443,52 +422,68 @@ bool buildNode(EntityManager& em, int nodeId, float& spawnX, float& spawnY, floa
 // Arriving on an authored floor is TRAVEL, not generation -- the map already
 // holds the space, and the level's own start is where he lands unless the
 // caller names the spot he is climbing out at.
-bool enterAuthored(Engine& engine, EntityManager& em, int nodeId, bool atWayIn, float x, float y)
+// Standing at one of a floor's holes -- climbing out of it, in front of its
+// mouth. Asked only AFTER the floor is built: a hole's position is rebuilt on
+// arrival, so a floor nobody has walked into this sitting has none yet, and a
+// caller that worked one out in advance would be reading a floor that does not
+// exist. Returns false when the hole is not one this floor has.
+bool standAtHole(EntityManager& em, int nodeId, int hole)
 {
-    const std::string area = sNodes[static_cast<std::size_t>(nodeId)].area;
+    const auto& seeps = sNodes[static_cast<std::size_t>(nodeId)].seeps;
+    if (hole < 0 || hole >= static_cast<int>(seeps.size()))
+        return false;
+    const auto& at = seeps[static_cast<std::size_t>(hole)];
+    player::standAt(em, at.x, at.y + 24.0f);
+    return true;
+}
+
+bool enterAuthored(Engine& engine, EntityManager& em, int nodeId, int atHole)
+{
+    const std::string area = sNodes[static_cast<std::size_t>(nodeId)].floor.area;
     if (!travel::enter(engine, em, area))
     {
         poe::log().error("descent: could not climb out into '{}'", area);
         return false;
     }
     sCurrent = adoptArea(em, area);
-    if (!atWayIn)
-        standAt(em, x, y);
-    return sCurrent >= 0;
+    if (sCurrent < 0)
+        return false;
+    standAtHole(em, sCurrent, atHole); // otherwise the level's own start stands
+    return true;
 }
 
-bool enterNode(Engine& engine, EntityManager& em, int nodeId, bool atWayIn, float x, float y)
+// `atHole` names the hole he arrives at, or -1 for the floor's own way in.
+bool enterNode(Engine& engine, EntityManager& em, int nodeId, int atHole)
 {
-    if (!sNodes[static_cast<std::size_t>(nodeId)].area.empty())
-        return enterAuthored(engine, em, nodeId, atWayIn, x, y);
+    if (!sNodes[static_cast<std::size_t>(nodeId)].floor.area.empty())
+        return enterAuthored(engine, em, nodeId, atHole);
     float sx = 0.0f;
     float sy = 0.0f;
     float ux = 0.0f;
     float uy = 0.0f;
     if (!buildNode(em, nodeId, sx, sy, ux, uy))
         return false;
-    if (atWayIn)
+    // Arriving IN FRONT of the way back up -- beside the passage, not on it, so
+    // no prompt greets the landing.
+    const auto ts = static_cast<float>(em.tile_map.tile_size);
+    float x = ux;
+    float y = uy + ts;
+    if (!world::walkable(em, x, y))
     {
-        // Descending arrives IN FRONT of the way back up -- beside the
-        // passage, not on it, so no prompt greets the landing.
-        const auto ts = static_cast<float>(em.tile_map.tile_size);
-        x = ux;
-        y = uy + ts;
-        if (!world::walkable(em, x, y))
-        {
-            x = sx;
-            y = sy;
-        }
+        x = sx;
+        y = sy;
     }
     TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
     em.flow_field.last_player_col = -1;
     em.flow_field.last_player_row = -1;
     auto& reg = em.registry();
     const entt::entity p = player::entity();
-    standAt(em, x, y);
+    if (!standAtHole(em, nodeId, atHole))
+        player::standAt(em, x, y);
     sCurrent = nodeId;
     const Node& here = sNodes[static_cast<std::size_t>(nodeId)];
-    poe::log().info("descent: at depth {} (node {}, seed {})", here.depth, nodeId, here.seed);
+    poe::log().info("descent: at depth {} (node {}, seed {})", here.floor.depth, nodeId,
+                    here.floor.seed);
     return true;
 }
 
@@ -514,6 +509,42 @@ const SiteFeel& siteFeel()
     return feel;
 }
 
+std::vector<Floor> snapshot()
+{
+    std::vector<Floor> out;
+    out.reserve(sNodes.size());
+    for (const auto& node : sNodes)
+        out.push_back(node.floor);
+    return out;
+}
+
+int standing()
+{
+    return sCurrent;
+}
+
+void restore(const std::vector<Floor>& floors)
+{
+    sNodes.clear();
+    sNodes.reserve(floors.size());
+    for (const auto& floor : floors)
+    {
+        Node node;
+        node.floor = floor;
+        sNodes.push_back(std::move(node));
+    }
+    sCurrent = -1; // nowhere until he is stood somewhere
+}
+
+bool stand(Engine& engine, EntityManager& em, int node)
+{
+    if (node < 0 || node >= static_cast<int>(sNodes.size()))
+        return false;
+    // At the floor's own way in, the same as arriving: what it was mid-fight is
+    // not kept, and its unfinished holes muster again.
+    return enterNode(engine, em, node, /*atHole=*/-1);
+}
+
 void reset()
 {
     sNodes.clear();
@@ -530,30 +561,30 @@ bool dig(Engine& engine, EntityManager& em, int hole)
     if (sCurrent < 0)
         return false;
     const auto cur = static_cast<std::size_t>(sCurrent);
-    if (hole < 0 || hole >= static_cast<int>(sNodes[cur].child.size()) ||
-        !sNodes[cur].cleared[static_cast<std::size_t>(hole)])
+    if (hole < 0 || hole >= static_cast<int>(sNodes[cur].floor.child.size()) ||
+        !sNodes[cur].floor.cleared[static_cast<std::size_t>(hole)])
     {
         poe::log().error("descent: hole {} is not diggable", hole);
         return false;
     }
-    int childId = sNodes[cur].child[static_cast<std::size_t>(hole)];
+    int childId = sNodes[cur].floor.child[static_cast<std::size_t>(hole)];
     if (childId < 0)
     {
         // Indexed access on BOTH sides of the push: growing the vector moves
         // every node, and a reference held across it dangles.
         Node child;
-        child.depth = sNodes[cur].depth + 1;
-        child.parent = sCurrent;
-        child.parent_hole = hole;
+        child.floor.depth = sNodes[cur].floor.depth + 1;
+        child.floor.parent = sCurrent;
+        child.floor.parent_hole = hole;
         sNodes.push_back(child);
         childId = static_cast<int>(sNodes.size()) - 1;
-        sNodes[cur].child[static_cast<std::size_t>(hole)] = childId;
+        sNodes[cur].floor.child[static_cast<std::size_t>(hole)] = childId;
     }
     const int fromId = sCurrent;
-    if (enterNode(engine, em, childId, /*atWayIn=*/true, 0.0f, 0.0f))
+    if (enterNode(engine, em, childId, /*atHole=*/-1))
         return true;
     // A child that cannot build must not strand him in a torn-down world.
-    return enterNode(engine, em, fromId, /*atWayIn=*/true, 0.0f, 0.0f);
+    return enterNode(engine, em, fromId, /*atHole=*/-1);
 }
 
 bool ascend(Engine& engine, EntityManager& em)
@@ -561,11 +592,11 @@ bool ascend(Engine& engine, EntityManager& em)
     if (sCurrent < 0)
         return false;
     const Node& node = sNodes[static_cast<std::size_t>(sCurrent)];
-    if (node.parent < 0)
+    if (node.floor.parent < 0)
         return false; // the top floor is authored; there is nothing above it to climb to
-    const Node& parent = sNodes[static_cast<std::size_t>(node.parent)];
-    const swarm::Seep at = parent.seeps[static_cast<std::size_t>(node.parent_hole)];
-    return enterNode(engine, em, node.parent, /*atWayIn=*/false, at.x, at.y + 24.0f);
+    // The hole, not a place: where it is comes from the parent once the parent
+    // is standing, which after a resume is the first time it has existed.
+    return enterNode(engine, em, node.floor.parent, node.floor.parent_hole);
 }
 
 void refreshLeaks(EntityManager& em)
@@ -579,16 +610,21 @@ void update(Engine& engine, EntityManager& em)
     (void)engine;
     syncArea(em);
     refreshLeaks(em);
+    // The floor keeps what its holes have lost, taken from the swarm every
+    // frame rather than at some exit: quitting is an exit nobody gets to run
+    // code on, so the tree must already be right when it happens.
+    if (sCurrent >= 0)
+        sNodes[static_cast<std::size_t>(sCurrent)].floor.killed = swarm::progress();
     if (sCurrent < 0)
         return;
     Node& node = sNodes[static_cast<std::size_t>(sCurrent)];
-    for (std::size_t i = 0; i < node.cleared.size(); ++i)
+    for (std::size_t i = 0; i < node.floor.cleared.size(); ++i)
     {
-        if (node.cleared[i] || !swarm::seepCleared(em, static_cast<int>(i)))
+        if (node.floor.cleared[i] || !swarm::seepCleared(em, static_cast<int>(i)))
             continue;
         // The hole is spent: from spawner to way down, leaking its preview.
         // The hole's own art carries the component -- no second sprite.
-        node.cleared[i] = true;
+        node.floor.cleared[i] = true;
         for (const auto [e, art] : em.registry().view<SeepArt>().each())
             if (art.hole == static_cast<int>(i))
             {

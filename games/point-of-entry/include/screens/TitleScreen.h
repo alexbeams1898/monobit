@@ -3,7 +3,9 @@
 #include "screens/ScreenInput.h"
 #include "screens/ScreenStyle.h"
 
-// What greets you. Take the job, carry on with one already started, settings, or leave.
+// What greets you. ONE way in: whether a job is waiting is the save's business, not a question
+// to put to the player -- a menu that makes him choose between starting and continuing is a
+// menu asking him to know what the disk knows.
 //
 // Pure over its inputs: it draws, and it reports what was chosen. The caller decides what
 // that means (build the world, load a save, quit). Keyboard and mouse are interchangeable.
@@ -13,8 +15,7 @@ namespace title_screen
 enum class Action
 {
     None,
-    NewJob,   // build a fresh house and go in
-    Continue, // pick up where the last one left off
+    Work, // back into the job -- resumed if there is one, begun if there is not
     Settings,
     Quit
 };
@@ -22,12 +23,11 @@ enum class Action
 // Put the cursor back to the top. Call on entering the phase, so it never reopens mid-list.
 void reset();
 
-// One frame of keyboard. `has_save` false DISABLES Continue -- the entry stays where it is,
-// visibly not for you, so the menu never changes shape under the hand.
-Action step(bool up, bool down, bool confirm, bool has_save);
+// One frame of keyboard.
+Action step(bool up, bool down, bool confirm);
 
 // Draw, and resolve the mouse against what was drawn (hover moves the cursor, click commits).
 // Window-space, native resolution.
-Action render(const shell_input::Mouse& mouse, bool has_save, int windowW, int windowH);
+Action render(const shell_input::Mouse& mouse, int windowW, int windowH);
 
 } // namespace title_screen

@@ -64,6 +64,12 @@ const std::vector<Fill>& fills()
     return sFills;
 }
 
+void restore(int fill, int sips)
+{
+    sFillIndex = sFills.empty() ? 0 : std::clamp(fill, 0, static_cast<int>(sFills.size()) - 1);
+    sSips = std::clamp(sips, 0, sSipsMax);
+}
+
 int fillIndex()
 {
     return sFillIndex;

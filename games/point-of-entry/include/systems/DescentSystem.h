@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 class Engine;
 class EntityManager;
@@ -22,6 +23,34 @@ class EntityManager;
 // the tree survives everything but leaving the job.
 namespace descent
 {
+
+// WHAT A FLOOR IS once the world it built is gone -- everything needed to make
+// it again, and nothing that can be derived. Its space (an authored level's
+// name, or a seed), where it sits in the tree, and which of its holes are
+// spent. Holes, art and leaks all rebuild from the space, so they are absent
+// here on purpose: this struct IS the save's shape for the descent, so a field
+// that does not persist must not be able to appear in it.
+struct Floor
+{
+    std::string area; // an authored level, or empty for generated space
+    unsigned seed = 0;
+    int depth = 0;
+    int parent = -1;
+    int parent_hole = -1;
+    std::vector<int> child;    // per hole: node index, -1 = never dug
+    std::vector<bool> cleared; // per hole: assault spent?
+    std::vector<int> killed;   // per hole: how much of its program he has taken
+};
+
+// The whole tree, and where in it he stands (-1 = nowhere). What a save keeps.
+std::vector<Floor> snapshot();
+int standing();
+
+// Put a remembered tree back, then walk into `standing` -- the floor rebuilds
+// from its space and its unfinished holes re-muster, which is what makes
+// resuming mid-dig the same act as arriving.
+void restore(const std::vector<Floor>& floors);
+bool stand(Engine& engine, EntityManager& em, int node);
 
 // How a way down behaves: how close he must stand to be offered it, and how
 // often an unfinished floor sends one up through it. From the dig's config, so

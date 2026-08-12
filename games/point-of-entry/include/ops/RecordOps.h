@@ -18,4 +18,7 @@ const std::map<std::string, int>& all();
 
 void reset();
 
+// Put a remembered ledger back, replacing whatever is counted now.
+void restore(const std::map<std::string, int>& tallies);
+
 } // namespace record

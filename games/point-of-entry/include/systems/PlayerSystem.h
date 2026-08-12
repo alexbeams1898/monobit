@@ -25,6 +25,12 @@ entt::entity entity();
 // True once per E press: the interact edge, consumed by whoever acts on it.
 bool consumeInteract();
 
+// Put him somewhere the way a cut does it: the camera goes with him and his
+// previous position goes too, so nothing interpolates across the gap. Every
+// teleport in the game -- a way down, a way up, a resumed save -- lands here,
+// because a jump that forgets one of the three shows as a smear or a lurch.
+void standAt(EntityManager& em, float x, float y);
+
 // The direction he is PRESSING this tick, normalized; zero when idle. Doors
 // read this because a wall can stop his feet short of a threshold, but not
 // his intent to walk through it.

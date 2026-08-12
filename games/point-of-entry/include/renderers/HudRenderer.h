@@ -24,4 +24,8 @@ void renderWorldOverlays(Engine& engine, EntityManager& em, float camX, float ca
 // the dev panel, a room where nothing can reach him -- gets the pointer back.
 void cursorForPhase(bool crosshair);
 
+// Forget what the HUD remembers between sittings. Called when a job is put up, so a total
+// loaded from disk is a total rather than a payday.
+void reset();
+
 } // namespace hud

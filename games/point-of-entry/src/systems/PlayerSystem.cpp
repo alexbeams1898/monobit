@@ -155,6 +155,25 @@ entt::entity entity()
     return sPlayer;
 }
 
+void standAt(EntityManager& em, float x, float y)
+{
+    auto& reg = em.registry();
+    const entt::entity p = entity();
+    if (!reg.valid(p))
+        return;
+    auto& at = reg.get<Transform>(p);
+    at.x = x;
+    at.y = y;
+    reg.get<PreviousTransform>(p) = PreviousTransform{x, y};
+    if (auto* cam = reg.try_get<Camera>(p))
+    {
+        cam->x = x;
+        cam->y = y;
+        cam->prev_x = x;
+        cam->prev_y = y;
+    }
+}
+
 bool consumeInteract()
 {
     const bool was = sInteractPressed;

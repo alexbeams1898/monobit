@@ -3,6 +3,8 @@
 #include <string>
 #include <vector>
 
+#include <entt/fwd.hpp>
+
 class EntityManager;
 
 // The holes, each running its OWN program.
@@ -44,7 +46,15 @@ enum class Phase
 // already exhausted on an earlier visit; the source does not re-press a
 // finished hole.
 void begin(const std::string& configPath, const std::vector<Seep>& seeps, int depth,
-           const std::vector<bool>& cleared = {});
+           const std::vector<bool>& cleared = {}, const std::vector<int>& killed = {});
+
+// KILLING IS THE ONLY PROGRESS. A hole's program is a fixed number of creatures;
+// what has been killed out of it is remembered per hole and the program resumes
+// past it, so leaving a floor -- by the stairs, by dying, by quitting -- costs
+// nothing and gains nothing. Anything that emerged and was NOT killed simply
+// comes up again, which is what makes walking out and back in worth no XP.
+void countKill(const EntityManager& em, entt::entity dead);
+const std::vector<int>& progress();
 
 // Has this hole's program exhausted with nothing of its output left standing?
 // The moment it flips true, the hole stops being a spawner and can become a
