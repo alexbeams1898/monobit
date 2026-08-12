@@ -167,6 +167,10 @@ void headingCentered(const std::string& s, float cx, float y, const Color& c);
 void inkText(const std::string& s, float x, float y, const Color& c);
 void inkTextCentered(const std::string& s, float cx, float y, const Color& c);
 
+// A row that DESTROYS something, in the game's alarm colour. Its own idiom rather than a flag
+// on entry(), so the look of an irreversible choice is decided once.
+Rect entryFinal(const std::string& label, float cx, float y, bool selected);
+
 // One row of a menu, centred, returning the rect it occupied so the caller can hit-test the
 // mouse against exactly what was drawn.
 Rect entry(const std::string& label, float cx, float y, bool selected, bool enabled);

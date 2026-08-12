@@ -141,19 +141,25 @@ float pageStop(const Rect& row, float t)
     return row.x + row.w * t;
 }
 
+// The marks a lit link wears, around a label already drawn at x. Shared, so a
+// red link and a plain one are recognisably the same thing.
+void marks(const std::string& s, float x, float y)
+{
+    // The marks sit OUTSIDE the label's own width, so lighting a row never nudges its words.
+    const float gap = lineHeight() * kMarkGap;
+    const float open = UIRenderer::measureText(sBody, "[").width;
+    text("[", x - gap - open, y, kAccent);
+    text("]", x + UIRenderer::measureText(sBody, s).width + gap, y, kAccent);
+}
+
 void link(const std::string& s, float x, float y, LinkState state)
 {
     if (sBody < 0)
         return;
     text(s, x, y,
          state == LinkState::Faint ? kTextDim : (state == LinkState::Hot ? kTextHot : kText));
-    if (state != LinkState::Hot)
-        return;
-    // The marks sit OUTSIDE the label's own width, so lighting a row never nudges its words.
-    const float gap = lineHeight() * kMarkGap;
-    const float open = UIRenderer::measureText(sBody, "[").width;
-    text("[", x - gap - open, y, kAccent);
-    text("]", x + UIRenderer::measureText(sBody, s).width + gap, y, kAccent);
+    if (state == LinkState::Hot)
+        marks(s, x, y);
 }
 
 void linkCentered(const std::string& s, float cx, float y, LinkState state)
@@ -276,6 +282,19 @@ void headingCentered(const std::string& s, float cx, float y, const Color& c)
     const float x = cx - UIRenderer::measureText(sHeading, s).width * 0.5f;
     UIRenderer::drawText(sHeading, s, x + 2.0f, y + 2.0f, kShadow);
     UIRenderer::drawText(sHeading, s, x, y, c);
+}
+
+Rect entryFinal(const std::string& label, float cx, float y, bool selected)
+{
+    if (sBody < 0)
+        return {};
+    // Red, which nothing else on a menu wears: the one row that cannot be taken
+    // back should not read like the rows that can.
+    const float x = cx - UIRenderer::measureText(sBody, label).width * 0.5f;
+    text(label, x, y, selected ? kAccent : withAlpha(kAccent, 0.65f));
+    if (selected)
+        marks(label, x, y);
+    return pageRow(cx, y);
 }
 
 Rect entry(const std::string& label, float cx, float y, bool selected, bool enabled)

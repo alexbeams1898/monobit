@@ -9,6 +9,7 @@ add_library(poe-systems STATIC
     src/renderers/DebugPanelRenderer.cpp
     src/screens/PauseScreen.cpp
     src/screens/StagingScreen.cpp
+    src/screens/SettingsScreen.cpp
     src/screens/ScreenStyle.cpp
     src/screens/ScreenInput.cpp
     src/systems/ChaseSystem.cpp

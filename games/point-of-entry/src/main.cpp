@@ -27,6 +27,7 @@
 #include "screens/PauseScreen.h"
 #include "screens/ScreenInput.h"
 #include "screens/ScreenStyle.h"
+#include "screens/SettingsScreen.h"
 #include "screens/StagingScreen.h"
 #include "screens/TitleScreen.h"
 #include "systems/AimSystem.h"
@@ -474,6 +475,7 @@ void enactTitle(Engine& engine, title_screen::Action a)
     case title_screen::Action::Settings:
         sApp.settings_return_to = app::Phase::Title;
         sApp.phase = app::Phase::Settings;
+        settings_screen::reset();
         break;
     case title_screen::Action::Quit:
         engine.requestQuit();
@@ -497,6 +499,7 @@ void enactPause(Engine& engine, pause_screen::Action a)
     case pause_screen::Action::Settings:
         sApp.settings_return_to = app::Phase::Playing;
         sApp.phase = app::Phase::Settings;
+        settings_screen::reset();
         break;
     case pause_screen::Action::Leave:
         sApp.paused = false;
@@ -565,17 +568,22 @@ void gameRenderUI(Engine& engine, EntityManager& em)
         break;
     }
     case app::Phase::Settings:
-        // No settings surface yet: anything that leaves goes back where it came from.
-        screen_style::dim(ww, wh);
-        screen_style::headingCentered("SETTINGS", static_cast<float>(ww) * 0.5f,
-                                      static_cast<float>(wh) * 0.35f, screen_style::kText);
-        screen_style::textCentered(
-            "nothing to set yet -- Esc goes back", static_cast<float>(ww) * 0.5f,
-            static_cast<float>(wh) * 0.35f + screen_style::lineHeight() * 2.0f,
-            screen_style::kTextDim);
-        if (in.back || in.confirm)
+    {
+        // Erasing the file is offered from the TITLE only: there is no job running there to
+        // write itself straight back over the erasure.
+        const bool fromTitle = sApp.settings_return_to == app::Phase::Title;
+        settings_screen::Action a = settings_screen::step(in.up, in.down, in.confirm, in.back);
+        if (a == settings_screen::Action::None)
+            a = settings_screen::render(in.mouse, fromTitle, ww, wh);
+        if (a == settings_screen::Action::Forget)
+        {
+            save_ops::forget();
+            poe::log().info("save: the file is closed -- nothing to go back to");
+        }
+        if (a == settings_screen::Action::Back)
             sApp.phase = sApp.settings_return_to;
         break;
+    }
     case app::Phase::Playing:
         if (sApp.staging)
         {
