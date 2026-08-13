@@ -211,8 +211,9 @@ TEST_CASE("every floor type parses and keeps its promises", "[bestiary]")
         REQUIRE(!pools.empty());
         for (const auto& dir : pools)
             CHECK(std::filesystem::is_directory(dir));
-        // A run sideways that never runs out is a descent that can be avoided entirely.
-        CHECK(floorCfg.value("lateral_hops", -1) >= 0);
+        // A network that never closes is a run sideways that never has to come back down, which
+        // is a descent the player can decline to make.
+        CHECK(floorCfg.value("lateral_rooms", 0) > 0);
 
         for (const auto& kind : kinds)
         {

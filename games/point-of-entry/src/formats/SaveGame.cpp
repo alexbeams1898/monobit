@@ -24,9 +24,9 @@ nlohmann::json encode(const descent::Floor& f)
     nlohmann::json holes = nlohmann::json::array();
     for (const auto& h : f.holes)
         holes.push_back(encode(h));
-    return nlohmann::json{{"area", f.area},     {"label", f.label}, {"type", f.type},
-                          {"seed", f.seed},     {"depth", f.depth}, {"hops", f.hops},
-                          {"way_in", f.way_in}, {"holes", holes}};
+    return nlohmann::json{{"area", f.area}, {"label", f.label}, {"type", f.type},
+                          {"seed", f.seed}, {"depth", f.depth}, {"way_in", f.way_in},
+                          {"holes", holes}};
 }
 
 descent::Hole decodeHole(const nlohmann::json& j)
@@ -55,7 +55,6 @@ descent::Floor decodeFloor(const nlohmann::json& j)
     f.type = j.value("type", f.type);
     f.seed = j.value("seed", f.seed);
     f.depth = j.value("depth", f.depth);
-    f.hops = j.value("hops", f.hops);
     f.way_in = j.value("way_in", f.way_in);
     for (const auto& h : j.value("holes", nlohmann::json::array()))
         f.holes.push_back(decodeHole(h));

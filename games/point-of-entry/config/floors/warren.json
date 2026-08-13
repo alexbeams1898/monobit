@@ -1,5 +1,5 @@
 {
-    "_comment": "WHAT A GNAWED GAP OPENS INTO. A cellar with the walls closer in: fewer rooms, tighter, the rooms closer together so a run between them is a squeeze rather than a walk. Browner and warmer than poured concrete, because this is bedding rather than building. Spacing is in TILES, so the cellar's distances inherited into a smaller box leave nowhere to seat the second hole a floor is guaranteed -- a tighter space needs them tighter. Its holes lean gnawed, which is what makes a warren feel like a NETWORK -- more of it runs sideways than down -- and lateral_hops is what stops that network running forever.",
+    "_comment": "WHAT A GNAWED GAP OPENS INTO. A cellar with the walls closer in: fewer rooms, tighter, the rooms closer together so a run between them is a squeeze rather than a walk. Browner and warmer than poured concrete, because this is bedding rather than building. Spacing is in TILES, so the cellar's distances inherited into a smaller box leave nowhere to seat the second hole a floor is guaranteed -- a tighter space needs them tighter. Its holes lean gnawed, which is what makes a warren feel like a NETWORK -- more of it runs sideways than down -- and lateral_rooms is how wide that network gets before it starts folding back on itself.",
     "base": "config/floors/cellar.json",
     "rooms": ["config/rooms/common", "config/rooms/warren"],
     "width": 30,
@@ -11,7 +11,7 @@
         "min_apart_tiles": 3
     },
     "wall_depth": 2,
-    "lateral_hops": 3,
+    "lateral_rooms": 5,
     "tile_visuals": {
         "0": { "r": 0.20, "g": 0.16, "b": 0.12 },
         "1": { "r": 0.09, "g": 0.07, "b": 0.05 }

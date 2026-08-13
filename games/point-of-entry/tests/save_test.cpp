@@ -32,8 +32,8 @@ savegame::File oneLife()
     descent::Floor basement;
     basement.area = "Bar_B1";
     basement.depth = 0;
-    basement.holes = {descent::Hole{descent::Link{1, 0}, "config/seeps/foundation_crack.json",
-                                    true, true, 3}};
+    basement.holes = {
+        descent::Hole{descent::Link{1, 0}, "config/seeps/foundation_crack.json", true, true, 3}};
     descent::Floor dug;
     dug.seed = 9182736u;
     dug.depth = 1;
@@ -200,6 +200,88 @@ TEST_CASE("a version 1 floor folds into holes, and the way in becomes one of the
         REQUIRE(tree[1].holes[1].killed == 4);
         REQUIRE_FALSE(tree[1].holes[2].cleared);
         REQUIRE(tree[1].holes[2].killed == 1);
+    }
+    std::filesystem::remove(path);
+}
+
+// A NETWORK OF WALL HOLES IS A CYCLE, and a cycle in the persisted tree is new. Both halves of
+// every edge have to survive the trip: a connection that came back one-way would let him walk
+// into a room he could not walk out of, and one that came back pointing at the wrong hole would
+// put him somewhere he never was.
+TEST_CASE("a lateral network survives the write with both halves of every edge")
+{
+    const std::string path = scratch("poe_save_loop.json");
+    savegame::Data life;
+    life.id = "job-1";
+
+    // Three rooms at one depth: A -> B -> C, and C loops back to A. Every floor's hole 0 is the
+    // way it was first entered by; the rest are its own.
+    descent::Floor a;
+    a.depth = 3;
+    a.label = "B3-A";
+    a.way_in = 0;
+    a.holes = {
+        descent::Hole{descent::Link{-1, -1}, "config/seeps/foundation_crack.json", true, true, 0},
+        descent::Hole{descent::Link{1, 0}, "config/seeps/gnaw_hole.json", true, true, 4},
+        descent::Hole{descent::Link{2, 2}, "config/seeps/gnaw_hole.json", true, true, 7}};
+    descent::Floor b;
+    b.depth = 3;
+    b.label = "B3-B";
+    b.way_in = 0;
+    b.holes = {descent::Hole{descent::Link{0, 1}, "config/seeps/gnaw_hole.json", true, true, 0},
+               descent::Hole{descent::Link{2, 0}, "config/seeps/gnaw_hole.json", true, true, 2}};
+    descent::Floor c;
+    c.depth = 3;
+    c.label = "B3-C";
+    c.way_in = 0;
+    c.holes = {
+        descent::Hole{descent::Link{1, 1}, "config/seeps/gnaw_hole.json", true, true, 0},
+        descent::Hole{descent::Link{}, "config/seeps/foundation_crack.json", false, false, 0},
+        descent::Hole{descent::Link{0, 2}, "config/seeps/gnaw_hole.json", true, true, 1}};
+    life.descent = {a, b, c};
+    life.where.node = 0;
+    life.where.stood = true;
+
+    savegame::File file;
+    file.lives.push_back(life);
+    REQUIRE(savegame::save(file, path));
+    // Held by name: at() returns a reference, which breaks the chain that would otherwise keep
+    // the loaded File alive, and the tree would be read out of a destroyed object.
+    const savegame::File back = savegame::load(path);
+    REQUIRE(back.lives.size() == 1);
+    const std::vector<descent::Floor>& tree = back.lives.front().descent;
+    REQUIRE(tree.size() == 3);
+
+    SECTION("every edge points back at the hole that points to it")
+    {
+        for (std::size_t f = 0; f < tree.size(); ++f)
+            for (std::size_t h = 0; h < tree[f].holes.size(); ++h)
+            {
+                const descent::Link& to = tree[f].holes[h].to;
+                if (to.node < 0)
+                    continue;
+                INFO("floor " << f << " hole " << h);
+                REQUIRE(static_cast<std::size_t>(to.node) < tree.size());
+                REQUIRE(static_cast<std::size_t>(to.hole) < tree[to.node].holes.size());
+                const descent::Link& back = tree[to.node].holes[to.hole].to;
+                CHECK(back.node == static_cast<int>(f));
+                CHECK(back.hole == static_cast<int>(h));
+            }
+    }
+
+    SECTION("the loop is still a loop, and the room it leads back to is still named")
+    {
+        CHECK(tree[2].holes[2].to.node == 0); // C runs back to A
+        CHECK(tree[0].label == "B3-A");
+        // A room reached sideways keeps the depth it was opened from -- that is the whole rule.
+        CHECK(tree[1].depth == tree[0].depth);
+        CHECK(tree[2].depth == tree[0].depth);
+    }
+
+    SECTION("a hole that leads nowhere yet is still a question")
+    {
+        CHECK(tree[2].holes[1].to.node == -1);
+        CHECK_FALSE(tree[2].holes[1].cleared);
     }
     std::filesystem::remove(path);
 }

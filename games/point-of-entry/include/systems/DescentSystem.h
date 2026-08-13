@@ -74,11 +74,6 @@ struct Floor
     std::string type;
     unsigned seed = 0;
     int depth = 0;
-    // HOW MANY HOLES IN WALLS HE HAS COME THROUGH since the last one in a floor. Zero on any
-    // floor arrived at by going down. A type stops growing wall holes past its own limit, so a
-    // run sideways ends by construction rather than by a counter refusing a hole that already
-    // looks like a passage.
-    int hops = 0;
     // WHICH HOLE HE CAME IN BY, or -1 on the first floor, which has nothing above it. Always 0
     // where it exists -- the way in is placed before the floor's own holes -- but stored rather
     // than assumed, because a floor that is authored AND dug into would break the assumption

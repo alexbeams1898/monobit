@@ -333,12 +333,20 @@ kind -- a warren is a cellar with the walls closer in, browner, and more of it
 running sideways. Nothing about the generator changes per type; only its
 numbers do.
 
-**A run sideways ends because it runs out.** A floor knows how many wall holes
-he has come through since the last one in a floor, and a kind of space stops
-growing wall holes past its own limit. So a lateral chain terminates by
-construction rather than by a counter refusing a hole that already looks like a
-passage -- and the limit is part of what a kind of space IS: a warren is a
-deeper network than a cellar because its number is higher.
+**A run sideways CLOSES rather than ending.** Wall holes at one depth form a
+network, and a kind of space grows its network to a certain size and no
+further. Past that, a hole becoming a passage leads back into a room the
+network already has instead of opening a new one. So a run sideways is bounded
+without anything ever refusing a hole that already looks like a passage -- and
+the size is part of what a kind of space IS: a warren is a wider network than a
+cellar because its number is higher.
+
+The decision is made the moment a hole becomes a passage, not when he walks it,
+which is what lets the prompt NAME the room on the other side before he
+commits. That gives the question mark a meaning it did not have: a tag is a way
+back to somewhere he has been, and **`?` is new ground**. Where the network is
+full but nothing has a spare passage to bind to, it opens new ground anyway --
+a spent hole leading nowhere is the dead end all of this exists to avoid.
 
 **Wall holes go sideways; floor holes go down.** A wall-placed point of entry
 is a run through a cavity, not a way underneath: it opens a floor at the SAME
