@@ -11,6 +11,12 @@
             "creature": "config/creatures/ant.json",
             "weight": 4,
             "min_wave": 1
+        },
+        {
+            "creature": "config/creatures/cockroach.json",
+            "weight": 4,
+            "min_wave": 1,
+            "min_depth": 4
         }
     ],
     "placement": "wall"

@@ -30,7 +30,7 @@ bool resolve(const EntityManager& em)
         return true;
     // A way down with something coming UP it -- the floors he left unfinished, reaching him
     // here. A quiet passage is furniture, and the weapon stays stowed beside it.
-    for (const auto [e, site] : em.registry().view<const DigSite>().each())
+    for (const auto [e, site] : em.registry().view<const DescendSite>().each())
         if (site.leaking)
             return true;
     return false;
@@ -44,9 +44,12 @@ void update(const EntityManager& em, float dt, bool cut)
         sCombat = now;
         sSettle = 0.0f;
     }
-    // Held at the start of the changeover while the screen is black, so the
-    // crossover is spent on the room he arrives in rather than the curtain.
-    if (cut)
+    // A changeover IN PROGRESS is held at its start while the screen is black, so it is spent
+    // on the room he arrives in rather than behind the curtain. One that has already finished
+    // is left alone: every room swap is a cut, and winding a settled state back to zero
+    // manufactured a changeover out of nothing -- which is the kit flashing stowed and back on
+    // a walk between two rooms where nothing about the work changed at all.
+    if (cut && sSettle < 1.0f)
         sSettle = 0.0f;
     else if (sSettle < 1.0f)
         sSettle = std::min(1.0f, sSettle + dt / kSettle);

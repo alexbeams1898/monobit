@@ -12,16 +12,10 @@ namespace
 
 nlohmann::json encode(const descent::Floor& f)
 {
-    return nlohmann::json{{"area", f.area},
-                          {"seed", f.seed},
-                          {"depth", f.depth},
-                          {"parent", f.parent},
-                          {"parent_hole", f.parent_hole},
-                          {"child", f.child},
-                          {"cleared", f.cleared},
-                          {"opened", f.opened},
-                          {"kind", f.kind},
-                          {"killed", f.killed}};
+    return nlohmann::json{{"area", f.area},   {"label", f.label},     {"seed", f.seed},
+                          {"depth", f.depth}, {"from", f.from},       {"from_hole", f.from_hole},
+                          {"child", f.child}, {"cleared", f.cleared}, {"opened", f.opened},
+                          {"kind", f.kind},   {"killed", f.killed}};
 }
 
 descent::Floor decodeFloor(const nlohmann::json& j)
@@ -30,10 +24,13 @@ descent::Floor decodeFloor(const nlohmann::json& j)
     if (!j.is_object())
         return f;
     f.area = j.value("area", f.area);
+    f.label = j.value("label", f.label);
     f.seed = j.value("seed", f.seed);
     f.depth = j.value("depth", f.depth);
-    f.parent = j.value("parent", f.parent);
-    f.parent_hole = j.value("parent_hole", f.parent_hole);
+    // Read the old key too: a save written when a floor had one parent still knows the way
+    // back, it just called it something else.
+    f.from = j.value("from", j.value("parent", f.from));
+    f.from_hole = j.value("from_hole", j.value("parent_hole", f.from_hole));
     f.child = j.value("child", std::vector<int>{});
     f.cleared = j.value("cleared", std::vector<bool>{});
     f.opened = j.value("opened", std::vector<bool>{});
@@ -63,6 +60,7 @@ nlohmann::json encode(const Man& m)
         {"thermos_sips", m.thermos_sips},
         {"tool", m.tool},
         {"health", m.health},
+        {"charge", m.charge},
         {"satchel", [&]
          {
              nlohmann::json out = nlohmann::json::array();
@@ -87,6 +85,7 @@ Man decodeMan(const nlohmann::json& j)
     m.thermos_sips = j.value("thermos_sips", m.thermos_sips);
     m.tool = j.value("tool", m.tool);
     m.health = j.value("health", m.health);
+    m.charge = j.value("charge", m.charge);
     for (const auto& e : j.value("satchel", nlohmann::json::array()))
     {
         Item it;

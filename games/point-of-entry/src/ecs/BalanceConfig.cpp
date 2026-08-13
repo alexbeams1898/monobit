@@ -48,8 +48,15 @@ bool load(const std::string& path)
     const auto& bl = j.value("block", nlohmann::json::object());
     sFormulas.block.stamina_per_damage =
         bl.value("stamina_per_damage", sFormulas.block.stamina_per_damage);
-    sFormulas.block.walk_factor = bl.value("walk_factor", sFormulas.block.walk_factor);
     sFormulas.block.broken_factor = bl.value("broken_factor", sFormulas.block.broken_factor);
+    sFormulas.block.walk_factor = bl.value("walk_factor", sFormulas.block.walk_factor);
+    const auto& fi = j.value("fists", nlohmann::json::object());
+    sFormulas.fists.base = fi.value("base", sFormulas.fists.base);
+    sFormulas.fists.per_physical = fi.value("per_physical", sFormulas.fists.per_physical);
+    sFormulas.fists.reach = fi.value("reach", sFormulas.fists.reach);
+    sFormulas.fists.arc = fi.value("arc", sFormulas.fists.arc);
+    sFormulas.fists.cooldown = fi.value("cooldown", sFormulas.fists.cooldown);
+    sFormulas.fists.stamina = fi.value("stamina", sFormulas.fists.stamina);
     const auto& fr = j.value("fronts", nlohmann::json::object());
     sFormulas.fronts.bonus_per_extra =
         fr.value("bonus_per_extra", sFormulas.fronts.bonus_per_extra);

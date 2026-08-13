@@ -47,12 +47,28 @@ struct Formulas
         // Guarding converts contact damage into stamina at this exchange rate; a bar too
         // empty to pay breaks the guard and the hit lands whole.
         float stamina_per_damage = 2.0f;
-        float walk_factor = 0.5f; // movement speed while guarding
         // A guard too spent to pay still stands between the hit and the bar:
         // this fraction of the damage gets through, the rest is the raised
         // arm. Only dropping the guard entirely eats a hit whole.
         float broken_factor = 0.6f;
+        // Walking while braced. A TOUCH slower, not a stance-tax: enough that raising the
+        // guard has weight, far short of the half-speed trudge that made blocking feel like a
+        // punishment for using it.
+        float walk_factor = 0.85f;
     } block;
+    struct
+    {
+        // WHAT HE HAS WHEN THE TANK IS DRY. Weak on purpose: this is how he backs out of a room,
+        // not how he works one. Damage comes off PHYSICAL -- the body stat -- because a man
+        // hitting something with his hand is the one attack in this game the equipment has
+        // nothing to do with.
+        float base = 2.0f;
+        float per_physical = 0.8f;
+        float reach = 26.0f; // shorter than anything he carries
+        float arc = 70.0f;   // DEGREES off his facing, like every area: a swing, not a spray
+        float cooldown = 0.42f;
+        float stamina = 4.0f;
+    } fists;
     struct
     {
         // What each front BEYOND THE FIRST adds to the rate. Holding one hole at a time is the

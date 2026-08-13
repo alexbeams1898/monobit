@@ -52,6 +52,8 @@ savegame::Man readMan(const EntityManager& em)
         man.banked = e->banked;
     if (const auto* h = reg.try_get<Health>(p))
         man.health = h->current;
+    if (const auto* c = reg.try_get<Charge>(p))
+        man.charge = c->current;
     if (const auto* sat = reg.try_get<Satchel>(p))
         for (const auto& held : sat->items)
             man.satchel.push_back(
@@ -85,6 +87,11 @@ void writeMan(EntityManager& em, const savegame::Man& man)
     if (man.health > 0)
         if (auto* h = reg.try_get<Health>(p))
             h->current = std::min(man.health, h->max);
+    // The tank likewise: a man who quit on an empty wand comes back to an empty wand. Refilling
+    // it overnight would make quitting the cheapest reload in the game.
+    if (man.charge >= 0.0f)
+        if (auto* c = reg.try_get<Charge>(p))
+            c->current = std::min(man.charge, c->max_charge);
 
     auto& satchel = reg.get_or_emplace<Satchel>(p);
     satchel.items.clear();

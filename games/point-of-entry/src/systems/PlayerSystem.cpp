@@ -16,6 +16,7 @@
 
 #include <SDL.h>
 
+#include <algorithm>
 #include <cmath>
 
 namespace player
@@ -231,12 +232,25 @@ void update(Engine& /*engine*/, EntityManager& em, double dt)
     // flinch, a death. Those get played from wherever they happen.
     sprite_anim::playIfPresent(em, sPlayer, "idle", "idle");
 
+    // HOLDING THE GUARD UP PLANTS HIM. The gait stiffens -- the sway goes, most of the hop goes
+    // -- and his speed does not change: slowing a man for raising his guard punishes the
+    // defensive option twice, once in tempo and once in reach.
+    if (auto* gait = em.registry().try_get<Gait>(sPlayer))
+    {
+        // Eased rather than flipped: a man sets himself over a moment, and snapping the gait
+        // between two shapes on a keypress reads as a glitch however right the two shapes are.
+        constexpr float kBraceTime = 0.18f;
+        const float want = aim::guarding() ? 1.0f : 0.0f;
+        const float move = static_cast<float>(dt) / kBraceTime;
+        gait->braced += std::clamp(want - gait->braced, -move, move);
+    }
+
     if (dx != 0.0f || dy != 0.0f)
     {
-        // Guarding slows the walk: holding the block is a stance, not a stroll,
-        // and it keeps block-walking from being free.
-        const float guardSlow = aim::guarding() ? stats::formulas().block.walk_factor : 1.0f;
-        const float step = debug_panel::walkSpeed() * guardSlow * static_cast<float>(dt);
+        // Braced walks a shade slower AND stiffer -- the stiffness carries the reading, the
+        // speed only underlines it.
+        const float braced = aim::guarding() ? stats::formulas().block.walk_factor : 1.0f;
+        const float step = debug_panel::walkSpeed() * braced * static_cast<float>(dt);
         // The body is a box at his FEET, not a point at his middle: the transform sits in the
         // foot box and the sprite is drawn with its bottom on it (the renderer aligns sprite to
         // collider), so the torso may overlap a wall ABOVE him -- top-down depth -- but his feet

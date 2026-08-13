@@ -13,6 +13,7 @@
 #include "screens/ScreenStyle.h"
 #include "systems/AimSystem.h"
 #include "systems/CombatSystem.h"
+#include "systems/DescentSystem.h"
 #include "systems/PlayerSystem.h"
 #include "systems/RewardSystem.h"
 #include "systems/ThermosSystem.h"
@@ -23,6 +24,7 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include <vector>
 
 #include <entt/entt.hpp>
 
@@ -299,6 +301,68 @@ void renderWorldOverlays(Engine& engine, EntityManager& em, float camX, float ca
     hitAreaOverlay(engine, em, camX, camY, zoom);
 }
 
+// TOP RIGHT: what is on him, and where it is coming from. The tag is the point that earns the
+// box -- a passage carries what he left running on another floor, and without this the only
+// place that fact exists is the log.
+// TOP CENTRE: where he is. Quiet and always there while he is in the descent -- reference
+// rather than news. Centred because both top corners are spoken for: what is left of him on one
+// side, the work on the other, and where he stands belongs to neither.
+void placeBox(Engine& engine)
+{
+    const std::string here = descent::hereLabel();
+    if (here.empty())
+        return; // not in the descent: the bar is not a floor and does not need a tag
+    const float lh = screen_style::lineHeight();
+    const float boxW = lh * 4.0f;
+    const float boxH = lh * 1.5f;
+    const float bx = (static_cast<float>(engine.windowWidth()) - boxW) * 0.5f;
+    const float by = margin();
+    screen_style::panel(screen_style::Rect{bx, by, boxW, boxH});
+    screen_style::textInBox(here, screen_style::Rect{bx, by, boxW, boxH}, screen_style::kTextHot);
+}
+
+// THE FLOOR'S EXCLUSION LIST, top right, for as long as he is on a floor. The whole floor
+// rather than only the loud parts: a sealed point he has not touched is work outstanding, a
+// spent one is work done, and seeing both at a glance is the difference between reading the
+// room and walking it. Derived every frame from the descent -- there is nothing to remember,
+// so there is nothing to go stale when he changes floors.
+void exclusionSheet(Engine& engine)
+{
+    const std::vector<descent::Point> sheet = descent::exclusions();
+    if (sheet.empty())
+        return; // not on a floor: the bar has no exclusion list
+
+    const float lh = screen_style::lineHeight();
+    const float boxW = lh * 10.0f;
+    const float boxH = lh * (2.2f + 1.15f * static_cast<float>(sheet.size()));
+    const float bx = static_cast<float>(engine.windowWidth()) - margin() - boxW;
+    const float by = margin();
+    screen_style::panel(screen_style::Rect{bx, by, boxW, boxH});
+
+    const float inset = screen_style::pad(2);
+    const float top = by + lh * 0.3f;
+    screen_style::textCentered("Exclusions", bx + boxW * 0.5f, top, screen_style::kText);
+
+    float y = top + lh * 1.3f;
+    for (const descent::Point& point : sheet)
+    {
+        // Three states, three weights: what is on him now, what he has not touched, what is
+        // done. A sealed row sits back so the working ones are what the eye finds.
+        const bool working = point.state == descent::PointState::Working;
+        const bool done = point.state == descent::PointState::Cleared;
+        const std::string state =
+            done              ? std::string{"CLEARED"}
+            : !working        ? std::string{"SEALED"}
+            : point.wave <= 0 ? std::string{"GATHERING"}
+                              : std::to_string(point.wave) + "/" + std::to_string(point.waves);
+        screen_style::text(point.tag, bx + inset, y,
+                           working ? screen_style::kTextHot : screen_style::kTextDim);
+        screen_style::textRight(state, bx + boxW - inset, y,
+                                done ? screen_style::kGain : screen_style::kTextDim);
+        y += lh * 1.15f;
+    }
+}
+
 void render(Engine& engine, EntityManager& em)
 {
     // Drawn on exactly the frames the HUD took the pointer away from the desktop, from the one
@@ -312,12 +376,15 @@ void render(Engine& engine, EntityManager& em)
         reticle(mx, my);
     }
 
-    // Frame time for the purely-visual pump; clamped so a hitch cannot teleport the animation.
+    // Frame time for the purely-visual pumps; clamped so a hitch cannot teleport an animation.
     static Uint64 sLastTicks = 0;
     const Uint64 now = SDL_GetTicks64();
     const float dt =
         sLastTicks == 0 ? 0.0f : std::min(0.1f, static_cast<float>(now - sLastTicks) / 1000.0f);
     sLastTicks = now;
+
+    placeBox(engine);
+    exclusionSheet(engine);
 
     // TOP LEFT: the body. Health over stamina, the reading order of every game in this shape;
     // the thermos count under them -- the flask lives with the body it mends.

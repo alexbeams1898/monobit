@@ -8,7 +8,7 @@
 #include <entt/entt.hpp>
 
 // The persistence primitive under the descent tree: a hole marked cleared
-// starts SPENT -- no waves, immediately diggable -- while its neighbours
+// starts SPENT -- no waves, immediately descendable -- while its neighbours
 // press as normal. (The tree's traversal itself needs GL for floor building
 // and is integration-tested by running the game.)
 
@@ -65,18 +65,18 @@ TEST_CASE("a way down is quiet until he leaves something running under it")
     EntityManager em;
     descent::reset();
 
-    DigSite site;
+    DescendSite site;
     site.hole = 0; // every way down is a hole of some floor
     const entt::entity e = em.registry().create();
-    em.registry().emplace<DigSite>(e, site);
+    em.registry().emplace<DescendSite>(e, site);
 
     descent::refreshLeaks(em);
-    REQUIRE_FALSE(em.registry().get<DigSite>(e).leaking);
+    REQUIRE_FALSE(em.registry().get<DescendSite>(e).leaking);
 
     // Nor does a hole numbered past the end of the floor he is standing in.
-    em.registry().get<DigSite>(e).hole = 99;
+    em.registry().get<DescendSite>(e).hole = 99;
     descent::refreshLeaks(em);
-    REQUIRE_FALSE(em.registry().get<DigSite>(e).leaking);
+    REQUIRE_FALSE(em.registry().get<DescendSite>(e).leaking);
 }
 
 // THE WORK STATE: one answer per tick, and everything that looks different between
@@ -90,26 +90,26 @@ TEST_CASE("the work state follows the leak")
     REQUIRE_FALSE(zone::combat());
 
     const entt::entity e = em.registry().create();
-    DigSite site;
-    em.registry().emplace<DigSite>(e, site);
+    DescendSite site;
+    em.registry().emplace<DescendSite>(e, site);
 
     SECTION("a quiet way down in an authored room is not the trade's ground")
     {
-        em.registry().get<DigSite>(e).leaking = false; // everything below it is finished
+        em.registry().get<DescendSite>(e).leaking = false; // everything below it is finished
         zone::update(em, 1.0f, /*cut=*/false);
         REQUIRE_FALSE(zone::combat());
     }
 
     SECTION("a leaking one is")
     {
-        em.registry().get<DigSite>(e).leaking = true;
+        em.registry().get<DescendSite>(e).leaking = true;
         zone::update(em, 1.0f, /*cut=*/false);
         REQUIRE(zone::combat());
     }
 
     SECTION("a passage carrying nothing is furniture")
     {
-        em.registry().get<DigSite>(e).leaking = false;
+        em.registry().get<DescendSite>(e).leaking = false;
         zone::update(em, 1.0f, /*cut=*/false);
         REQUIRE_FALSE(zone::combat());
     }
@@ -121,9 +121,9 @@ TEST_CASE("the changeover waits for something to see")
     descent::reset();
     zone::reset();
     const entt::entity e = em.registry().create();
-    DigSite site;
+    DescendSite site;
     site.leaking = true;
-    em.registry().emplace<DigSite>(e, site);
+    em.registry().emplace<DescendSite>(e, site);
 
     SECTION("a flip starts the changeover over again")
     {
@@ -131,7 +131,7 @@ TEST_CASE("the changeover waits for something to see")
         REQUIRE(zone::combat());
         REQUIRE(zone::settle() == 1.0f); // a whole second: long since arrived
 
-        em.registry().get<DigSite>(e).leaking = false;
+        em.registry().get<DescendSite>(e).leaking = false;
         zone::update(em, 0.0f, /*cut=*/false);
         REQUIRE_FALSE(zone::combat());
         REQUIRE(zone::settle() == 0.0f);
@@ -319,5 +319,50 @@ TEST_CASE("a sealed hole sends nothing until it is opened", "[descent]")
         swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {}, {true, false});
         CHECK_FALSE(swarm::seepSealed(0));
         CHECK(swarm::seepSealed(1));
+    }
+}
+
+// FLOOR TAGS ARE PERMANENT AND UNBOUNDED. A room's tag is written when it is dug and never
+// recomputed, so digging a neighbour cannot renumber somewhere he has already been -- and the
+// letters run the way spreadsheet columns do, so a depth can hold any number of rooms without
+// the room slot ever borrowing a digit from the depth beside it.
+TEST_CASE("a floor's tag is stable, readable and unbounded", "[descent]")
+{
+    descent::reset();
+
+    SECTION("nowhere has no tag")
+    {
+        REQUIRE(descent::hereLabel().empty());
+        REQUIRE(descent::floorLabel(0).empty());
+        REQUIRE(descent::floorLabel(-1).empty());
+    }
+
+    SECTION("a point of entry reads as its floor and its number, from one")
+    {
+        // No floor built here, so the tag is empty -- but the SHAPE is what this pins: the
+        // number a technician writes on a wall starts at one and carries a leading zero.
+        REQUIRE(descent::poeTag(-1, 0).empty());
+    }
+}
+
+// THE DELTA NARROWS. The descent branches within an act and rejoins at its end, so it converges
+// on its root instead of doubling forever. (The linking itself needs floors built, so it is
+// covered by playing; this pins where the boundaries fall and that the dial turns it off.)
+TEST_CASE("the descent converges at act boundaries", "[descent]")
+{
+    SECTION("every act_every-th depth is one floor every branch leads into")
+    {
+        REQUIRE_FALSE(descent::convergesAt(0)); // the surface is not a rejoining
+        REQUIRE_FALSE(descent::convergesAt(1));
+        REQUIRE_FALSE(descent::convergesAt(3));
+        REQUIRE(descent::convergesAt(4));
+        REQUIRE_FALSE(descent::convergesAt(5));
+        REQUIRE(descent::convergesAt(8));
+        REQUIRE(descent::convergesAt(12));
+    }
+
+    SECTION("a negative depth is not a boundary")
+    {
+        REQUIRE_FALSE(descent::convergesAt(-4));
     }
 }

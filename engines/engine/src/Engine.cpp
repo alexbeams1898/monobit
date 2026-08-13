@@ -253,6 +253,46 @@ void Engine::run()
     }
 }
 
+void Engine::syncDrawableSize()
+{
+    // Drawable size, not the event's logical size -- the logical size is DPI-scaled and smaller
+    // than the actual framebuffer on HiDPI displays. See init() for context.
+    SDL_GL_GetDrawableSize(window, &window_w, &window_h);
+    UIRenderer::resize(window_w, window_h);
+    if (on_resize)
+        on_resize(*this, window_w, window_h);
+}
+
+void Engine::handleWindowEvent(const SDL_Event& event)
+{
+    // SIZE_CHANGED fires for ALL size changes including programmatic fullscreen toggles;
+    // RESIZED only fires for user-driven resizes. Without SIZE_CHANGED the per-frame glViewport
+    // stays pinned to the original windowed dims and the scene renders into a subregion of the
+    // fullscreen framebuffer, which the compositor stretches to fill -- visible as a blur.
+    if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
+    {
+        syncDrawableSize();
+        return;
+    }
+    // A desktop-fullscreen window activated on a DIFFERENT display (unplugging an external
+    // monitor, switching to the laptop panel) keeps the OLD display's resolution -- SDL does not
+    // re-fit it, and often no SIZE_CHANGED follows. Toggling the fullscreen flag makes SDL re-fit
+    // to the new display's desktop mode.
+    if (event.window.event != SDL_WINDOWEVENT_DISPLAY_CHANGED ||
+        window_mode != WindowMode::BorderlessFullscreen)
+        return;
+    const int display = event.window.data1;
+    SDL_DisplayMode mode;
+    if (SDL_GetDesktopDisplayMode(display, &mode) != 0)
+        return;
+    SDL_SetWindowFullscreen(window, 0);
+    SDL_SetWindowDisplayMode(window, &mode);
+    SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+    syncDrawableSize();
+    std::fprintf(stderr, "[engine] display changed -> %d (%dx%d), refit to %dx%d\n", display,
+                 mode.w, mode.h, window_w, window_h);
+}
+
 void Engine::processEvents()
 {
     SDL_Event event;
@@ -269,50 +309,8 @@ void Engine::processEvents()
 
         if (event.type == SDL_QUIT)
             running = false;
-        // SIZE_CHANGED fires for ALL size changes including programmatic
-        // fullscreen toggles; RESIZED only fires for user-driven resizes
-        // (drag window edge). Handling SIZE_CHANGED is the SDL2 idiom
-        // for fullscreen sync. Without it the per-frame glViewport stays
-        // pinned to the original windowed dims and the scene gets
-        // rendered into a subregion of the fullscreen framebuffer, which
-        // the desktop compositor stretches to fill — visible as a blur.
-        if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
-        {
-            // Use drawable size, not the event's logical size — the
-            // logical size is DPI-scaled and smaller than the actual
-            // framebuffer on HiDPI displays. See init() for context.
-            SDL_GL_GetDrawableSize(window, &window_w, &window_h);
-            UIRenderer::resize(window_w, window_h);
-            if (on_resize)
-                on_resize(*this, window_w, window_h);
-        }
-        // A desktop-fullscreen window dragged to / activated on a DIFFERENT display
-        // (e.g. unplugging an external monitor, switching to the laptop panel) keeps
-        // the OLD display's resolution — SDL does not re-fit it, and often no
-        // SIZE_CHANGED follows. Re-fit it to the new display's desktop mode by
-        // re-applying the fullscreen-desktop flag; the resulting resize is picked up
-        // by SIZE_CHANGED above (or we sync here if the size is already current).
-        else if (event.type == SDL_WINDOWEVENT &&
-                 event.window.event == SDL_WINDOWEVENT_DISPLAY_CHANGED &&
-                 window_mode == WindowMode::BorderlessFullscreen)
-        {
-            const int display = event.window.data1;
-            SDL_DisplayMode mode;
-            if (SDL_GetDesktopDisplayMode(display, &mode) == 0)
-            {
-                // Toggle fullscreen off/on so SDL re-fits the window to `display`'s
-                // current desktop resolution rather than keeping the prior one.
-                SDL_SetWindowFullscreen(window, 0);
-                SDL_SetWindowDisplayMode(window, &mode);
-                SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
-                SDL_GL_GetDrawableSize(window, &window_w, &window_h);
-                UIRenderer::resize(window_w, window_h);
-                if (on_resize)
-                    on_resize(*this, window_w, window_h);
-                std::fprintf(stderr, "[engine] display changed -> %d (%dx%d), refit to %dx%d\n",
-                             display, mode.w, mode.h, window_w, window_h);
-            }
-        }
+        if (event.type == SDL_WINDOWEVENT)
+            handleWindowEvent(event);
 
         // Buffer one-shot input events so they survive across fixed-step ticks.
         // Without this, a brief key tap between two ticks is lost because
@@ -552,8 +550,7 @@ void Engine::render()
         }
         {
             ZoneScopedN("imgui-callback");
-            if (render_imgui)
-                render_imgui(*this, entity_manager);
+            render_imgui(*this, entity_manager);
         }
         {
             ZoneScopedN("imgui-render");

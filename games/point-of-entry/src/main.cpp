@@ -156,18 +156,18 @@ void loadConfigs()
     tools::load("config/tools.json");
 }
 
-// The dig site underfoot, if any. Measured from the site's MOUTH (spawn_x/y)
+// The way down underfoot, if any. Measured from the site's MOUTH (spawn_x/y)
 // rather than its art: a wall-mounted hole's art sits in the wall, and the
 // standable spot is the floor at its base -- the same point its creatures
 // surface at, whatever kind of placement put it there.
-entt::entity digSiteInRange(EntityManager& em)
+entt::entity descendSiteUnderfoot(EntityManager& em)
 {
     auto& reg = em.registry();
     const entt::entity p = player::entity();
     if (!reg.valid(p))
         return entt::null;
     const auto& pt = reg.get<Transform>(p);
-    for (const auto [e, site] : reg.view<DigSite>().each())
+    for (const auto [e, site] : reg.view<DescendSite>().each())
     {
         const float dx = pt.x - site.spawn_x;
         const float dy = pt.y - site.spawn_y;
@@ -205,7 +205,7 @@ void deathReturn(Engine& engine, EntityManager& em)
     floaters::clear();
     notify::clear();
 
-    // The dig is untouched -- death writes nothing on the world. He just
+    // The descent is untouched -- death writes nothing on the world. He just
     // stops standing in it.
     const std::string start = area::startLevel("assets/maps/world.ldtk");
     if (!start.empty() && travel::enter(engine, em, start))
@@ -336,26 +336,35 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
             aim::requireFreshPress();
         }
     }
-    else if (const entt::entity dig = digSiteInRange(em);
-             dig != entt::null && !em.registry().get<DigSite>(dig).leaking)
+    else if (const entt::entity down = descendSiteUnderfoot(em);
+             down != entt::null && !em.registry().get<DescendSite>(down).leaking)
     {
         // THE WAY DOWN. Descending is a deliberate act, never a walk-on: you
         // do not fall into the wound by accident.
-        prompt::offer("Descend");
+        // WHERE, not what: "B1A -> B2A" says which way this goes, which "Descend" stops being
+        // able to say the moment a wall hole opens a room at the same depth.
+        const int hole = em.registry().get<DescendSite>(down).hole;
+        prompt::offerStep(descent::beyondLabel(hole, /*downward=*/true),
+                          descent::stepDir(hole, /*downward=*/true));
         if (player::consumeInteract())
         {
-            descent::dig(engine, em, em.registry().get<DigSite>(dig).hole);
+            // Behind the curtain, exactly as a door is: the world is torn down and rebuilt,
+            // and that is not something to show him.
+            const int to = em.registry().get<DescendSite>(down).hole;
+            travel::cut([&engine, &em, to] { descent::descend(engine, em, to); });
             aim::requireFreshPress();
             return;
         }
     }
-    else if (const entt::entity up = ascendSiteInRange(em); up != entt::null)
+    else if (const entt::entity up = ascendSiteInRange(em);
+             up != entt::null && !em.registry().get<AscendSite>(up).leaking)
     {
         // The way back out of a dug floor, as deliberate as the way in.
-        prompt::offer("Ascend");
+        prompt::offerStep(descent::beyondLabel(/*hole=*/-1, /*downward=*/false),
+                          descent::stepDir(/*hole=*/-1, /*downward=*/false));
         if (player::consumeInteract())
         {
-            descent::ascend(engine, em);
+            travel::cut([&engine, &em] { descent::ascend(engine, em); });
             aim::requireFreshPress();
             return;
         }
@@ -684,8 +693,12 @@ int main(int argc, char* argv[])
     engine.setRenderImGui(&debug_panel::render);
     engine.run();
 
+    // Bracketed because quitting has hung before and a hang with no output is a bug nobody can
+    // place. If the log stops between these, the teardown is where it went.
+    poe::log().info("quit: loop ended, tearing down");
     engine::gl::pixelTargetShutdown();
     TileMapRenderer::shutdown();
     RenderSystem::shutdown();
+    poe::log().info("quit: clean");
     return 0;
 }

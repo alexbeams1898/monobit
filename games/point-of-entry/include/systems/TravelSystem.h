@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,12 @@ void update(Engine& engine, EntityManager& em, float dt);
 float curtainAlpha();
 
 // True while a transition is in flight -- the world holds its breath.
+// THE CURTAIN, for anything that swaps the world under him. The screen goes to black, `atBlack`
+// runs where nothing shows, and the curtain lifts -- which is what a door already did, and what
+// a way down and a way up should have been doing all along. One curtain in the game rather than
+// one per system, so a cut cannot be shorter or darker depending on which act caused it.
+void cut(std::function<void()> atBlack);
+
 bool active();
 
 // The area the player is standing in; empty when the world is generated

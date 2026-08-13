@@ -35,8 +35,8 @@ savegame::File oneLife()
     descent::Floor dug;
     dug.seed = 9182736u;
     dug.depth = 1;
-    dug.parent = 0;
-    dug.parent_hole = 0;
+    dug.from = 0;
+    dug.from_hole = 0;
     dug.child = {-1, -1};
     dug.cleared = {true, false};
     life.descent = {basement, dug};
@@ -83,8 +83,8 @@ TEST_CASE("a written job comes back whole")
         REQUIRE(life.descent[0].child == std::vector<int>{1});
         REQUIRE(life.descent[0].cleared[0]);
         REQUIRE(life.descent[1].seed == 9182736u);
-        REQUIRE(life.descent[1].parent == 0);
-        REQUIRE(life.descent[1].parent_hole == 0);
+        REQUIRE(life.descent[1].from == 0);
+        REQUIRE(life.descent[1].from_hole == 0);
         REQUIRE(life.descent[1].cleared[0]);
         REQUIRE_FALSE(life.descent[1].cleared[1]);
     }

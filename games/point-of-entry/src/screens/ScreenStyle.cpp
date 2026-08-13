@@ -62,6 +62,11 @@ float pad(int units)
     return static_cast<float>(units * 4 * sScale);
 }
 
+float widthOf(const std::string& s)
+{
+    return sBody < 0 ? 0.0f : UIRenderer::measureText(sBody, s).width;
+}
+
 void textRight(const std::string& s, float xRight, float y, const Color& c)
 {
     text(s, xRight - UIRenderer::measureText(sBody, s).width, y, c);
@@ -76,10 +81,45 @@ void textInBox(const std::string& s, const Rect& box, const Color& c, bool align
     text(s, x, y, c);
 }
 
-void panel(const Rect& r)
+namespace
 {
-    UIRenderer::drawRect(r.x - 1.0f, r.y - 1.0f, r.w + 2.0f, r.h + 2.0f, kPanelEdge);
-    UIRenderer::drawRect(r.x, r.y, r.w, r.h, kPanel);
+// One step of the triangle, in whole pixels: a pixel arrow drawn on fractions is a smear.
+float markStep()
+{
+    return std::max(1.0f, std::round(lineHeight() / 9.0f));
+}
+} // namespace
+
+float markWidth()
+{
+    return markStep() * 5.0f;
+}
+
+void mark(float cx, float cy, int dir, const Color& c)
+{
+    const float u = markStep();
+    // Three rows, shrinking to a point. Across is the same triangle on its side.
+    for (int row = 0; row < 3; ++row)
+    {
+        const float thin = static_cast<float>(row) * u;
+        if (dir == 0)
+        {
+            const float h = u * 5.0f - thin * 2.0f;
+            UIRenderer::drawRect(std::floor(cx - u * 1.5f + thin), std::floor(cy - h * 0.5f), u, h,
+                                 c);
+            continue;
+        }
+        const float w = u * 5.0f - thin * 2.0f;
+        const float step = dir > 0 ? thin : (u * 2.0f - thin);
+        UIRenderer::drawRect(std::floor(cx - w * 0.5f), std::floor(cy - u * 1.5f + step), w, u, c);
+    }
+}
+
+void panel(const Rect& r, float alpha)
+{
+    UIRenderer::drawRect(r.x - 1.0f, r.y - 1.0f, r.w + 2.0f, r.h + 2.0f,
+                         withAlpha(kPanelEdge, kPanelEdge.a * alpha));
+    UIRenderer::drawRect(r.x, r.y, r.w, r.h, withAlpha(kPanel, kPanel.a * alpha));
 }
 
 void paperPanel(const Rect& r)
@@ -152,21 +192,32 @@ void marks(const std::string& s, float x, float y)
     text("]", x + UIRenderer::measureText(sBody, s).width + gap, y, kAccent);
 }
 
+float linkGutter()
+{
+    return sBody < 0 ? 0.0f : lineHeight() * kMarkGap + UIRenderer::measureText(sBody, "[").width;
+}
+
+float linkWidth(const std::string& s)
+{
+    return widthOf(s) + linkGutter() * 2.0f;
+}
+
 void link(const std::string& s, float x, float y, LinkState state)
 {
     if (sBody < 0)
         return;
-    text(s, x, y,
+    const float label = x + linkGutter();
+    text(s, label, y,
          state == LinkState::Faint ? kTextDim : (state == LinkState::Hot ? kTextHot : kText));
     if (state == LinkState::Hot)
-        marks(s, x, y);
+        marks(s, label, y);
 }
 
 void linkCentered(const std::string& s, float cx, float y, LinkState state)
 {
     if (sBody < 0)
         return;
-    link(s, cx - UIRenderer::measureText(sBody, s).width * 0.5f, y, state);
+    link(s, cx - linkWidth(s) * 0.5f, y, state);
 }
 
 Rect pagePanelRect(int windowW, int windowH)

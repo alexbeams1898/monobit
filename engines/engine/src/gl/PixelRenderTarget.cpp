@@ -93,9 +93,12 @@ void initBlitResources()
     glBindVertexArray(sVao);
     glBindBuffer(GL_ARRAY_BUFFER, sVbo);
     glBufferData(GL_ARRAY_BUFFER, 6 * 4 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    // The attribute's offset is passed as a pointer for historical reasons: it is a byte offset
+    // into the bound buffer, never an address to dereference.
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), nullptr);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
+                          reinterpret_cast<void*>(2 * sizeof(float)));
     glEnableVertexAttribArray(1);
     glBindVertexArray(0);
 }

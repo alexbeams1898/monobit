@@ -1,0 +1,30 @@
+{
+    "_comment": "The tanky one. High resistance, low dispersal: it does not rush you, it survives you -- and it deepens along resistance, so the thing that was merely hard to kill at depth 2 is a wall at depth 8.",
+    "sprite": "assets/sprites/cockroach.json",
+    "sheet": {
+        "resistance": 6,
+        "defensiveness": 3,
+        "dispersal": 1
+    },
+    "base": {
+        "hp": 18,
+        "power": 4.0,
+        "speed": 30.0,
+        "xp": 6
+    },
+    "growth": {
+        "resistance": 2,
+        "defensiveness": 0,
+        "dispersal": 0
+    },
+    "scale": 1.0,
+    "drops": [],
+    "guide": {
+        "description": "",
+        "similar": "",
+        "biology": "",
+        "habits": "",
+        "signs": "",
+        "control": ""
+    }
+}

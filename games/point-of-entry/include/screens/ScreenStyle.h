@@ -75,11 +75,14 @@ struct Rect
 // and drawText outside this file). textRight anchors the string's right edge; textInBox
 // truly centres vertically from the font's real metrics -- no guessed half-heights.
 void textRight(const std::string& s, float xRight, float y, const Color& c);
+// How wide a string is in the body face. The ONE way to ask, so no surface measures text
+// itself (enforced: check_design.py).
+float widthOf(const std::string& s);
 void textInBox(const std::string& s, const Rect& box, const Color& c, bool alignRight = false);
 
 // A bordered panel -- the shell's one box: edge frame, inset field. The pocket, the weapon
 // block, and whatever needs a box next all draw this, so boxes cannot drift into siblings.
-void panel(const Rect& r);
+void panel(const Rect& r, float alpha = 1.0f);
 
 // A paper sheet: ink frame, manila field, the accent as its margin rule. Its text goes
 // through the ink idioms below.
@@ -115,6 +118,13 @@ Rect pageTab(float cx, float y, int index, int count);
 // A tab stop inside a row -- t running 0..1 across the column, for form rows carrying more
 // than a left label and a right value.
 float pageStop(const Rect& row, float t);
+// A stepped triangle, pointing down (+1), up (-1) or across (0), centred on (cx, cy). Drawn
+// rather than typed: the game's one face carries no arrow at any code point, and a drawn one is
+// the better answer regardless -- rows of shrinking pixels read as an arrow in a pixel game
+// where a font glyph reads as text. Sized off the line height so it sits with the words.
+void mark(float cx, float cy, int dir, const Color& c);
+float markWidth();
+
 // A LINK: anything that can be taken -- a menu row, a guide entry, a tab. How this game shows
 // which one is under the cursor happens to the WORDS, not to a bar behind them: the label
 // brightens and takes a bracket either side. Nothing has to be sized or aligned to a shape,
@@ -125,6 +135,12 @@ enum class LinkState
     Idle,  // available
     Hot,   // the one that will be taken
 };
+// A link OWNS the room its marks need: `x` is the link's LEFT EDGE, marks included, and the
+// label is indented by that gutter in EVERY state -- so a link is a box of known width like
+// anything else. It can sit beside a number or a value without either of them guessing where
+// its ink really begins, and nothing on the row moves when it lights.
+float linkGutter();
+float linkWidth(const std::string& s);
 void link(const std::string& s, float x, float y, LinkState state);
 void linkCentered(const std::string& s, float cx, float y, LinkState state);
 // The page's backing: the column plus its margin.

@@ -1,8 +1,7 @@
-#include "systems/SpriteAnimSystem.h"
-
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "systems/AnimationSystem.h"
+#include "systems/SpriteAnimSystem.h"
 
 #include <catch2/catch_test_macros.hpp>
 

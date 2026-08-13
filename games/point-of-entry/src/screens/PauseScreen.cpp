@@ -186,8 +186,13 @@ float plate(TextureManager& tm, const sprite_def::Def& def, float cx, float top,
         return 0.0f;
     const float w = static_cast<float>(def.frame_w * s);
     const float h = static_cast<float>(def.frame_h * s);
+    // The IDLE pose is the reference drawing -- what the species looks like standing still, the
+    // way a printed guide shows it. Falling back to the first frame keeps a species with no idle
+    // on its own art readable.
+    const int pose = std::max(0, sprite_def::frameOf(def, "idle"));
+    const float u0 = static_cast<float>(def.frame_w * pose) / static_cast<float>(sheetW);
     UIRenderer::drawTexturedRect({std::floor(cx - w * 0.5f), std::floor(top), w, h}, tex,
-                                 {0.0f, 0.0f,
+                                 {u0, 0.0f,
                                   static_cast<float>(def.frame_w) / static_cast<float>(sheetW),
                                   static_cast<float>(def.frame_h) / static_cast<float>(sheetH)});
     return h;
@@ -233,16 +238,19 @@ void renderGuideList(const shell_input::Mouse& mouse, const screen_style::Rect& 
             over = sGuideTop + slot;
     sGuideCursor = shell_input::hover(sGuideCursor, over, mouse.moved);
 
+    // The name column begins where the number column really ends, measured off the widest number
+    // the register holds: a guessed gap collides the day the book reaches a hundred species.
+    const float numberX = band.x + screen_style::pad(2);
+    const float nameX =
+        numberX + screen_style::widthOf(guide::number(rows - 1)) + screen_style::pad(2);
     for (int slot = 0; slot < visible && sGuideTop + slot < rows; ++slot)
     {
         const int i = sGuideTop + slot;
         const auto& page = sGuidePages[static_cast<std::size_t>(i)];
         const bool known = documented(i);
-        screen_style::text(guide::number(i), band.x + screen_style::pad(2), rowY(slot),
-                           screen_style::kTextDim);
+        screen_style::text(guide::number(i), numberX, rowY(slot), screen_style::kTextDim);
         // Not yet earned: the register keeps the place, not the name.
-        screen_style::link(known ? page.name : "---------", band.x + screen_style::pad(8),
-                           rowY(slot),
+        screen_style::link(known ? page.name : "---------", nameX, rowY(slot),
                            i == sGuideCursor ? screen_style::LinkState::Hot
                            : known           ? screen_style::LinkState::Idle
                                              : screen_style::LinkState::Faint);

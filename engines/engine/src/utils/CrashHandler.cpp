@@ -112,7 +112,11 @@ std::string stackTrace(int skip_frames)
     if (!sSymbols)
     {
         SymSetOptions(SYMOPT_DEFERRED_LOADS | SYMOPT_LOAD_LINES | SYMOPT_UNDNAME);
-        sSymbols = SymInitialize(process, nullptr, TRUE) != FALSE;
+        // FALSE, not TRUE: invading the process walks every loaded module up front, which
+        // costs seconds and is paid at the exact moment the process is already dying. Names
+        // resolve per-address instead, and the module+offset a trace actually needs comes from
+        // the loader regardless.
+        sSymbols = SymInitialize(process, nullptr, FALSE) != FALSE;
     }
     const USHORT captured =
         CaptureStackBackTrace(static_cast<DWORD>(skip_frames + 1), kMaxFrames, frames, nullptr);

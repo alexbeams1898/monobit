@@ -69,6 +69,11 @@ void wake(int seepIndex);
 // Still sealed? A sealed hole is not work and not a way down; it is a question.
 bool seepSealed(int seepIndex);
 
+// How far through its program one hole is, for a readout: the wave it is on and how many it
+// has. Wave 0 means it has not started one yet.
+int seepWave(int seepIndex);
+int seepWaves(int seepIndex);
+
 // KILLING IS THE ONLY PROGRESS. A hole's program is a fixed number of creatures;
 // what has been killed out of it is remembered per hole and the program resumes
 // past it, so leaving a floor -- by the stairs, by dying, by quitting -- costs

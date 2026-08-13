@@ -18,9 +18,9 @@ class EntityManager;
 // history. An UNFINISHED hole's assault re-musters on re-entry: the source
 // keeps pressing until a hole is spent, and a spent hole is spent forever.
 //
-// A hole whose program exhausts flips from spawner to DIG SITE and starts
-// leaking a preview of its vein -- straight away, because an undug floor is
-// nothing but work. Digging opens (or re-enters) the child floor at depth+1;
+// A hole whose program exhausts flips from spawner to a WAY DOWN and starts
+// carrying whatever he left running below it. Descending opens (or re-enters) the
+// child floor at depth+1;
 // every floor's way in carries the way back up. Death touches none of this --
 // the tree survives everything but leaving the job.
 namespace descent
@@ -35,10 +35,21 @@ namespace descent
 struct Floor
 {
     std::string area; // an authored level, or empty for generated space
+    // THE FLOOR'S TAG, as it appears on every surface that names it: B<depth><room>, where the
+    // room letter runs A..Z then AA, AB the way spreadsheet columns do -- unbounded, and never
+    // a digit, which would make the boundary with the depth unreadable. Written once when the
+    // floor is first dug and never recomputed: a tag that changed when a neighbour was dug is
+    // a tag nobody can rely on, and the whole point of numbering a thing is that its number is
+    // permanent.
+    std::string label;
     unsigned seed = 0;
     int depth = 0;
-    int parent = -1;
-    int parent_hole = -1;
+    // THE WAY HE LAST CAME IN, which is not the same as where the floor came from: at an act
+    // boundary several holes lead into ONE floor, so a floor has many ways in and only one of
+    // them is the way back. Rewritten on every arrival, because the way out is whichever way
+    // he came -- a field that recorded only the first would send him somewhere he never was.
+    int from = -1;
+    int from_hole = -1;
     std::vector<int> child;    // per hole: node index, -1 = never dug
     std::vector<bool> cleared; // per hole: assault spent?
     std::vector<bool> opened;  // per hole: has he broken it open? a sealed hole sends nothing
@@ -77,7 +88,7 @@ void leave();
 
 // Dig (or re-enter) the child behind the current floor's `hole`. Only a
 // cleared hole digs; anything else refuses loudly.
-bool dig(Engine& engine, EntityManager& em, int hole);
+bool descend(Engine& engine, EntityManager& em, int hole);
 
 // Climb back out of the current floor -- to the parent floor's hole, or to
 // the authored basement at the root.
@@ -96,6 +107,48 @@ void refreshLeaks(EntityManager& em);
 
 // The hole he is standing on that could be broken open, or -1. Sealed holes only: an open one
 // is a fight and a spent one is a way down.
+// IS THIS DEPTH AN ACT BOUNDARY -- one floor that every branch above it leads into? The
+// descent branches within an act and converges at its end, which is what makes it a delta
+// narrowing onto one root rather than a tree that only ever widens.
+bool convergesAt(int depth);
+
+// The tag of a floor, and of one of its points of entry (B2A-03). The POE number is 1-based
+// because it is a thing written on a wall, not an index.
+std::string floorLabel(int node);
+std::string poeTag(int node, int hole);
+
+// Where he is standing, and where a way down or up would put him -- the tag the floor beyond
+// it will carry, whether or not it has been dug yet.
+std::string hereLabel();
+std::string beyondLabel(int hole, bool downward);
+
+// Which way a way leads, as a mark for the prompt: down a floor, up one, or across at the same
+// depth. Shown instead of naming the act, because "descend" stops being true the moment a wall
+// hole opens a room on the floor he is already on. +1 down, -1 up, 0 across.
+int stepDir(int hole, bool downward);
+
+// THE FLOOR'S EXCLUSION LIST: every point of entry on it and what it is doing. Sealed ones are
+// on it too -- a hole he has not touched is work outstanding, and leaving it off the list would
+// mean the only way to know a floor still has one is to walk the room looking.
+//
+// A point that is CARRYING counts as working: what comes up a way down arrives through that
+// hole, so the hole is what he is fighting whatever floor's budget it spends.
+enum class PointState
+{
+    Sealed,  // never broken open
+    Working, // pressing, or carrying something from another floor
+    Cleared  // spent, and nothing coming through it
+};
+
+struct Point
+{
+    std::string tag;
+    PointState state = PointState::Sealed;
+    int wave = 0;
+    int waves = 0;
+};
+std::vector<Point> exclusions();
+
 int openableUnderfoot(const EntityManager& em, float x, float y);
 
 // Break one open: its assault begins, and its art stops pretending to be floor.

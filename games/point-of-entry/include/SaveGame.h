@@ -53,8 +53,9 @@ struct Man
     int banked = 0; // earnings not yet spent at the staging area
     int thermos_fill = 0;
     int thermos_sips = 0;
-    int tool = 0;    // which of the kit is in his hands
-    int health = -1; // what is left of him; -1 = a save from before it was kept
+    int tool = 0;         // which of the kit is in his hands
+    int health = -1;      // what is left of him; -1 = a save from before it was kept
+    float charge = -1.0f; // what is left in the tank; -1 = a save from before it was kept
     std::vector<Item> satchel;
 };
 

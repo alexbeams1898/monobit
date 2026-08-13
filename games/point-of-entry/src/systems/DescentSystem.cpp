@@ -44,17 +44,37 @@ struct Node
     std::vector<swarm::Seep> seeps; // rebuilt every arrival, same every time
 };
 
-// Which floor's hole a seep is running. A floor's own holes own themselves; a passage owns
-// whatever it is currently carrying from below.
+std::vector<Node> sNodes;
+
+// ONE RECORD PER SEEP THE SWARM IS RUNNING, in the swarm's own order. Everything about a seep
+// lives here: whose hole it is, and where it arrives. There is exactly one way to ask whether a
+// seep is one of this floor's own holes or a passage carrying another floor's -- ask the slot.
+// Three separate ways to work that out is how this went wrong before: two parallel arrays tied
+// together by an index offset, and a heuristic comparing node ids on top.
 struct Owner
 {
     int node = -1;
     int hole = -1;
 };
 
-std::vector<Node> sNodes;
-// Parallel to the swarm's seeps: locals first, then one entry per way down on this floor.
-std::vector<Owner> sSeepOwner;
+// Where a seep arrives from. A floor's own hole is its own mouth; a passage's mouth is the way
+// between floors that the work is coming through.
+enum class Mouth
+{
+    Own,  // a hole of the floor he is standing on
+    Down, // a way down, carrying what is unfinished beneath it
+    Up    // the way back up, carrying what he left running above
+};
+
+struct SeepSlot
+{
+    Owner owner;
+    Mouth mouth = Mouth::Own;
+    int hole = -1; // for Down, which of THIS floor's holes the passage is; unused otherwise
+    float x = 0.0f;
+    float y = 0.0f;
+};
+std::vector<SeepSlot> sSlots;
 int sCurrent = -1; // node the player stands in; -1 = not in the dig
 
 // IS ANYTHING ACTUALLY RUNNING on this floor -- a hole he broke open and did not
@@ -227,7 +247,7 @@ void placeHole(EntityManager& em, const floorgen::Marker& m, const SeepKind* kin
 // component, since a second sprite would stack and fight.
 // Defined below, beside the queue it reads: arriving on a floor needs it, and what it needs
 // to know about the floors beneath is the last thing this file works out.
-void beginFloor(int nodeId);
+void beginFloor(int nodeId, float upX, float upY);
 
 // IT REEKS WHEN IT IS WORKING. A hole he has opened and not finished, or a passage carrying
 // something up from below, gives off a slow rise of vapour -- and one that has nothing to send
@@ -256,15 +276,62 @@ void restoreSpentHoles(EntityManager& em, int nodeId)
     {
         const auto i = static_cast<std::size_t>(art.hole);
         if (art.hole < 0 || i >= node.floor.cleared.size() || !node.floor.cleared[i] ||
-            reg.all_of<DigSite>(e))
+            reg.all_of<DescendSite>(e))
             continue;
-        DigSite dig;
-        dig.radius = siteFeel().reach;
-        dig.hole = art.hole;
-        dig.spawn_x = node.seeps[i].x;
-        dig.spawn_y = node.seeps[i].y;
-        reg.emplace<DigSite>(e, dig);
+        DescendSite site;
+        site.radius = siteFeel().reach;
+        site.hole = art.hole;
+        site.spawn_x = node.seeps[i].x;
+        site.spawn_y = node.seeps[i].y;
+        reg.emplace<DescendSite>(e, site);
     }
+}
+
+// EVERY act_every-th depth is one floor that every branch leads into. 0 disables it, and the
+// descent goes back to widening forever.
+int actEvery()
+{
+    static const int every = []
+    {
+        std::ifstream in("config/floor.json");
+        const nlohmann::json j =
+            in ? nlohmann::json::parse(in, nullptr, /*allow_exceptions=*/false) : nlohmann::json{};
+        if (j.is_discarded() || !j.is_object())
+            return 4;
+        return j.value("descent", nlohmann::json::object()).value("act_every", 4);
+    }();
+    return every;
+}
+
+// The floor every branch at this depth shares, if it has been dug. Convergence is a LINK, not
+// a copy: the second hole to reach it opens the same room the first one did.
+int sharedAt(int depth)
+{
+    for (std::size_t i = 0; i < sNodes.size(); ++i)
+        if (sNodes[i].floor.depth == depth && sNodes[i].floor.area.empty())
+            return static_cast<int>(i);
+    return -1;
+}
+
+// A..Z, then AA, AB -- the spreadsheet column scheme, so a depth can hold any number of rooms
+// without the letters ever borrowing a digit.
+std::string roomLetter(int index)
+{
+    std::string out;
+    for (int n = index + 1; n > 0; n = (n - 1) / 26)
+        out.insert(out.begin(), static_cast<char>('A' + (n - 1) % 26));
+    return out;
+}
+
+// The tag a NEW room at this depth would take: its place in the order rooms at that depth were
+// dug, which is why it never moves once written.
+std::string labelFor(int depth)
+{
+    int rooms = 0;
+    for (const auto& node : sNodes)
+        if (node.floor.depth == depth)
+            ++rooms;
+    return "B" + std::to_string(depth) + "-" + roomLetter(rooms);
 }
 
 int indexOfArea(const std::string& area)
@@ -303,6 +370,7 @@ int adoptArea(EntityManager& em, const std::string& area)
     {
         Node node;
         node.floor.area = area;
+        node.floor.label = labelFor(node.floor.depth);
         sNodes.push_back(std::move(node));
         id = static_cast<int>(sNodes.size()) - 1;
     }
@@ -337,14 +405,14 @@ int adoptArea(EntityManager& em, const std::string& area)
     node.floor.kind.resize(node.seeps.size());
 
     restoreSpentHoles(em, id);
-    beginFloor(id);
+    beginFloor(id, 0.0f, 0.0f);
     poe::log().info("descent: '{}' is a floor -- {} hole(s) at depth {}", area, node.seeps.size(),
                     node.floor.depth);
     return id;
 }
 
 // The floor he is standing in follows the world. Generated space is whatever
-// dig or ascend put him in; an authored level is a floor when it has holes and
+// descending or ascending put him in; an authored level is a floor when it has holes and
 // is not one when it does not. An authored hole wearing no number yet is how a
 // freshly built level announces itself, so this needs no event to listen for.
 void syncArea(EntityManager& em)
@@ -476,7 +544,7 @@ bool buildNode(EntityManager& em, int nodeId, float& spawnX, float& spawnY, floa
     }
 
     restoreSpentHoles(em, nodeId);
-    beginFloor(nodeId);
+    beginFloor(nodeId, upX, upY);
     return true;
 }
 
@@ -569,11 +637,52 @@ std::vector<Owner> queueUnder(int nodeId, std::vector<Owner> found = {})
     return found;
 }
 
+// EVERY UNFINISHED HOLE ON THE FLOORS HE CAME DOWN THROUGH, nearest first. Walked along the
+// way he actually came in, so what follows him down is what he personally left running -- not
+// every hole in the tree that happens to sit above this depth.
+std::vector<Owner> queueAbove(int nodeId)
+{
+    std::vector<Owner> found;
+    int branch = nodeId; // the way he came down, which is the one thing NOT above him
+    for (int at = nodeId; at >= 0;)
+    {
+        const int up = sNodes[static_cast<std::size_t>(at)].floor.from;
+        if (up < 0)
+            break;
+        const Node& above = sNodes[static_cast<std::size_t>(up)];
+        for (std::size_t i = 0; i < above.floor.cleared.size(); ++i)
+            if (!above.floor.cleared[i] && i < above.floor.opened.size() && above.floor.opened[i])
+                found.push_back(Owner{up, static_cast<int>(i)});
+        // AND everything still running down its OTHER ways down. A floor's own holes are not
+        // the whole of what he started there: what he was fighting a moment ago may have been
+        // arriving through that floor from another branch entirely, and walking one step deeper
+        // does not settle it. Only the branch he just came down is excluded -- that is below
+        // him now rather than behind him.
+        for (std::size_t i = 0; i < above.floor.child.size(); ++i)
+            if (above.floor.child[i] >= 0 && above.floor.child[i] != branch)
+                found = queueUnder(above.floor.child[i], std::move(found));
+        branch = up;
+        at = up;
+    }
+    return found;
+}
+
+// What a mouth draws from: below it, or above him.
+std::vector<Owner> queueFor(int nodeId, const SeepSlot& mouth)
+{
+    if (mouth.mouth == Mouth::Up)
+        return queueAbove(nodeId);
+    if (mouth.mouth == Mouth::Down)
+        return queueUnder(sNodes[static_cast<std::size_t>(nodeId)].floor.child.at(
+            static_cast<std::size_t>(mouth.hole)));
+    return {};
+}
+
 // START THE FLOOR. Its own holes first, index for index, then ONE PASSAGE PER WAY DOWN --
 // each running the nearest unfinished hole beneath it, at that hole's own depth and out of
 // what is left of its program. A passage is a passage: it carries the floors below in turn,
 // never all at once.
-void beginFloor(int nodeId)
+void beginFloor(int nodeId, float upX, float upY)
 {
     Node& node = sNodes[static_cast<std::size_t>(nodeId)];
     std::vector<swarm::Seep> seeps = node.seeps;
@@ -583,30 +692,56 @@ void beginFloor(int nodeId)
     std::vector<bool> opened = node.floor.opened;
     std::vector<int> killed = node.floor.killed;
 
-    sSeepOwner.clear();
+    sSlots.clear();
     for (std::size_t i = 0; i < node.seeps.size(); ++i)
-        sSeepOwner.push_back(Owner{nodeId, static_cast<int>(i)});
+        sSlots.push_back(SeepSlot{Owner{nodeId, static_cast<int>(i)}, Mouth::Own,
+                                  static_cast<int>(i), node.seeps[i].x, node.seeps[i].y});
 
+    // One passage per way down, plus the way back up: work reaches him from BOTH directions,
+    // because a floor he left running does not care which way he walked out of it.
+    std::vector<SeepSlot> mouths;
     for (std::size_t i = 0; i < node.floor.cleared.size(); ++i)
+        if (node.floor.cleared[i])
+            mouths.push_back(SeepSlot{Owner{}, Mouth::Down, static_cast<int>(i), node.seeps[i].x,
+                                      node.seeps[i].y});
+    if (node.floor.from >= 0)
+        mouths.push_back(SeepSlot{Owner{}, Mouth::Up, -1, upX, upY});
+    poe::log().info("descent: {} has {} mouth(s); came from node {}", node.floor.label,
+                    mouths.size(), node.floor.from);
+
+    for (SeepSlot mouth : mouths)
     {
-        if (!node.floor.cleared[i])
-            continue; // not a way down yet, so nothing can come up it
-        const std::vector<Owner> queue = queueUnder(node.floor.child[i]);
+        const std::vector<Owner> queue = queueFor(nodeId, mouth);
+        poe::log().info("descent:   mouth {} (hole {}) -> {} waiting",
+                        mouth.mouth == Mouth::Up ? "up" : "down", mouth.hole, queue.size());
         if (queue.empty())
             continue;
         const Owner& head = queue.front();
-        const Node& below = sNodes[static_cast<std::size_t>(head.node)];
-        seeps.push_back(swarm::Seep{node.seeps[i].x, node.seeps[i].y,
-                                    below.floor.kind.at(static_cast<std::size_t>(head.hole)),
-                                    below.floor.depth});
+        // One hole is carried by ONE passage: two ways down can lead to the same floor now, and
+        // delivered twice it would drain twice.
+        if (std::any_of(sSlots.begin(), sSlots.end(), [&](const SeepSlot& taken)
+                        { return taken.owner.node == head.node && taken.owner.hole == head.hole; }))
+            continue;
+        const Node& other = sNodes[static_cast<std::size_t>(head.node)];
+        seeps.push_back(swarm::Seep{mouth.x, mouth.y,
+                                    other.floor.kind.at(static_cast<std::size_t>(head.hole)),
+                                    other.floor.depth});
         cleared.push_back(false);
-        opened.push_back(true); // it was opened down there; the passage only carries it
-        killed.push_back(below.floor.killed.at(static_cast<std::size_t>(head.hole)));
-        sSeepOwner.push_back(head);
-        poe::log().info("descent: a way down carries node {} hole {} (depth {})", head.node,
-                        head.hole, below.floor.depth);
+        opened.push_back(true); // opened wherever it is; the passage only carries it
+        killed.push_back(other.floor.killed.at(static_cast<std::size_t>(head.hole)));
+        mouth.owner = head;
+        sSlots.push_back(mouth);
+        poe::log().info("descent: the way {} carries {} (depth {})",
+                        mouth.mouth == Mouth::Up ? "up" : "down", poeTag(head.node, head.hole),
+                        other.floor.depth);
     }
     swarm::begin("config/swarm.json", seeps, node.floor.depth, cleared, killed, opened);
+    // The whole table, once, where a floor starts: what is running here and who it belongs to.
+    // Anything reading wrong on the HUD is readable here first.
+    const auto carried = static_cast<std::size_t>(std::count_if(
+        sSlots.begin(), sSlots.end(), [](const SeepSlot& s) { return s.mouth != Mouth::Own; }));
+    poe::log().info("descent: {} running {} seep(s) -- {} own, {} carried", node.floor.label,
+                    sSlots.size(), sSlots.size() - carried, carried);
 }
 
 int childOf(int hole)
@@ -631,7 +766,7 @@ const SiteFeel& siteFeel()
             in ? nlohmann::json::parse(in, nullptr, /*allow_exceptions=*/false) : nlohmann::json{};
         if (j.is_discarded() || !j.is_object())
             return f;
-        const nlohmann::json site = j.value("dig_site", nlohmann::json::object());
+        const nlohmann::json site = j.value("sites", nlohmann::json::object());
         f.reach = site.value("reach", f.reach);
         f.leak_interval = site.value("leak_interval", f.leak_interval);
         return f;
@@ -661,6 +796,23 @@ void restore(const std::vector<Floor>& floors)
     {
         Node node;
         node.floor = floor;
+        // A save written before floors carried tags brings them back untagged. Name them here,
+        // in the order they were dug, which is the order they would have been named in --
+        // assigned BEFORE the push so each one counts only the rooms that came before it.
+        if (node.floor.label.empty())
+            node.floor.label = labelFor(node.floor.depth);
+        // And one written before the fields were separated brings back B2A where the game now
+        // says B2-A. The room KEEPS its letter -- a tag may change shape when the format does,
+        // but a room must never change which room it is.
+        else if (node.floor.label.find('-') == std::string::npos)
+        {
+            // Past the leading B, then past the digits: the first non-digit is where the room
+            // begins. Scanning for "not one of B0123456789" instead would walk straight over
+            // room B -- the letter is in the set it is looking past.
+            const auto letter = node.floor.label.find_first_not_of("0123456789", 1);
+            if (letter != std::string::npos)
+                node.floor.label.insert(letter, "-");
+        }
         sNodes.push_back(std::move(node));
     }
     sCurrent = -1; // nowhere until he is stood somewhere
@@ -686,7 +838,7 @@ void leave()
     sCurrent = -1;
 }
 
-bool dig(Engine& engine, EntityManager& em, int hole)
+bool descend(Engine& engine, EntityManager& em, int hole)
 {
     if (sCurrent < 0)
         return false;
@@ -702,23 +854,39 @@ bool dig(Engine& engine, EntityManager& em, int hole)
     if (hole < 0 || hole >= static_cast<int>(sNodes[cur].floor.child.size()) ||
         !sNodes[cur].floor.cleared[static_cast<std::size_t>(hole)])
     {
-        poe::log().error("descent: hole {} is not diggable", hole);
+        poe::log().error("descent: hole {} is not descendable", hole);
         return false;
     }
     int childId = sNodes[cur].floor.child[static_cast<std::size_t>(hole)];
+    const int childDepth = sNodes[cur].floor.depth + 1;
+    // At an act boundary every hole above opens the SAME floor: the branches rejoin, and the
+    // man who explored three of them and the man who took one arrive at the same door.
+    if (childId < 0 && convergesAt(childDepth))
+    {
+        childId = sharedAt(childDepth);
+        if (childId >= 0)
+        {
+            sNodes[cur].floor.child[static_cast<std::size_t>(hole)] = childId;
+            poe::log().info("descent: hole {} rejoins {}", hole, floorLabel(childId));
+        }
+    }
     if (childId < 0)
     {
         // Indexed access on BOTH sides of the push: growing the vector moves
         // every node, and a reference held across it dangles.
         Node child;
         child.floor.depth = sNodes[cur].floor.depth + 1;
-        child.floor.parent = sCurrent;
-        child.floor.parent_hole = hole;
+        child.floor.label = labelFor(child.floor.depth);
+        child.floor.from = sCurrent;
+        child.floor.from_hole = hole;
         sNodes.push_back(child);
         childId = static_cast<int>(sNodes.size()) - 1;
         sNodes[cur].floor.child[static_cast<std::size_t>(hole)] = childId;
     }
     const int fromId = sCurrent;
+    // However he got here before, THIS is the way back now.
+    sNodes[static_cast<std::size_t>(childId)].floor.from = sCurrent;
+    sNodes[static_cast<std::size_t>(childId)].floor.from_hole = hole;
     if (enterNode(engine, em, childId, /*atHole=*/-1))
         return true;
     // A child that cannot build must not strand him in a torn-down world.
@@ -729,25 +897,37 @@ bool ascend(Engine& engine, EntityManager& em)
 {
     if (sCurrent < 0)
         return false;
+    // A PASSAGE IN USE CANNOT BE TRAVELLED, in either direction. What he left running above is
+    // coming down this square, and he does not get to walk up past it any more than he gets to
+    // walk down past what is coming up.
+    if (!queueAbove(sCurrent).empty())
+    {
+        poe::log().info("descent: the way up is still delivering -- finish it first");
+        return false;
+    }
     const Node& node = sNodes[static_cast<std::size_t>(sCurrent)];
-    if (node.floor.parent < 0)
+    if (node.floor.from < 0)
         return false; // the top floor is authored; there is nothing above it to climb to
     // The hole, not a place: where it is comes from the parent once the parent
     // is standing, which after a resume is the first time it has existed.
-    return enterNode(engine, em, node.floor.parent, node.floor.parent_hole);
+    return enterNode(engine, em, node.floor.from, node.floor.from_hole);
 }
 
 void refreshLeaks(EntityManager& em)
 {
-    for (auto [e, site] : em.registry().view<DigSite>().each())
+    for (auto [e, site] : em.registry().view<DescendSite>().each())
         site.leaking = !queueUnder(childOf(site.hole)).empty();
+    // The way back up says the same thing about what is coming down it.
+    const bool fromAbove = sCurrent >= 0 && !queueAbove(sCurrent).empty();
+    for (auto [e, site] : em.registry().view<AscendSite>().each())
+        site.leaking = fromAbove;
 }
 
 // One puff above a hole that is doing something: a handful of blobs at different sizes and
 // offsets, drifting at slightly different rates. Square particles read as squares when there
 // is one of them and as a cloud when there are several overlapping and none of them agree --
 // so the variation IS the effect, not decoration on it.
-void reek(EntityManager& em, float x, float y)
+void reek(EntityManager& em, float x, float y, bool rising)
 {
     static std::mt19937 rng(0x5EEDu); // cosmetic only: nothing here is saved or replayed
     std::uniform_real_distribution<float> spread(-5.0f, 5.0f);
@@ -766,7 +946,10 @@ void reek(EntityManager& em, float x, float y)
         const float tone = vary(rng);
         const entt::entity blob = spawn::box(em, x + spread(rng), y - 10.0f + lift(rng), size(rng),
                                              0.52f + tone, 0.60f + tone, 0.30f + tone);
-        reg.emplace<Velocity>(blob, Velocity{lean + wander(rng), -kReekRise + wander(rng)});
+        // Direction says where it is COMING FROM: up out of a hole in the floor, down out of
+        // the way he climbed in by.
+        const float climb = rising ? -kReekRise : kReekRise * 0.7f;
+        reg.emplace<Velocity>(blob, Velocity{lean + wander(rng), climb + wander(rng)});
         Particle p;
         p.lifetime = live(rng);
         p.start_scale = 0.45f;
@@ -789,9 +972,9 @@ void update(Engine& engine, EntityManager& em, float dt)
     // the floor below, not to the one he is standing on. Taken every frame rather than at some
     // exit, because quitting is an exit nobody gets to run code on.
     const std::vector<int>& lost = swarm::progress();
-    for (std::size_t i = 0; i < sSeepOwner.size() && i < lost.size(); ++i)
+    for (std::size_t i = 0; i < sSlots.size() && i < lost.size(); ++i)
     {
-        const Owner& owner = sSeepOwner[i];
+        const Owner& owner = sSlots[i].owner;
         if (owner.node < 0 || owner.node >= static_cast<int>(sNodes.size()))
             continue;
         auto& killed = sNodes[static_cast<std::size_t>(owner.node)].floor.killed;
@@ -801,9 +984,10 @@ void update(Engine& engine, EntityManager& em, float dt)
     if (sCurrent < 0)
         return;
     Node& node = sNodes[static_cast<std::size_t>(sCurrent)];
-    for (std::size_t s = 0; s < sSeepOwner.size(); ++s)
+    for (std::size_t s = 0; s < sSlots.size(); ++s)
     {
-        const Owner owner = sSeepOwner[s];
+        const SeepSlot& slot = sSlots[s];
+        const Owner owner = slot.owner;
         if (owner.node < 0)
             continue;
         auto& ownerCleared = sNodes[static_cast<std::size_t>(owner.node)].floor.cleared;
@@ -812,7 +996,7 @@ void update(Engine& engine, EntityManager& em, float dt)
             !swarm::seepCleared(em, static_cast<int>(s)))
             continue;
         ownerCleared[oh] = true;
-        if (owner.node != sCurrent)
+        if (slot.mouth != Mouth::Own)
         {
             // A passage finished what it was carrying; the next thing below takes its place.
             poe::log().info("descent: node {} hole {} spent from above", owner.node, owner.hole);
@@ -824,12 +1008,12 @@ void update(Engine& engine, EntityManager& em, float dt)
         for (const auto [e, art] : em.registry().view<SeepArt>().each())
             if (art.hole == static_cast<int>(i))
             {
-                DigSite dig;
-                dig.radius = siteFeel().reach;
-                dig.hole = art.hole;
-                dig.spawn_x = node.seeps[i].x;
-                dig.spawn_y = node.seeps[i].y;
-                em.registry().emplace<DigSite>(e, dig);
+                DescendSite site;
+                site.radius = siteFeel().reach;
+                site.hole = art.hole;
+                site.spawn_x = node.seeps[i].x;
+                site.spawn_y = node.seeps[i].y;
+                em.registry().emplace<DescendSite>(e, site);
             }
         poe::log().info("descent: hole {} spent -- a way down now", i);
     }
@@ -847,44 +1031,39 @@ void update(Engine& engine, EntityManager& em, float dt)
             const bool carrying = i < node.floor.cleared.size() && node.floor.cleared[i] &&
                                   !queueUnder(node.floor.child[i]).empty();
             if (pressing || carrying)
-                reek(em, node.seeps[i].x, node.seeps[i].y);
+                reek(em, node.seeps[i].x, node.seeps[i].y, /*rising=*/true);
         }
+        // And the way back up, when something he left above is coming down it.
+        for (const SeepSlot& slot : sSlots)
+            if (slot.mouth == Mouth::Up && slot.owner.node >= 0)
+                reek(em, slot.x, slot.y, /*rising=*/false);
     }
 
-    // Each passage carries the nearest thing still running below it. When that finishes -- or
-    // when he opens something new down there -- the passage picks up whatever is next without
-    // disturbing the floor he is standing on.
-    for (std::size_t s = node.seeps.size(); s < sSeepOwner.size(); ++s)
+    // Each passage carries the nearest thing still running on the other side of it. When that
+    // finishes -- or when he opens something new over there -- the passage picks up whatever is
+    // next, without disturbing the floor he is standing on.
+    for (std::size_t s = 0; s < sSlots.size(); ++s)
     {
-        const int hole = static_cast<int>(s - node.seeps.size());
-        int passage = -1;
-        int seen = 0;
-        for (std::size_t i = 0; i < node.floor.cleared.size(); ++i)
-            if (node.floor.cleared[i] && !queueUnder(node.floor.child[i]).empty() && seen++ == hole)
-            {
-                passage = static_cast<int>(i);
-                break;
-            }
-        const std::vector<Owner> queue =
-            passage >= 0 ? queueUnder(node.floor.child[static_cast<std::size_t>(passage)])
-                         : std::vector<Owner>{};
+        SeepSlot& slot = sSlots[s];
+        if (slot.mouth == Mouth::Own)
+            continue;
+        const std::vector<Owner> queue = queueFor(sCurrent, slot);
         if (queue.empty())
         {
             swarm::retarget(static_cast<int>(s), swarm::Seep{}, 0);
-            sSeepOwner[s] = Owner{};
+            slot.owner = Owner{};
             continue;
         }
         const Owner& head = queue.front();
-        if (head.node == sSeepOwner[s].node && head.hole == sSeepOwner[s].hole)
+        if (head.node == slot.owner.node && head.hole == slot.owner.hole)
             continue;
-        const Node& below = sNodes[static_cast<std::size_t>(head.node)];
+        const Node& other = sNodes[static_cast<std::size_t>(head.node)];
         swarm::retarget(static_cast<int>(s),
-                        swarm::Seep{node.seeps[static_cast<std::size_t>(passage)].x,
-                                    node.seeps[static_cast<std::size_t>(passage)].y,
-                                    below.floor.kind.at(static_cast<std::size_t>(head.hole)),
-                                    below.floor.depth},
-                        below.floor.killed.at(static_cast<std::size_t>(head.hole)));
-        sSeepOwner[s] = head;
+                        swarm::Seep{slot.x, slot.y,
+                                    other.floor.kind.at(static_cast<std::size_t>(head.hole)),
+                                    other.floor.depth},
+                        other.floor.killed.at(static_cast<std::size_t>(head.hole)));
+        slot.owner = head;
     }
 }
 
@@ -940,6 +1119,130 @@ int frontsOpen()
         if (node.floor.cleared[i] && !queueUnder(node.floor.child[i]).empty())
             ++fronts;
     return fronts;
+}
+
+std::vector<Point> exclusions()
+{
+    std::vector<Point> out;
+    if (sCurrent < 0)
+        return out;
+    const Node& node = sNodes[static_cast<std::size_t>(sCurrent)];
+
+    // What each seep is doing, indexed by the mouth it arrives at, so a hole that is carrying
+    // reads as working even though its own program is long spent.
+    const auto workingAt = [&](int hole, int& wave, int& waves)
+    {
+        for (std::size_t s = 0; s < sSlots.size(); ++s)
+        {
+            const SeepSlot& slot = sSlots[s];
+            const bool mine = slot.mouth == Mouth::Up ? hole < 0 : slot.hole == hole;
+            if (!mine || slot.owner.node < 0 || swarm::seepSealed(static_cast<int>(s)))
+                continue;
+            const auto& cleared = sNodes[static_cast<std::size_t>(slot.owner.node)].floor.cleared;
+            const auto oh = static_cast<std::size_t>(slot.owner.hole);
+            if (oh >= cleared.size() || cleared[oh])
+                continue;
+            wave = swarm::seepWave(static_cast<int>(s));
+            waves = swarm::seepWaves(static_cast<int>(s));
+            return true;
+        }
+        return false;
+    };
+
+    // The way he came in first, when anything is coming down it: it is the nearest thing to him
+    // and the least expected.
+    int wave = 0;
+    int waves = 0;
+    if (workingAt(-1, wave, waves))
+        out.push_back(Point{poeTag(sCurrent, -1), PointState::Working, wave, waves});
+
+    for (std::size_t i = 0; i < node.seeps.size(); ++i)
+    {
+        Point point;
+        point.tag = poeTag(sCurrent, static_cast<int>(i));
+        if (workingAt(static_cast<int>(i), point.wave, point.waves))
+            point.state = PointState::Working;
+        else if (i < node.floor.cleared.size() && node.floor.cleared[i])
+            point.state = PointState::Cleared;
+        else
+            point.state = PointState::Sealed;
+        out.push_back(std::move(point));
+    }
+    return out;
+}
+
+std::string floorLabel(int node)
+{
+    if (node < 0 || node >= static_cast<int>(sNodes.size()))
+        return {};
+    return sNodes[static_cast<std::size_t>(node)].floor.label;
+}
+
+std::string poeTag(int node, int hole)
+{
+    const std::string floor = floorLabel(node);
+    if (floor.empty())
+        return floor;
+    // 0 IS THE WAY IN -- the passage he arrived by. It is a point of entry like any other the
+    // moment something comes through it, so it is numbered like one; the holes he finds on the
+    // floor itself run from 1. Unpadded: a floor holds a handful of holes, and a leading zero
+    // is a convention for sorting lists that do not exist here.
+    return floor + "-" + std::to_string(hole + 1);
+}
+
+std::string hereLabel()
+{
+    return floorLabel(sCurrent);
+}
+
+std::string beyondLabel(int hole, bool downward)
+{
+    if (sCurrent < 0)
+        return {};
+    const Node& node = sNodes[static_cast<std::size_t>(sCurrent)];
+    if (downward)
+    {
+        // A place he has been has a name. One he has not is a QUESTION, and saying so is the
+        // point: walking back into a floor he cleared is walking, and opening one he has never
+        // seen is a commitment. Naming it in advance would flatten the difference.
+        const int child = childOf(hole);
+        if (child >= 0)
+            return floorLabel(child);
+        // Except where the branches rejoin: at an act boundary every hole above opens the SAME
+        // floor, so one he has not dug yet still leads somewhere he has been. The link is only
+        // made when he digs, but the destination is known before he does, and calling a place
+        // he has walked through a question would be a lie.
+        if (convergesAt(node.floor.depth + 1))
+            if (const int shared = sharedAt(node.floor.depth + 1); shared >= 0)
+                return floorLabel(shared);
+        return std::string{"?"};
+    }
+    return floorLabel(node.floor.from);
+}
+
+int stepDir(int hole, bool downward)
+{
+    if (sCurrent < 0)
+        return 0;
+    const Node& node = sNodes[static_cast<std::size_t>(sCurrent)];
+    // Worked out from the DEPTHS rather than from which act was asked for, so a wall hole that
+    // opens a room at the same depth marks itself as across without anything here changing.
+    int there = node.floor.depth;
+    if (downward)
+    {
+        const int child = childOf(hole);
+        there =
+            child >= 0 ? sNodes[static_cast<std::size_t>(child)].floor.depth : node.floor.depth + 1;
+    }
+    else if (node.floor.from >= 0)
+        there = sNodes[static_cast<std::size_t>(node.floor.from)].floor.depth;
+    return there > node.floor.depth ? 1 : there < node.floor.depth ? -1 : 0;
+}
+
+bool convergesAt(int depth)
+{
+    const int every = actEvery();
+    return every > 0 && depth > 0 && depth % every == 0;
 }
 
 bool floorHasWork()

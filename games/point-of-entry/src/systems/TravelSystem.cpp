@@ -73,6 +73,9 @@ Phase sPhase = Phase::None;
 float sTimer = 0.0f;
 std::string sPendingArea;
 std::string sPendingWarp;
+// What to do at full black when the cut is not a door: a floor being dug, climbed out of, or
+// whatever swaps the world next.
+std::function<void()> sPendingAct;
 
 void collectWarp(const area::Object& o)
 {
@@ -254,7 +257,13 @@ void update(Engine& engine, EntityManager& em, float dt)
         if (sTimer >= kFade)
         {
             // Full black: the safe point. Nothing is mid-tick and nothing shows.
-            if (!enter(engine, em, sPendingArea, sPendingWarp))
+            if (sPendingAct)
+            {
+                const std::function<void()> act = std::move(sPendingAct);
+                sPendingAct = nullptr;
+                act();
+            }
+            else if (!enter(engine, em, sPendingArea, sPendingWarp))
                 poe::log().error("travel: warp '{}' leads nowhere", sPendingWarp);
             sPhase = Phase::FadeIn;
             sTimer = 0.0f;
@@ -313,6 +322,17 @@ float curtainAlpha()
     if (sPhase == Phase::FadeIn)
         return 1.0f - std::min(1.0f, sTimer / kFade);
     return 0.0f;
+}
+
+void cut(std::function<void()> atBlack)
+{
+    if (sPhase != Phase::None)
+        return; // one curtain at a time; a cut inside a cut is a dropped frame at best
+    sPendingArea.clear();
+    sPendingWarp.clear();
+    sPendingAct = std::move(atBlack);
+    sPhase = Phase::FadeOut;
+    sTimer = 0.0f;
 }
 
 bool active()

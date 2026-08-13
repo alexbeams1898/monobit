@@ -20,8 +20,8 @@
     },
     "block": {
         "stamina_per_damage": 2.0,
-        "walk_factor": 0.5,
-        "broken_factor": 0.6
+        "broken_factor": 0.6,
+        "walk_factor": 0.85
     },
     "defense": {
         "level_scale": 0.4,
@@ -57,5 +57,13 @@
     },
     "fronts": {
         "bonus_per_extra": 0.35
+    },
+    "fists": {
+        "base": 2.0,
+        "per_physical": 0.8,
+        "reach": 26.0,
+        "arc": 70.0,
+        "cooldown": 0.42,
+        "stamina": 4.0
     }
 }

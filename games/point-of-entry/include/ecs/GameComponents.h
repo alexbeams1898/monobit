@@ -73,6 +73,10 @@ struct Gait
 {
     float travelled = 0.0f;
     float rest = 0.0f; // 0 walking, 1 fully settled -- eases the hop out instead of freezing it
+    // BRACED: 0 loose, 1 rigid. The goofy walk is a body that does not expect to be hit; a man
+    // holding a guard up plants his feet and stops swinging. Written by whoever knows the body
+    // is braced, so the gait itself stays a thing that only turns distance into motion.
+    float braced = 0.0f;
 };
 
 // What killing has paid, CARRIED. Not a bar that fills toward anything -- a pocketed sum that
@@ -105,7 +109,7 @@ struct AuthoredSeep
 // still pressing, and this is the mouth it reaches him through -- one hole at
 // a time, out of that hole's own finite program, so what comes up is the work
 // he walked away from rather than anything new.
-struct DigSite
+struct DescendSite
 {
     // Stand ON the hole to be offered the way down -- the prompt is the
     // square underfoot, never the neighbourhood. Filled from the dig's config
@@ -130,6 +134,10 @@ struct DigSite
 struct AscendSite
 {
     float radius = 16.0f;
+    // IN USE. What he left running above comes DOWN this square, and a passage carrying
+    // something is not a way anywhere -- the same rule the way down obeys, obeyed here too.
+    // Derived every frame by descent::refreshLeaks.
+    bool leaking = false;
 };
 
 // A placed hole's art, tagged with which of the floor's holes it draws. When

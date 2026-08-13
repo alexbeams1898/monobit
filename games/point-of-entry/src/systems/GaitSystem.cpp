@@ -4,6 +4,7 @@
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
 #include "ops/NavUtils.h"
+#include "systems/SpriteAnimSystem.h"
 
 #include <cmath>
 
@@ -27,7 +28,7 @@ namespace
 // CADENCE knob: at a given walk speed, a longer stride means fewer steps per second. Too short
 // and the rock becomes a shudder -- 13px at 120px/s was nine steps a second, triple a natural
 // rhythm, and every pose-snap landed three times as often as the eye wanted it.
-constexpr float kStrideLength = 25.0f;
+constexpr float kStrideLength = 34.0f;
 
 constexpr float kHopHeight = 2.0f;
 constexpr float kTiltMax = 0.12f; // radians (~7 deg) of rock at the peak of a step
@@ -66,7 +67,11 @@ void update(EntityManager& em, float dt)
         else
             gait.rest = 0.0f;
 
+        // Bracing TIGHTENS the walk rather than stopping it. He still waddles -- taking the
+        // sway away outright reads as the animation breaking rather than as a man setting
+        // himself -- it just travels less far, and the hop settles with it.
         const float amp = 1.0f - gait.rest;
+        const float loose = 1.0f - gait.braced;
 
         // Quantize distance into held poses -- the walk advances in snaps, not a glide.
         const float posesPerPx = kPosesPerStep / kStrideLength;
@@ -74,9 +79,11 @@ void update(EntityManager& em, float dt)
 
         // One hop per step, and the lean ALTERNATES by step parity -- left step, right step. Both
         // peak mid-step together: up-and-tilted is one pose, level at each footfall.
-        const float hop = std::abs(std::sin(s * geom::kPi)) * kHopHeight * amp;
+        const float hop =
+            std::abs(std::sin(s * geom::kPi)) * kHopHeight * amp * (0.6f + 0.4f * loose);
         const float side = static_cast<int>(s) % 2 == 0 ? 1.0f : -1.0f;
-        const float theta = std::abs(std::sin(s * geom::kPi)) * kTiltMax * side * amp;
+        const float theta =
+            std::abs(std::sin(s * geom::kPi)) * kTiltMax * side * amp * (0.45f + 0.55f * loose);
 
         // Pivot at the FEET. The engine rotates a sprite about its centre, which would swing the
         // feet out from under him -- offsetting by the base's displacement puts the hinge where

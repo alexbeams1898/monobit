@@ -61,7 +61,13 @@ void attach(EntityManager& em, entt::entity entity, const sprite_def::Def& def)
     anim.current_row = 0;
     anim.max_frames_per_state = def.frames;
 
-    play(em, entity, def.anims.front().name);
+    // WALKING IS WHAT A BODY DOES. Starting on whichever tag happens to sit first in the file
+    // made a one-tag creature work by accident and left a two-tag one holding its idle forever
+    // -- and idle is a pose for LOOKING at (the field guide's plate), not a state anything
+    // spends its life in.
+    const bool walks = std::any_of(def.anims.begin(), def.anims.end(),
+                                   [](const sprite_def::Anim& a) { return a.name == "walk"; });
+    play(em, entity, walks ? std::string{"walk"} : def.anims.front().name);
 }
 
 void play(EntityManager& em, entt::entity entity, const std::string& name)

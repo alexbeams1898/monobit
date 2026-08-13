@@ -412,11 +412,56 @@ void tickStream(EntityManager& em, const Tool& tool, entt::entity owner, float d
 
 } // namespace
 
+// HIS HANDS. What a man does when the tank runs dry: not a weapon, a way out of the room. Uses
+// the same area the tools do, so a punch hits, marks and reads exactly like everything else --
+// it is simply weaker, shorter and slower, and costs no chemical because it is not chemistry.
+float sFistCooldown = 0.0f;
+
+bool swing(EntityManager& em, entt::entity owner)
+{
+    auto& reg = em.registry();
+    const auto& fists = stats::formulas().fists;
+    auto* sta = reg.try_get<Stamina>(owner);
+    const auto* sheet = reg.try_get<Stats>(owner);
+    if (sta == nullptr || sheet == nullptr || sFistCooldown > 0.0f || sta->current < fists.stamina)
+        return false;
+
+    sta->current -= fists.stamina;
+    sta->recovery_timer = stats::formulas().stamina.recovery_delay;
+    sFistCooldown = fists.cooldown;
+
+    const auto& at = reg.get<Transform>(owner);
+    const float dx = aim::dirX();
+    const float dy = aim::dirY();
+    const entt::entity e = reg.create();
+    Transform t{};
+    t.x = at.x + dx * fists.reach * 0.5f;
+    t.y = at.y + dy * fists.reach * 0.5f;
+    reg.emplace<Transform>(e, t);
+    // Everything a swept area needs, the same as a tool's: WHERE IT FACES, because the arc is a
+    // cone measured off dir and a cone off (0,0) covers nothing; and a previous position,
+    // because the damage pass sweeps between frames rather than testing a point.
+    reg.emplace<PreviousTransform>(e, PreviousTransform{t.x, t.y});
+    HitArea area;
+    area.owner = owner;
+    area.radius = fists.reach;
+    area.damage = fists.base + fists.per_physical * static_cast<float>(sheet->physical);
+    area.arc = fists.arc; // DEGREES off dir, like every other area
+    area.dir_x = dx;
+    area.dir_y = dy;
+    area.remaining = 0.0001f; // one swing, not a lingering cloud
+    reg.emplace<HitArea>(e, area);
+    return true;
+}
+
 void update(EntityManager& em, float dt)
 {
     for (auto& cd : sCooldowns)
         if (cd > 0.0f)
             cd -= dt;
+    // Ticked here rather than inside the swing, so it runs down while he is backing away as
+    // well as while he is standing his ground.
+    sFistCooldown = std::max(0.0f, sFistCooldown - dt);
 
     const entt::entity owner = player::entity();
     auto& reg = em.registry();
@@ -427,9 +472,17 @@ void update(EntityManager& em, float dt)
         return;
     const Tool& tool = sTools[index];
 
-    // A stream is held rather than fired, so it runs its own path and stops here.
+    // A stream is held rather than fired, so it runs its own path and stops here -- unless the
+    // tank is dry, in which case holding the trigger is a man hitting things instead.
     if (tool.reach == Reach::Stream)
     {
+        const auto* charge = reg.try_get<Charge>(owner);
+        if (charge != nullptr && charge->current <= 0.0f && aim::firing() && !aim::guarding())
+        {
+            holster(em);
+            swing(em, owner);
+            return;
+        }
         tickStream(em, tool, owner, dt);
         return;
     }
@@ -448,7 +501,14 @@ void update(EntityManager& em, float dt)
         poe::log().error("combat: firing owner is missing stamina or charge -- shot dropped");
         return;
     }
-    if (sta->current < cost || charge->current < tool.charge)
+    if (charge->current < tool.charge)
+    {
+        // Dry: he still has hands. Not a mode he switches to -- the trigger simply means
+        // something else once the tank cannot answer it.
+        swing(em, owner);
+        return;
+    }
+    if (sta->current < cost)
         return;
     sta->current -= cost;
     sta->recovery_timer = stats::formulas().stamina.recovery_delay;

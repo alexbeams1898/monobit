@@ -59,6 +59,11 @@ struct SeepEntry
     std::size_t creature = 0;
     int weight = 1;
     int min_wave = 1;
+    // How deep before this one rides this hole at all. A species arrives at a DEPTH, which is
+    // the law of depth applied to the bestiary rather than to the numbers: what comes through
+    // a crack near the surface and what comes through the same crack far down are different
+    // animals, and the hole's file says where the line is.
+    int min_depth = 0;
 };
 
 // A seep's program: its fauna and how its waves run. Fields default from the floor-wide
@@ -306,8 +311,9 @@ SeepProgram loadSeepType(const std::string& path, int depth)
         const std::size_t idx = loadCreature(entry.value("creature", std::string{}));
         if (idx == static_cast<std::size_t>(-1))
             continue;
-        program.entries.push_back(
-            SeepEntry{idx, entry.value("weight", 1), entry.value("min_wave", 1)});
+        program.entries.push_back(SeepEntry{idx, entry.value("weight", 1),
+                                            entry.value("min_wave", 1),
+                                            entry.value("min_depth", 0)});
     }
     // A seep may override any part of its wave program; unspecified fields keep the floor's.
     const auto& w = j.value("waves", nlohmann::json::object());
@@ -335,9 +341,11 @@ std::size_t pickCreature(const ActiveSeep& seep, unsigned n)
     if (seep.program.entries.empty())
         return static_cast<std::size_t>(-1);
     const auto& entries = seep.program.entries;
+    const auto rides = [&](const SeepEntry& entry)
+    { return seep.wave >= entry.min_wave && seep.depth >= entry.min_depth; };
     int totalWeight = 0;
     for (const auto& entry : entries)
-        if (seep.wave >= entry.min_wave)
+        if (rides(entry))
             totalWeight += entry.weight;
     std::size_t chosen = entries.front().creature;
     if (totalWeight > 0)
@@ -345,7 +353,7 @@ std::size_t pickCreature(const ActiveSeep& seep, unsigned n)
         int ticket = static_cast<int>(n % static_cast<unsigned>(totalWeight));
         for (const auto& entry : entries)
         {
-            if (seep.wave < entry.min_wave)
+            if (!rides(entry))
                 continue;
             ticket -= entry.weight;
             if (ticket < 0)
@@ -656,6 +664,14 @@ void update(EntityManager& em, float dt)
             seep.timer = seep.program.breath;
             continue;
         }
+        // Nothing left to send and nothing left standing: it is spent NOW. Running the breath
+        // first would be a hole gathering itself for a wave that does not exist, and the player
+        // waiting on a pause with nothing in it.
+        if (seep.wave >= seep.program.waves)
+        {
+            seep.done = true;
+            continue;
+        }
         seep.timer -= dt;
         if (seep.timer > 0.0f)
             continue;
@@ -740,6 +756,20 @@ bool seepSealed(int seepIndex)
 {
     return seepIndex < 0 || seepIndex >= static_cast<int>(sSeeps.size()) ||
            sSeeps[static_cast<std::size_t>(seepIndex)].sealed_shut;
+}
+
+int seepWave(int seepIndex)
+{
+    if (seepIndex < 0 || seepIndex >= static_cast<int>(sSeeps.size()))
+        return 0;
+    return sSeeps[static_cast<std::size_t>(seepIndex)].wave;
+}
+
+int seepWaves(int seepIndex)
+{
+    if (seepIndex < 0 || seepIndex >= static_cast<int>(sSeeps.size()))
+        return 0;
+    return sSeeps[static_cast<std::size_t>(seepIndex)].program.waves;
 }
 
 int remaining(const EntityManager& em)

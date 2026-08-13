@@ -783,6 +783,31 @@
 							],
 							"__worldX": 624,
 							"__worldY": -16
+						},
+						{
+							"__identifier": "RestSpot",
+							"__grid": [
+								2,
+								2
+							],
+							"__pivot": [
+								0,
+								0
+							],
+							"__tags": [],
+							"__tile": null,
+							"__smartColor": "#D77643",
+							"iid": "50960181-3f22-411c-86bc-61286ed49bad",
+							"width": 16,
+							"height": 16,
+							"defUid": 8,
+							"px": [
+								32,
+								32
+							],
+							"fieldInstances": [],
+							"__worldX": 544,
+							"__worldY": -112
 						}
 					]
 				},
