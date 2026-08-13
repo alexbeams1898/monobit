@@ -1,6 +1,6 @@
 #include "systems/TravelSystem.h"
 
-#include "AreaLoader.h"
+#include "formats/AreaLoader.h"
 #include "Engine.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"

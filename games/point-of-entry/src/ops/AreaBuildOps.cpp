@@ -1,7 +1,7 @@
 #include "ops/AreaBuildOps.h"
 
-#include "AreaLoader.h"
-#include "SpriteDefLoader.h"
+#include "formats/AreaLoader.h"
+#include "formats/SpriteDefLoader.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"

@@ -6,16 +6,20 @@
 
 ## One sentence
 
-**An exterminator takes a routine job at a house and finds something under it.**
+**A man answers an ad for an exterminator and finds something under the building.**
+
+*(He is not one. See SETTING.md, "Who he is, and why he cannot leave" — that
+section is newer than this document and wins wherever the two disagree.)*
 
 ## The elevator version
 
 An action RPG — Zelda-ish combat crossed with Vampire Survivors, in a
-Link-to-the-Past / Mother 1 aesthetic — about a blue-collar exterminator who is
-assigned a job that unearths what is rotting the world. You find the hole the
-vermin are coming through and you open it up, digging further down after it as it
-gets worse. You exterminate, come back up to town, spend, and go deeper. The things you kill get
-stranger the further down you go: ants, then mice, then things that are neither.
+Link-to-the-Past / Mother 1 aesthetic — about a man who takes an extermination
+job he has no business taking, and unearths what is rotting the world. You find
+the hole the vermin are coming through and you open it up, going further down
+after it as it gets worse. You exterminate, come back up, spend, and go deeper.
+The things you kill get stranger the further down you go: ants, then mice, then
+things that are neither.
 
 Short — a year or less. Intended as a **showcase / pilot**, not a magnum opus.
 
@@ -59,13 +63,16 @@ Something beneath the earth — an infection, a cancer, a rot — is causing
 everything above it to decay. It is making its way into the human world.
 
 **Nobody has connected it.** The world is in a semi-normal state. There are
-rumours; strange things have been happening. But there is no investigation, no
-quarantine, no conspiracy — a town that simply does not know.
+rumours; strange things have been happening. The police have the town under a
+soft quarantine and will not say why — which is not a conspiracy so much as an
+authority that knows something is wrong and has no better idea than to close the
+road. Nobody is investigating. Nobody knows.
 
 **The player is the first to uncover it**, and he uncovers it *by accident*. He
-is not sent to investigate the house. He is sent to do his job at the house. The
-game's central act is **inference**, not exploration: not "go find the anomaly"
-but "go deal with the wasps," and then the floor is wrong.
+is not sent to investigate anything. He answered an ad for pest control because
+it came with a room. The game's central act is **inference**, not exploration:
+not "go find the anomaly" but "go deal with the ants," and then the floor is
+wrong.
 
 Consequences of framing it this way, all of them good:
 
@@ -89,10 +96,18 @@ up until he reached the bottom of what was coming through.
 
 ## The protagonist
 
-A normal guy working a blue-collar job — not a hero, a competent professional
-who was sent. **A silent protagonist:** he never narrates and never explains. The
-register comes from what he DOES and from the trade language around him, not from
-a running commentary.
+A normal guy doing a blue-collar job — not a hero, and not sent by anyone.
+**A silent protagonist:** he never narrates and never explains. The register
+comes from what he DOES and from the trade language around him, not from a
+running commentary.
+
+> **OPEN — the one thing the newer premise reopens.** Everything below assumes
+> competence: the incuriosity reads as professional because he is a professional.
+> An impostor performing the trade off a dead man's manuals is a *different*
+> joke and possibly a better one — the frame is borrowed rather than his, which
+> makes holding it under a demon funnier and slightly sadder. But it is not the
+> same joke, and the register has to be re-decided rather than assumed to carry
+> over. See SETTING.md, "Who he is, and why he cannot leave".
 
 **The reference is MARIO, not a Metal Gear operative.** Mario is a plumber; a pipe
 leads somewhere impossible; he goes down it. No exposition, no reluctance, no "what
@@ -124,8 +139,12 @@ Why the trade earns its place:
 
 **What he wants: to be the best exterminator of all time. [SETTLED]** That is the
 whole motivation, and it is sincere. He is not brave, not curious, and not
-investigating — this is the biggest job anyone has ever been handed and he intends
-to do it *well*. The apocalypse is a career opportunity.
+investigating — this is the biggest job anyone has ever taken and he intends to
+do it *well*. The apocalypse is a career opportunity.
+
+*(This one gets BETTER under the newer premise, not worse: a man with no trade
+at all deciding he is going to be the best in it is the same ambition with more
+distance to cover.)*
 
 It is a shonen protagonist's ambition ("I'll be the best") applied to pest control,
 and it does real work:
@@ -332,6 +351,10 @@ redesigned until it can. This is the generator for everything below.
 same doctrine as level: derived from checkable facts (stat minimums, the shape
 of the spread, per-species kill tallies, jobs completed), so it can never
 disagree with the record that should explain it.
+
+**What rank BUYS is reach**: how many staging areas he may set down at once, so
+ranking up literally means another kit he is allowed to have out. See SETTING.md,
+"Home, staging areas, and the reason to go back".
 
 The ladder is loosely traced from the real credentialing of the trade --
 supervised apprenticeship, per-category exams, verified field experience,

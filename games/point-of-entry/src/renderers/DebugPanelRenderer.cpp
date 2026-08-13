@@ -1,6 +1,6 @@
 #include "renderers/DebugPanelRenderer.h"
 
-#include "AreaLoader.h"
+#include "formats/AreaLoader.h"
 #include "Engine.h"
 #include "ecs/BalanceConfig.h"
 #include "ecs/Components.h"

@@ -1,4 +1,4 @@
-#include "ops/FloorTypeOps.h"
+#include "formats/FloorTypes.h"
 
 #include "ops/LogUtils.h"
 
@@ -6,7 +6,7 @@
 
 #include <fstream>
 
-namespace floor_types
+namespace formats
 {
 namespace
 {
@@ -42,4 +42,4 @@ nlohmann::json read(const std::string& path)
     return readAt(path, 0);
 }
 
-} // namespace floor_types
+} // namespace formats

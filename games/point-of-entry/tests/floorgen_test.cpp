@@ -1,8 +1,8 @@
-#include "FloorGen.h"
+#include "formats/FloorGen.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
-#include "ops/FloorTypeOps.h"
+#include "formats/FloorTypes.h"
 #include "systems/WaveSystem.h"
 
 #include <nlohmann/json.hpp>
@@ -148,7 +148,7 @@ TEST_CASE("spawner markers keep their distances", "[floorgen]")
 {
     // The rule under test is the one in config -- read the real numbers rather than repeating
     // them here to drift.
-    const nlohmann::json j = floor_types::read("config/floors/cellar.json");
+    const nlohmann::json j = formats::read("config/floors/cellar.json");
     REQUIRE(j.is_object());
     const auto& sm = j.at("spaced_markers");
     const std::string types = sm.at("types");
@@ -201,7 +201,7 @@ TEST_CASE("every floor type parses and keeps its promises", "[bestiary]")
         const std::string typePath = entry.path().generic_string();
         INFO(typePath);
         ++types;
-        const nlohmann::json floorCfg = floor_types::read(typePath);
+        const nlohmann::json floorCfg = formats::read(typePath);
         REQUIRE(floorCfg.is_object());
         // Read through the base chain, so a type inheriting its mix still has to have one.
         const auto kinds = floorCfg.value("seep_types", nlohmann::json::array());
@@ -262,8 +262,8 @@ TEST_CASE("every floor type parses and keeps its promises", "[bestiary]")
 // it does not name it inherits; what it does name replaces outright.
 TEST_CASE("a floor type folds into its base", "[floorgen]")
 {
-    const nlohmann::json cellar = floor_types::read("config/floors/cellar.json");
-    const nlohmann::json warren = floor_types::read("config/floors/warren.json");
+    const nlohmann::json cellar = formats::read("config/floors/cellar.json");
+    const nlohmann::json warren = formats::read("config/floors/warren.json");
 
     CHECK(warren.value("tile_size", 0) == cellar.value("tile_size", 0)); // inherited
     CHECK(warren.value("width", 0) < cellar.value("width", 0));          // overridden: tighter
@@ -279,7 +279,7 @@ TEST_CASE("a floor type folds into its base", "[floorgen]")
 
     SECTION("a type that does not exist leaves every reader on its defaults")
     {
-        CHECK(floor_types::read("config/floors/nothing_here.json").empty());
+        CHECK(formats::read("config/floors/nothing_here.json").empty());
     }
 }
 
@@ -293,7 +293,7 @@ TEST_CASE("every floor type generates across many seeds", "[floorgen]")
         if (!entry.is_regular_file() || entry.path().extension() != ".json")
             continue;
         const std::string typePath = entry.path().generic_string();
-        const nlohmann::json cfg = floor_types::read(typePath);
+        const nlohmann::json cfg = formats::read(typePath);
         const int minCount =
             cfg.value("spaced_markers", nlohmann::json::object()).value("min_count", 2);
         const std::string types =

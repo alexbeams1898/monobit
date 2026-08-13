@@ -1,4 +1,4 @@
-#include "AreaLoader.h"
+#include "formats/AreaLoader.h"
 #include "ecs/EntityManager.h"
 #include "systems/TravelSystem.h"
 

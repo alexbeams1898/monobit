@@ -1,6 +1,6 @@
 #pragma once
 
-#include "SpriteDefLoader.h"
+#include "formats/SpriteDefLoader.h"
 
 #include <string>
 

@@ -33,13 +33,13 @@ add_library(poe-systems STATIC
     src/systems/GaitSystem.cpp
     src/systems/DamageSystem.cpp
     src/systems/SpriteAnimSystem.cpp
-    src/SpriteDefLoader.cpp
-    src/SaveGame.cpp
+    src/formats/SpriteDefLoader.cpp
+    src/formats/SaveGame.cpp
     src/screens/TitleScreen.cpp
-    src/FloorGen.cpp
-    src/AreaLoader.cpp
+    src/formats/FloorGen.cpp
+    src/formats/AreaLoader.cpp
     src/ops/SpawnUtils.cpp
-    src/ops/FloorTypeOps.cpp
+    src/formats/FloorTypes.cpp
     src/ops/ZoneUtils.cpp
     src/ops/AreaBuildOps.cpp
     src/systems/TravelSystem.cpp

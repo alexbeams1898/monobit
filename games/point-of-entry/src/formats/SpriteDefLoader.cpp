@@ -1,4 +1,4 @@
-#include "SpriteDefLoader.h"
+#include "formats/SpriteDefLoader.h"
 
 #include "ops/LogUtils.h"
 

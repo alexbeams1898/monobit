@@ -3,14 +3,21 @@
 
 The taxonomy (established by prison-escape-game, adopted here strictly):
 
-  include/            app spine only (worldgen, top-level loaders) -- allowlisted
   include/ecs/        components and balance/config -- leaf headers, include nothing game-side
                       outside ecs/
+  include/formats/    the disk boundary: turning an authored or persisted file into a runtime
+                      structure, and back. A map, a floor type, a room template, a sprite
+                      definition, the save document. Everything else in the tree is behaviour;
+                      these are the only modules that are not.
   include/systems/    per-frame logic; files end in System.h
   include/ops/        stateless helper operations
   include/renderers/  draw-only surfaces; files end in Renderer.h
   include/screens/    full-screen UI states
   src/                mirrors include/ exactly, plus main.cpp
+
+Nothing sits at the top of include/ any more. The four that used to -- the loaders -- were a
+category nobody had named, which is how they came to be described as "the app spine": a name
+that says where they sit rather than what they are.
 
 Checked by machine because taxonomy enforced by memory decays one convenient exception at a
 time. Run from the repo root; exits 1 with a list of violations.
@@ -26,11 +33,10 @@ ROOT = Path(__file__).resolve().parent.parent
 INCLUDE = ROOT / "include"
 SRC = ROOT / "src"
 
-ALLOWED_DIRS = {"ecs", "ops", "renderers", "screens", "systems"}
-# The spine: worldgen and future top-level loaders. Additions here should be rare and deliberate.
-TOP_HEADERS = {"FloorGen.h", "SpriteDefLoader.h", "AreaLoader.h", "SaveGame.h"}
-TOP_SOURCES = {"FloorGen.cpp", "SpriteDefLoader.cpp", "AreaLoader.cpp", "SaveGame.cpp",
-               "main.cpp"}
+ALLOWED_DIRS = {"ecs", "formats", "ops", "renderers", "screens", "systems"}
+# include/ has no top level of its own; src/ has exactly one file, the entry point.
+TOP_HEADERS: set[str] = set()
+TOP_SOURCES = {"main.cpp"}
 SUFFIX_RULES = {"systems": "System.h", "renderers": "Renderer.h"}
 # ops are operations or utilities and say which; screens are either a screen (XScreen, XDialog,
 # XMenu) or shared screen infrastructure (ScreenX) -- the reference uses both shapes.

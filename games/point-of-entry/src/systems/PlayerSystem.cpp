@@ -230,6 +230,99 @@ void watchFooting(EntityManager& em)
     sWasStuck = stuck;
 }
 
+// WHERE HE FACES. Spraying, he faces his work -- the aim side wins for as long as the stream is
+// held, and near-vertical aim keeps whichever side he already had rather than flickering at the
+// boundary. The moment the trigger releases, facing snaps back to movement. Through
+// FacingDirection rather than onto the sprite directly: the sprite's flip is OWNED by
+// AnimationSystem, which rewrites it from facing every tick.
+void faceTheWork(EntityManager& em, float dx)
+{
+    auto& facing = em.registry().get_or_emplace<FacingDirection>(sPlayer);
+    const float side = tools::streaming(em) ? aim::dirX() : dx;
+    if (tools::streaming(em) && std::abs(aim::dirX()) <= 0.1f)
+        return; // near-vertical: keep the side he already had
+    if (side == 0.0f)
+        return;
+    facing.dx = side < 0.0f ? -1.0f : 1.0f;
+    facing.render_dx = facing.dx;
+}
+
+// HOLDING THE GUARD UP PLANTS HIM. The gait stiffens -- the sway goes, most of the hop goes --
+// and his speed barely changes: slowing a man for raising his guard would punish the defensive
+// option twice, once in tempo and once in reach.
+void tickBrace(EntityManager& em, double dt)
+{
+    auto* gait = em.registry().try_get<Gait>(sPlayer);
+    if (gait == nullptr)
+        return;
+    // Eased rather than flipped: a man sets himself over a moment, and snapping the gait between
+    // two shapes on a keypress reads as a glitch however right the two shapes are.
+    constexpr float kBraceTime = 0.18f;
+    const float want = aim::guarding() ? 1.0f : 0.0f;
+    const float move = static_cast<float>(dt) / kBraceTime;
+    gait->braced += std::clamp(want - gait->braced, -move, move);
+}
+
+// FULL-SPEED WALL SLIDE. A normalised diagonal into a wall would creep along it at 70% -- the
+// blocked axis still owns its share of the stride. The wall absorbs that share instead: one axis
+// blocked, the free axis takes the whole stride.
+void slideAlongWall(const EntityManager& em, const Transform& t, float bw, float bh, float& dx,
+                    float& dy)
+{
+    if (dx == 0.0f || dy == 0.0f)
+        return;
+    const bool xBlocked = !world::boxFree(em, t.x + (dx < 0.0f ? -1.0f : 1.0f), t.y, bw, bh);
+    const bool yBlocked = !world::boxFree(em, t.x, t.y + (dy < 0.0f ? -1.0f : 1.0f), bw, bh);
+    if (yBlocked && !xBlocked)
+    {
+        dx = dx < 0.0f ? -1.0f : 1.0f;
+        dy = 0.0f;
+    }
+    else if (xBlocked && !yBlocked)
+    {
+        dy = dy < 0.0f ? -1.0f : 1.0f;
+        dx = 0.0f;
+    }
+}
+
+void walkHim(EntityManager& em, Transform& t, float dx, float dy, double dt)
+{
+    // Braced walks a shade slower AND stiffer -- the stiffness carries the reading, the
+    // speed only underlines it.
+    const float braced = aim::guarding() ? stats::formulas().block.walk_factor : 1.0f;
+    const float step = debug_panel::walkSpeed() * braced * static_cast<float>(dt);
+    // The body is a box at his FEET, not a point at his middle: the transform sits in the
+    // foot box and the sprite is drawn with its bottom on it (the renderer aligns sprite to
+    // collider), so the torso may overlap a wall ABOVE him -- top-down depth -- but his feet
+    // never enter one.
+    const auto* col = em.registry().try_get<Collider>(sPlayer);
+    const float bw = (col != nullptr ? col->width : 16.0f) - kMoveInset;
+    const float bh = (col != nullptr ? col->height : 12.0f) - kMoveInset;
+    // FULL-SPEED WALL SLIDE. A normalised diagonal into a wall would creep
+    // along it at 70% -- the blocked axis still owns its share of the
+    // stride. The wall absorbs that share instead: one axis blocked, the
+    // free axis takes the whole stride.
+    if (dx != 0.0f && dy != 0.0f)
+    {
+        const bool xBlocked = !world::boxFree(em, t.x + (dx < 0.0f ? -1.0f : 1.0f), t.y, bw, bh);
+        const bool yBlocked = !world::boxFree(em, t.x, t.y + (dy < 0.0f ? -1.0f : 1.0f), bw, bh);
+        if (yBlocked && !xBlocked)
+        {
+            dx = dx < 0.0f ? -1.0f : 1.0f;
+            dy = 0.0f;
+        }
+        else if (xBlocked && !yBlocked)
+        {
+            dy = dy < 0.0f ? -1.0f : 1.0f;
+            dx = 0.0f;
+        }
+    }
+    // One axis at a time, so walking into a wall at an angle slides along it instead of
+    // stopping dead.
+    stepWhole(t.x, sCarryX, dx * step, em, /*horizontal=*/true, t.y, bw, bh);
+    stepWhole(t.y, sCarryY, dy * step, em, /*horizontal=*/false, t.x, bw, bh);
+}
+
 void update(Engine& /*engine*/, EntityManager& em, double dt)
 {
     if (!em.registry().valid(sPlayer))
@@ -248,26 +341,7 @@ void update(Engine& /*engine*/, EntityManager& em, double dt)
     sIntentY = dy;
 
     auto& t = em.registry().get<Transform>(sPlayer);
-    // WHERE HE FACES. Spraying, he faces his work -- the aim side wins for as long as the
-    // stream is held, and near-vertical aim keeps whichever side he already had rather than
-    // flickering at the boundary. The moment the trigger releases, facing snaps back to
-    // movement. Through FacingDirection rather than onto the sprite directly: the sprite's
-    // flip is OWNED by AnimationSystem, which rewrites it from facing every tick.
-    auto& facing = em.registry().get_or_emplace<FacingDirection>(sPlayer);
-    if (tools::streaming(em))
-    {
-        if (std::abs(aim::dirX()) > 0.1f)
-        {
-            facing.dx = aim::dirX() < 0.0f ? -1.0f : 1.0f;
-            facing.render_dx = facing.dx;
-        }
-    }
-    else if (dx != 0.0f)
-    {
-        facing.dx = dx < 0.0f ? -1.0f : 1.0f;
-        facing.render_dx = facing.dx;
-    }
-
+    faceTheWork(em, dx);
     // THE WALK IS NOT AN ANIMATION. A character is one drawing, and the gait is the code-driven
     // hop and sway in WalkBob -- so there is no "walk" tag to play here and drawn walk frames
     // would fight it, each bobbing the body by a different rule.
@@ -276,58 +350,9 @@ void update(Engine& /*engine*/, EntityManager& em, double dt)
     // flinch, a death. Those get played from wherever they happen.
     sprite_anim::playIfPresent(em, sPlayer, "idle", "idle");
 
-    // HOLDING THE GUARD UP PLANTS HIM. The gait stiffens -- the sway goes, most of the hop goes
-    // -- and his speed does not change: slowing a man for raising his guard punishes the
-    // defensive option twice, once in tempo and once in reach.
-    if (auto* gait = em.registry().try_get<Gait>(sPlayer))
-    {
-        // Eased rather than flipped: a man sets himself over a moment, and snapping the gait
-        // between two shapes on a keypress reads as a glitch however right the two shapes are.
-        constexpr float kBraceTime = 0.18f;
-        const float want = aim::guarding() ? 1.0f : 0.0f;
-        const float move = static_cast<float>(dt) / kBraceTime;
-        gait->braced += std::clamp(want - gait->braced, -move, move);
-    }
-
+    tickBrace(em, dt);
     if (dx != 0.0f || dy != 0.0f)
-    {
-        // Braced walks a shade slower AND stiffer -- the stiffness carries the reading, the
-        // speed only underlines it.
-        const float braced = aim::guarding() ? stats::formulas().block.walk_factor : 1.0f;
-        const float step = debug_panel::walkSpeed() * braced * static_cast<float>(dt);
-        // The body is a box at his FEET, not a point at his middle: the transform sits in the
-        // foot box and the sprite is drawn with its bottom on it (the renderer aligns sprite to
-        // collider), so the torso may overlap a wall ABOVE him -- top-down depth -- but his feet
-        // never enter one.
-        const auto* col = em.registry().try_get<Collider>(sPlayer);
-        const float bw = (col != nullptr ? col->width : 16.0f) - kMoveInset;
-        const float bh = (col != nullptr ? col->height : 12.0f) - kMoveInset;
-        // FULL-SPEED WALL SLIDE. A normalised diagonal into a wall would creep
-        // along it at 70% -- the blocked axis still owns its share of the
-        // stride. The wall absorbs that share instead: one axis blocked, the
-        // free axis takes the whole stride.
-        if (dx != 0.0f && dy != 0.0f)
-        {
-            const bool xBlocked =
-                !world::boxFree(em, t.x + (dx < 0.0f ? -1.0f : 1.0f), t.y, bw, bh);
-            const bool yBlocked =
-                !world::boxFree(em, t.x, t.y + (dy < 0.0f ? -1.0f : 1.0f), bw, bh);
-            if (yBlocked && !xBlocked)
-            {
-                dx = dx < 0.0f ? -1.0f : 1.0f;
-                dy = 0.0f;
-            }
-            else if (xBlocked && !yBlocked)
-            {
-                dy = dy < 0.0f ? -1.0f : 1.0f;
-                dx = 0.0f;
-            }
-        }
-        // One axis at a time, so walking into a wall at an angle slides along it instead of
-        // stopping dead.
-        stepWhole(t.x, sCarryX, dx * step, em, /*horizontal=*/true, t.y, bw, bh);
-        stepWhole(t.y, sCarryY, dy * step, em, /*horizontal=*/false, t.x, bw, bh);
-    }
+        walkHim(em, t, dx, dy, dt);
     else
     {
         // Standing still owes nothing; a stale fraction would make the first step of the next

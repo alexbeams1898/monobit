@@ -12,7 +12,7 @@
 // kinds of space share happens once. Reading one is here rather than in either of its readers
 // because the generator and the descent both need the same answer: what a floor is made of must
 // not be able to mean two things.
-namespace floor_types
+namespace formats
 {
 
 // The type at `path` with its base chain folded in, nearest override winning. An unreadable or
@@ -23,4 +23,4 @@ namespace floor_types
 // a different sort of place wants, and what merging arrays would quietly prevent.
 nlohmann::json read(const std::string& path);
 
-} // namespace floor_types
+} // namespace formats

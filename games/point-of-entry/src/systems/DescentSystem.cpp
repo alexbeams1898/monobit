@@ -1,12 +1,12 @@
 #include "systems/DescentSystem.h"
 
 #include "Engine.h"
-#include "FloorGen.h"
-#include "SpriteDefLoader.h"
+#include "formats/FloorGen.h"
+#include "formats/SpriteDefLoader.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
-#include "ops/FloorTypeOps.h"
+#include "formats/FloorTypes.h"
 #include "ops/LogUtils.h"
 #include "ops/NavUtils.h"
 #include "ops/SpawnUtils.h"
@@ -173,7 +173,7 @@ Rules loadKindTable(const std::string& typePath, std::vector<SeepKind>& kinds,
                     std::unordered_map<char, std::string>& pinned)
 {
     Rules rules;
-    const nlohmann::json j = floor_types::read(typePath);
+    const nlohmann::json j = formats::read(typePath);
     if (!j.is_object())
         return rules;
     for (const auto& entry : j.value("seep_types", nlohmann::json::array()))

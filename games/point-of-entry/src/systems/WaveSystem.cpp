@@ -1,6 +1,6 @@
 #include "systems/WaveSystem.h"
 
-#include "SpriteDefLoader.h"
+#include "formats/SpriteDefLoader.h"
 #include "ecs/BalanceConfig.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"

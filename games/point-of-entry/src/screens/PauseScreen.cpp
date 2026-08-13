@@ -1,6 +1,6 @@
 #include "screens/PauseScreen.h"
 
-#include "SpriteDefLoader.h"
+#include "formats/SpriteDefLoader.h"
 #include "TextureManager.h"
 #include "ecs/BalanceConfig.h"
 #include "ecs/Components.h"
