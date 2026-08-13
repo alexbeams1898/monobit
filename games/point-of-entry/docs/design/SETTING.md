@@ -17,21 +17,63 @@
   **Lowes-like hardware box** (weapons, equipment, unlockables — THE gear hub
   until a later unlock lets him modify equipment himself), and **the bar**.
 
+## Who he is, and why he cannot leave [2026-08-13 — revises "The bar" below]
+
+**He is not an exterminator.** He answered an ad posted in the bar: a room to
+stay in, paid per kill and per species. That is the whole of his qualification.
+
+The game opens *after* he has already taken it — he wakes in the room, goes
+downstairs. Trying to walk out of the bar is where the quarantine arrives:
+police turn him back, an active quarantine, nobody leaves. **The map is small
+because the town is closed**, and the constraint is the first thing the game
+teaches rather than a wall the player discovers by bumping into it.
+
+**Two hubs, doing different jobs.** The regulars who start in the bar with him
+are the social hub — the town's mouth, ambient and sceneless. The **staging
+area** is the mechanical one: unlocks, spending, what he does between descents.
+Deliberately not the same place, so neither has to be both.
+
+**There was an exterminator before him.** He lived in that room. He left behind
+the wand, the staging supplies, and everything else the work takes — and the
+bartender hands it over as the game begins. The arrangement reads less like a
+man who moved out than like one who **set the next one up**: the kit is not
+abandoned, it is *left for whoever came next*. Never stated plainly, and he
+never asks.
+
+**The wand is the weapon**, singular. The game is about changing how it
+operates rather than replacing it — the upgrade path is the build.
+
+**Quarantine means scarcity.** Nothing can be ordered in, nobody delivers, no
+shop restocks from outside. Everything is scavenged, salvaged and improvised
+from what is already inside the cordon. This is a design philosophy as much as
+a fiction: the constraint is what makes resourcefulness the texture of the
+game.
+
+- OPEN: where the deadpan comes from now. The locked tonal pillar is that he
+  reads every horror in trade terms and never breaks frame -- which was easy
+  when he was a tradesman. An impostor doing it is a *different* joke and
+  possibly a better one (a man with no business being there, filing immaculate
+  paperwork off a dead man's manuals), but it is not the same joke, and the
+  register has to be re-decided rather than assumed to carry over.
+
 ## The bar — one building, the whole life [feels right]
 
 The game stacks vertically in a single landmark building:
 
-- **His apartment upstairs.** Fresh out of trade school, one-man freelance
-  business, no way he owns property — a room over the local is exactly his
-  means. The cat lives here (see below).
+- **His apartment upstairs.** The room the ad offered, and the room the last
+  exterminator lived in — no way he owns property, and a room over the local is
+  exactly the shape of the arrangement. The staging area is set up here. The cat
+  lives here (see below). *(The earlier version had him a tradesman fresh out of
+  school renting on his own means; superseded above.)*
 - **The bar at street level.** His drinking buddies are the hallway, not a
   destination — every trip home passes the regulars, which makes the bar the
   town's mouth: ambient rumor about the quarantine and the strangeness drips
   nightly with no scenes.
-- **The basement below — and the job.** The bartender/landlord learns his new
-  tenant does pest control: ants have been coming up through the basement.
-  Possibly *why the rent was cheap* — the deadpan joke and the working-class
-  logic in one line.
+- **The basement below — and the job.** Ants have been coming up through it,
+  which is what the ad was about: the rent is cheap *because* of the basement,
+  and the room comes with the problem attached. The deadpan joke and the
+  working-class logic in one line. *(The earlier version had the landlord
+  discovering his tenant's trade; the ad came first — see above.)*
 - The first point of entry is in that basement. The coziest room in the game
   and the wound share plumbing; the regulars drink on top of the descent the
   whole game.
@@ -76,6 +118,18 @@ The game stacks vertically in a single landmark building:
 - **Cozy-wrapped maintenance, always.** Every punishing or maintenance-shaped
   thing gets an Earthbound-style warm wrapper (the dad-phone-call / ATM
   principle). The pull home is warmth, not obligation.
+- **RANK IS HOW MANY STAGING AREAS HE MAY SET DOWN** [2026-08-13]. The rate the
+  work pays at and the number of forward camps he can hold are the same number:
+  a certified applicator runs a bigger field setup, so ranking up literally
+  means another kit he is allowed to have out at once. Progression is therefore
+  measured in REACH rather than in a stat — how far down he can operate without
+  the walk back becoming the whole trip — and the decision it creates is a
+  spatial one: where to spend the camp he has, not whether to buy one.
+- Consequences worth holding: a camp is placed by HIM, so a rank is only worth
+  what he does with it; and taking one down to move it forward is a real cost,
+  which is what stops the answer from being obvious. Lateral rooms pay in rank
+  among other things, so exploring sideways buys depth — the two axes of the
+  descent pay into each other rather than competing.
 
 ## The bed — one scene, three uses
 
@@ -125,6 +179,9 @@ The game stacks vertically in a single landmark building:
 
 - Police **soft-quarantine** with a corrupt flavor: "we know something is
   going on and it could harm you — you still can't leave."
+- It is also **the map's shape and the economy's floor** — see "Who he is"
+  above. Nothing comes in, so everything is scavenged; and the town is closed,
+  so the small map is the setting rather than a budget.
 - OPEN: whether anomalies are ever *seen* around town, or the quarantine is
   the town's one visible wrongness.
 
@@ -264,17 +321,39 @@ multiplier he only learns about at the staging area is not a reason to take a
 risk.
 
 **A kind of hole leads to its own kind of floor.** Each point-of-entry type
-pairs with the floor type(s) it opens into -- an ant hole into the default
-space, a gnaw hole into a warren -- and a floor type carries its own room
-templates, its own mix of holes, and its own look. *(Not built.)*
+names the floor type it opens -- a crack in a foundation into the default
+cellar, a gnawed gap into a warren. A floor type is the whole recipe for a kind
+of space: its shape, its look, the pools of room templates it draws on, its own
+mix of holes, and how far sideways it runs. A type varies from a base and
+overrides only what differs, so two kinds of space share their shape and are
+tuned once.
+
+The difference between types is deliberately a matter of DEGREE rather than of
+kind -- a warren is a cellar with the walls closer in, browner, and more of it
+running sideways. Nothing about the generator changes per type; only its
+numbers do.
+
+**A run sideways ends because it runs out.** A floor knows how many wall holes
+he has come through since the last one in a floor, and a kind of space stops
+growing wall holes past its own limit. So a lateral chain terminates by
+construction rather than by a counter refusing a hole that already looks like a
+passage -- and the limit is part of what a kind of space IS: a warren is a
+deeper network than a cellar because its number is higher.
 
 **Wall holes go sideways; floor holes go down.** A wall-placed point of entry
 is a run through a cavity, not a way underneath: it opens a floor at the SAME
-depth. Lateral floors pay in goods, guide entries and rank rather than
-progress, and sealing what he does not follow is exclusion work either way.
-This is also what makes lock-in impossible -- depth is governed entirely by
+depth. This is what makes lock-in impossible -- depth is governed entirely by
 floor holes, so no amount of following one kind of trail can trap him in it.
-*(Not built.)*
+
+A passage is a passage whichever way it goes. Direction changes exactly one
+thing, the depth of the floor on the far side; carrying, leaking, refusing to
+be travelled while it delivers, counting as a front, being sealed and opened
+and spent -- all identical. Sealing what he does not follow is exclusion work
+either way. The way he came IN is a hole too: it wears the kind of the hole it
+is the far end of, and it arrives already spent, which is exactly what a
+passage is. There is therefore one connection type in the game and one set of
+rules about it. *(Lateral floors still pay the same as any other; paying in
+goods, guide entries and rank rather than progress is not built.)*
 
 **Deep floors may have no way down at all.** Past a certain depth a floor can
 be a dead end that must be cleared and then LEFT sideways, hunting the branch

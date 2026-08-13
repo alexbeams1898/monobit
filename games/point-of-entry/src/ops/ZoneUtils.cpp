@@ -28,9 +28,9 @@ bool resolve(const EntityManager& em)
     // still the job.
     if (descent::floorHasWork())
         return true;
-    // A way down with something coming UP it -- the floors he left unfinished, reaching him
+    // A passage with something coming THROUGH it -- the floors he left unfinished, reaching him
     // here. A quiet passage is furniture, and the weapon stays stowed beside it.
-    for (const auto [e, site] : em.registry().view<const DescendSite>().each())
+    for (const auto [e, site] : em.registry().view<const PassageSite>().each())
         if (site.leaking)
             return true;
     return false;

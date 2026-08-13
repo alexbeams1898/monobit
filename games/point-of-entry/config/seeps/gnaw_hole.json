@@ -19,5 +19,6 @@
             "min_depth": 4
         }
     ],
-    "placement": "wall"
+    "placement": "wall",
+    "opens": "config/floors/warren.json"
 }

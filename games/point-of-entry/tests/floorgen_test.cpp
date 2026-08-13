@@ -2,6 +2,7 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
+#include "ops/FloorTypeOps.h"
 #include "systems/WaveSystem.h"
 
 #include <nlohmann/json.hpp>
@@ -83,30 +84,40 @@ int totalWalkable(const TileMap& map)
 
 } // namespace
 
+// EVERY KIND OF SPACE, not just the first one: a type is a set of numbers, and a set of numbers
+// can seal a room off or seat a hole in a wall as easily as it can make a place feel different.
 TEST_CASE("every seed yields a floor that keeps its promises", "[floorgen]")
 {
-    for (unsigned seed = 1; seed <= 400; ++seed)
-    {
-        EntityManager em;
-        const floorgen::Floor floor =
-            floorgen::generate(em, "config/floor.json", "config/rooms", seed);
-        INFO("seed " << seed);
-        REQUIRE(floor.ok);
+    std::vector<std::string> types;
+    for (const auto& e : std::filesystem::directory_iterator("config/floors"))
+        if (e.is_regular_file() && e.path().extension() == ".json")
+            types.push_back(e.path().generic_string());
+    REQUIRE(!types.empty());
 
-        // The player materialises here; solid rock would strand him before the game begins.
-        CHECK(walkableAt(em.tile_map, floor.spawn_x, floor.spawn_y));
-
-        // A seep in a wall spawns the swarm inside it, unkillable and unreachable.
-        for (const auto& m : floor.markers)
+    for (const auto& type : types)
+        for (unsigned seed = 1; seed <= 200; ++seed)
         {
-            INFO("marker '" << m.type << "' at " << m.x << "," << m.y);
-            CHECK(walkableAt(em.tile_map, m.x, m.y));
-        }
+            EntityManager em;
+            const floorgen::Floor floor = floorgen::generate(em, type, seed);
+            INFO(type << " seed " << seed);
+            REQUIRE(floor.ok);
 
-        // Nothing sealed off: a stranded room with a seep in it is a wave that cannot end.
-        CHECK(reachableFrom(em.tile_map, floor.spawn_x, floor.spawn_y) ==
-              totalWalkable(em.tile_map));
-    }
+            // The player materialises here; solid rock would strand him before the game begins.
+            CHECK(walkableAt(em.tile_map, floor.spawn_x, floor.spawn_y));
+
+            // A seep in a wall spawns the swarm inside it, unkillable and unreachable -- and a
+            // hole that can never be spent is a passage that never frees, which strands him on
+            // the floor as surely as a wall would.
+            for (const auto& m : floor.markers)
+            {
+                INFO("marker '" << m.type << "' at " << m.x << "," << m.y);
+                CHECK(walkableAt(em.tile_map, m.x, m.y));
+            }
+
+            // Nothing sealed off: a stranded room with a seep in it is a wave that cannot end.
+            CHECK(reachableFrom(em.tile_map, floor.spawn_x, floor.spawn_y) ==
+                  totalWalkable(em.tile_map));
+        }
 }
 
 // Hidden by the '.' tag: a diagnostic, not a promise. Prints a seed's floor as ASCII so a
@@ -114,7 +125,7 @@ TEST_CASE("every seed yields a floor that keeps its promises", "[floorgen]")
 TEST_CASE("dump one seed", "[.dump]")
 {
     EntityManager em;
-    const floorgen::Floor floor = floorgen::generate(em, "config/floor.json", "config/rooms", 4);
+    const floorgen::Floor floor = floorgen::generate(em, "config/floors/cellar.json", 4);
     const TileMap& map = em.tile_map;
     const int sc = static_cast<int>(floor.spawn_x) / map.tile_size;
     const int sr = static_cast<int>(floor.spawn_y) / map.tile_size;
@@ -137,9 +148,8 @@ TEST_CASE("spawner markers keep their distances", "[floorgen]")
 {
     // The rule under test is the one in config -- read the real numbers rather than repeating
     // them here to drift.
-    std::ifstream in("config/floor.json");
-    REQUIRE(in.good());
-    const nlohmann::json j = nlohmann::json::parse(in);
+    const nlohmann::json j = floor_types::read("config/floors/cellar.json");
+    REQUIRE(j.is_object());
     const auto& sm = j.at("spaced_markers");
     const std::string types = sm.at("types");
     const float ts = static_cast<float>(j.at("tile_size").get<int>());
@@ -148,8 +158,7 @@ TEST_CASE("spawner markers keep their distances", "[floorgen]")
     for (unsigned seed = 1; seed <= 200; ++seed)
     {
         EntityManager em;
-        const floorgen::Floor floor =
-            floorgen::generate(em, "config/floor.json", "config/rooms", seed);
+        const floorgen::Floor floor = floorgen::generate(em, "config/floors/cellar.json", seed);
         INFO("seed " << seed);
         REQUIRE(floor.ok);
 
@@ -179,33 +188,55 @@ TEST_CASE("spawner markers keep their distances", "[floorgen]")
     }
 }
 
-TEST_CASE("every seep and creature file parses and keeps its promises", "[bestiary]")
+// EVERY FLOOR TYPE IS DATA, so a typo in one is a content bug the compiler cannot see. Sweeping
+// all of them rather than one means a kind of space added later cannot quietly ship broken.
+TEST_CASE("every floor type parses and keeps its promises", "[bestiary]")
 {
-    // The bestiary is data, so a typo in a file is a content bug the compiler cannot see. The
-    // seep files are the roster now: every kind the floor can open must parse, and every
-    // creature any of them names must exist, parse, name real art, and carry sane numbers.
-    std::ifstream fin("config/floor.json");
-    REQUIRE(fin.good());
-    const nlohmann::json floorCfg = nlohmann::json::parse(fin);
     std::vector<std::string> creaturePaths;
-    const auto kinds = floorCfg.value("seep_types", nlohmann::json::array());
-    REQUIRE(!kinds.empty());
-    for (const auto& kind : kinds)
+    int types = 0;
+    for (const auto& entry : std::filesystem::directory_iterator("config/floors"))
     {
-        INFO(kind.value("seep", std::string{}));
-        CHECK(kind.value("weight", 0) > 0);
-        std::ifstream sf(kind.value("seep", std::string{}));
-        REQUIRE(sf.good());
-        const nlohmann::json sj = nlohmann::json::parse(sf, nullptr, false);
-        REQUIRE_FALSE(sj.is_discarded());
-        const auto fauna = sj.value("creatures", nlohmann::json::array());
-        CHECK(!fauna.empty()); // a hole nothing comes through is set dressing, not a seep
-        for (const auto& entry : fauna)
+        if (!entry.is_regular_file() || entry.path().extension() != ".json")
+            continue;
+        const std::string typePath = entry.path().generic_string();
+        INFO(typePath);
+        ++types;
+        const nlohmann::json floorCfg = floor_types::read(typePath);
+        REQUIRE(floorCfg.is_object());
+        // Read through the base chain, so a type inheriting its mix still has to have one.
+        const auto kinds = floorCfg.value("seep_types", nlohmann::json::array());
+        REQUIRE(!kinds.empty());
+        // A kind of space with nowhere to draw its rooms from generates nothing at all.
+        const auto pools = floorCfg.value("rooms", std::vector<std::string>{});
+        REQUIRE(!pools.empty());
+        for (const auto& dir : pools)
+            CHECK(std::filesystem::is_directory(dir));
+        // A run sideways that never runs out is a descent that can be avoided entirely.
+        CHECK(floorCfg.value("lateral_hops", -1) >= 0);
+
+        for (const auto& kind : kinds)
         {
-            CHECK(entry.value("weight", 0) > 0);
-            creaturePaths.push_back(entry.value("creature", std::string{}));
+            const std::string seepPath = kind.value("seep", std::string{});
+            INFO(seepPath);
+            CHECK(kind.value("weight", 0) > 0);
+            std::ifstream sf(seepPath);
+            REQUIRE(sf.good());
+            const nlohmann::json sj = nlohmann::json::parse(sf, nullptr, false);
+            REQUIRE_FALSE(sj.is_discarded());
+            // What a hole opens must be a kind of space that exists, or it opens the default.
+            if (const std::string opens = sj.value("opens", std::string{}); !opens.empty())
+                CHECK(std::filesystem::exists(opens));
+            const auto fauna = sj.value("creatures", nlohmann::json::array());
+            CHECK(!fauna.empty()); // a hole nothing comes through is set dressing, not a seep
+            for (const auto& fe : fauna)
+            {
+                CHECK(fe.value("weight", 0) > 0);
+                creaturePaths.push_back(fe.value("creature", std::string{}));
+            }
         }
     }
+    CHECK(types > 0); // no types at all means the sweep passed by checking nothing
+
     for (const auto& path : creaturePaths)
     {
         INFO(path);
@@ -224,6 +255,61 @@ TEST_CASE("every seep and creature file parses and keeps its promises", "[bestia
         CHECK(base.value("xp", 0) > 0);
         std::ifstream art(j.value("sprite", std::string{}));
         CHECK(art.good()); // the drawing it names must exist
+    }
+}
+
+// A TYPE OVERRIDES ONLY WHAT DIFFERS, so the shape two kinds of space share is tuned once. What
+// it does not name it inherits; what it does name replaces outright.
+TEST_CASE("a floor type folds into its base", "[floorgen]")
+{
+    const nlohmann::json cellar = floor_types::read("config/floors/cellar.json");
+    const nlohmann::json warren = floor_types::read("config/floors/warren.json");
+
+    CHECK(warren.value("tile_size", 0) == cellar.value("tile_size", 0)); // inherited
+    CHECK(warren.value("width", 0) < cellar.value("width", 0));          // overridden: tighter
+    // Nested objects merge KEY BY KEY: the warren tightens the distances and inherits the rest
+    // of the rule, so which letters are spawners is still stated once.
+    CHECK(warren.at("spaced_markers").at("types") == cellar.at("spaced_markers").at("types"));
+    CHECK(warren.at("spaced_markers").at("min_apart_tiles") <
+          cellar.at("spaced_markers").at("min_apart_tiles"));
+    // A named mix REPLACES rather than merging, so a different sort of place gets exactly the
+    // holes it asked for.
+    CHECK(warren.at("seep_types").size() == cellar.at("seep_types").size());
+    CHECK(warren.at("seep_types") != cellar.at("seep_types"));
+
+    SECTION("a type that does not exist leaves every reader on its defaults")
+    {
+        CHECK(floor_types::read("config/floors/nothing_here.json").empty());
+    }
+}
+
+// A KIND OF SPACE HAS TO ACTUALLY GENERATE. A tighter type is where the guarantees collide:
+// smaller bounds and one-tile corridors leave less room to seat the spawners a floor must have,
+// and a type that silently fails to build is a hole that leads nowhere.
+TEST_CASE("every floor type generates across many seeds", "[floorgen]")
+{
+    for (const auto& entry : std::filesystem::directory_iterator("config/floors"))
+    {
+        if (!entry.is_regular_file() || entry.path().extension() != ".json")
+            continue;
+        const std::string typePath = entry.path().generic_string();
+        const nlohmann::json cfg = floor_types::read(typePath);
+        const int minCount =
+            cfg.value("spaced_markers", nlohmann::json::object()).value("min_count", 2);
+        const std::string types =
+            cfg.value("spaced_markers", nlohmann::json::object()).value("types", std::string{"P"});
+        for (unsigned seed = 1; seed <= 60; ++seed)
+        {
+            EntityManager em;
+            INFO(typePath << " seed " << seed);
+            const floorgen::Floor floor = floorgen::generate(em, typePath, seed);
+            REQUIRE(floor.ok);
+            int spawners = 0;
+            for (const auto& m : floor.markers)
+                if (types.find(m.type) != std::string::npos)
+                    ++spawners;
+            CHECK(spawners >= minCount);
+        }
     }
 }
 

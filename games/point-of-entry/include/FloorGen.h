@@ -15,7 +15,7 @@ class EntityManager;
 // docs/design/PITCH.md, "The gadget"). This header is the generation half; the
 // persistence half arrives with the gadget.
 //
-// The .room format (config/rooms/*.room), one character per tile:
+// The .room format (config/rooms/**/*.room), one character per tile:
 //   '.' or ' '  floor
 //   'W'         wall
 //   any letter  floor, plus a named marker at that cell -- the game decides what
@@ -59,11 +59,10 @@ struct Room
 // Parse one ASCII template. `name` is used only in warnings.
 Room parseRoom(const std::string& text, const std::string& name = {});
 
-// Generate a floor into `em`'s tile map: load every .room in `roomsDir`, place
-// them without overlapping, connect them with corridors, and collect the
-// markers. `seed` of 0 picks one from the clock; pass a real seed for a
-// repeatable floor (which is what the persistence rule will want).
-Floor generate(EntityManager& em, const std::string& configPath, const std::string& roomsDir,
-               unsigned seed = 0);
+// Generate a floor into `em`'s tile map from a FLOOR TYPE (config/floors/*.json): load every
+// .room in the pools it names, place them without overlapping, connect them with corridors, and
+// collect the markers. A type may name a `base` and override only what differs. `seed` of 0
+// picks one from the clock; pass a real seed for a repeatable floor.
+Floor generate(EntityManager& em, const std::string& typePath, unsigned seed);
 
 } // namespace floorgen

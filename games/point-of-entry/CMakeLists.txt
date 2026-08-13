@@ -39,6 +39,7 @@ add_library(poe-systems STATIC
     src/FloorGen.cpp
     src/AreaLoader.cpp
     src/ops/SpawnUtils.cpp
+    src/ops/FloorTypeOps.cpp
     src/ops/ZoneUtils.cpp
     src/ops/AreaBuildOps.cpp
     src/systems/TravelSystem.cpp
@@ -86,6 +87,7 @@ endif()
 
 # Tests -- link the same poe-systems the game does, so what is tested is what ships.
 add_executable(poe-tests
+    tests/nav_test.cpp
     tests/floorgen_test.cpp
     tests/sprite_anim_test.cpp
     tests/loot_test.cpp

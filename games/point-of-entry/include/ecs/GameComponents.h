@@ -104,40 +104,29 @@ struct AuthoredSeep
     std::string kind; // a seep file: what kind of hole, and what comes through
 };
 
-// A WAY DOWN, and a PASSAGE. Standing on it offers Descend, and digging opens
-// the floor below. It also carries: an unfinished hole anywhere beneath it is
-// still pressing, and this is the mouth it reaches him through -- one hole at
-// a time, out of that hole's own finite program, so what comes up is the work
-// he walked away from rather than anything new.
-struct DescendSite
+// A SPENT HOLE, which is to say A PASSAGE. Standing on it offers the way through, and taking
+// it opens the floor on the other side -- the floor below through a hole in the ground, another
+// room at the same depth through a hole in a wall. It also CARRIES: an unfinished hole anywhere
+// beyond it is still pressing, and this is the mouth it reaches him through, one hole at a time
+// out of that hole's own finite program. The way he came in wears this too; it is a hole that
+// arrived already spent, and nothing about it is a special case.
+struct PassageSite
 {
-    // Stand ON the hole to be offered the way down -- the prompt is the
-    // square underfoot, never the neighbourhood. Filled from the dig's config
-    // at placement (descent::siteFeel), never guessed here.
+    // Stand ON it to be offered the way through -- the prompt is the square underfoot, never
+    // the neighbourhood. Filled from the dig's config at placement (descent::siteFeel).
     float radius = 0.0f;
-    int hole = -1; // which of this floor's holes it was
-    // LEAKING, which is one question: did he leave something RUNNING down
-    // there? A floor he never dug, or dug and never broke anything open on,
-    // sends nothing -- a sealed hole is sealed at every depth. What comes up
-    // is what he disturbed and walked away from. Derived every frame by
-    // descent::refreshLeaks, so finishing what is below silences the hole
-    // above it as the last of it dies.
-    bool leaking = false;
-    // THE MOUTH -- never assumed from the entity's transform: a wall-mounted
-    // hole's art sits in the wall, and what comes up a passage may never
-    // arrive somewhere other than where the passage is.
-    float spawn_x = 0.0f;
-    float spawn_y = 0.0f;
-};
-
-// The way back up a dug floor -- at its way in, opposite the rest spot.
-struct AscendSite
-{
-    float radius = 16.0f;
-    // IN USE. What he left running above comes DOWN this square, and a passage carrying
-    // something is not a way anywhere -- the same rule the way down obeys, obeyed here too.
+    int hole = -1; // which of this floor's holes it is
+    // IN USE. Did he leave something RUNNING on the other side? A floor he never dug, or dug
+    // and never broke anything open on, sends nothing -- a sealed hole is sealed at every
+    // depth. What comes through is what he disturbed and walked away from, so this is a report
+    // on his own unfinished business. A passage carrying something is not a way anywhere.
     // Derived every frame by descent::refreshLeaks.
     bool leaking = false;
+    // THE MOUTH -- never assumed from the entity's transform: a wall-mounted hole's art sits in
+    // the wall, and what comes through a passage may never arrive somewhere other than where
+    // the passage is.
+    float spawn_x = 0.0f;
+    float spawn_y = 0.0f;
 };
 
 // A placed hole's art, tagged with which of the floor's holes it draws. When

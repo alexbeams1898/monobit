@@ -160,35 +160,17 @@ void loadConfigs()
 // rather than its art: a wall-mounted hole's art sits in the wall, and the
 // standable spot is the floor at its base -- the same point its creatures
 // surface at, whatever kind of placement put it there.
-entt::entity descendSiteUnderfoot(EntityManager& em)
+entt::entity passageUnderfoot(EntityManager& em)
 {
     auto& reg = em.registry();
     const entt::entity p = player::entity();
     if (!reg.valid(p))
         return entt::null;
     const auto& pt = reg.get<Transform>(p);
-    for (const auto [e, site] : reg.view<DescendSite>().each())
+    for (const auto [e, site] : reg.view<PassageSite>().each())
     {
         const float dx = pt.x - site.spawn_x;
         const float dy = pt.y - site.spawn_y;
-        if (dx * dx + dy * dy < site.radius * site.radius)
-            return e;
-    }
-    return entt::null;
-}
-
-// The way back up in reach, if any.
-entt::entity ascendSiteInRange(EntityManager& em)
-{
-    auto& reg = em.registry();
-    const entt::entity p = player::entity();
-    if (!reg.valid(p))
-        return entt::null;
-    const auto& pt = reg.get<Transform>(p);
-    for (const auto [e, t, site] : reg.view<Transform, AscendSite>().each())
-    {
-        const float dx = pt.x - t.x;
-        const float dy = pt.y - t.y;
         if (dx * dx + dy * dy < site.radius * site.radius)
             return e;
     }
@@ -232,6 +214,64 @@ void deathReturn(Engine& engine, EntityManager& em)
 std::string sWrittenArea;
 int sWrittenNode = -1;
 
+// WHAT SPACE MEANS WHERE HE IS STANDING -- one gesture, one meaning per square, decided by
+// what is underfoot. True when the world was torn down and rebuilt, which ends the tick.
+bool offerUnderfoot(Engine& engine, EntityManager& em)
+{
+    // THE STAGING AREA, the reference's interaction shape: in range, either Space (the interact
+    // key) or a click ON the spot itself. Interacting IS resting -- heal, refill, and the staging
+    // menu opens where you choose the brew. The click is swallowed so putting the kit down
+    // never doubles as a trigger pull.
+    // ONE INTERACT GESTURE: stand on the spot, press Space. The mouse is the
+    // weapon's hand and never doubles as a use key -- clicking or hovering a
+    // spot means nothing.
+    if (reward::atRest(em))
+    {
+        prompt::offer("Rest");
+        if (player::consumeInteract())
+        {
+            thermos::rest(em);
+            sApp.staging = true;
+            staging_screen::reset();
+            aim::requireFreshPress();
+            return true;
+        }
+    }
+    else if (const auto& at = em.registry().get<Transform>(player::entity());
+             descent::openableUnderfoot(em, at.x, at.y) >= 0)
+    {
+        // BREAKING IT OPEN is his act. A floor answers being disturbed, so nothing presses
+        // until he decides which hole to disturb -- and he can read the room first.
+        prompt::offer("Open");
+        if (player::consumeInteract())
+        {
+            descent::open(em, descent::openableUnderfoot(em, at.x, at.y));
+            aim::requireFreshPress();
+        }
+    }
+    else if (const entt::entity through = passageUnderfoot(em);
+             through != entt::null && !em.registry().get<PassageSite>(through).leaking)
+    {
+        // TAKING A PASSAGE IS DELIBERATE, never a walk-on: you do not fall into the wound by
+        // accident, and the way he came in obeys the same rule going the other way.
+        // WHERE, not what: "B1-A -> B2-A" says which way this goes, which no single verb can
+        // once a hole in a wall opens a room at the depth he is already on.
+        const int hole = em.registry().get<PassageSite>(through).hole;
+        prompt::offerStep(descent::beyondLabel(hole), descent::stepDir(hole));
+        if (player::consumeInteract())
+        {
+            // Behind the curtain, exactly as a door is: the world is torn down and rebuilt,
+            // and that is not something to show him.
+            travel::cut([&engine, &em, hole] { descent::travel(engine, em, hole); });
+            aim::requireFreshPress();
+            return true;
+        }
+    }
+    else
+        player::consumeInteract(); // a Space pressed in the field means nothing yet -- drop it
+    return false;
+}
+
 void gameUpdate(Engine& engine, EntityManager& em, double dt)
 {
     // Entering play swallows whatever the trigger was doing on the menu. Derived from the state
@@ -257,7 +297,7 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // climbed: that is when the things a save keeps actually move, and it costs
     // a small document. Quitting is therefore never a thing he has to remember
     // to do -- there is no save verb anywhere in this game.
-    if (const std::string here = travel::currentArea();
+    if (const std::string& here = travel::currentArea();
         here != sWrittenArea || descent::standing() != sWrittenNode)
     {
         sWrittenArea = here;
@@ -305,72 +345,9 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     if (travel::active())
         return;
 
-    // THE STAGING AREA, the reference's interaction shape: in range, either Space (the interact
-    // key) or a click ON the spot itself. Interacting IS resting -- heal, refill, and the staging
-    // menu opens where you choose the brew. The click is swallowed so putting the kit down
-    // never doubles as a trigger pull.
-    // ONE INTERACT GESTURE: stand on the spot, press Space. The mouse is the
-    // weapon's hand and never doubles as a use key -- clicking or hovering a
-    // spot means nothing.
-    if (reward::atRest(em))
-    {
-        prompt::offer("Rest");
-        if (player::consumeInteract())
-        {
-            thermos::rest(em);
-            sApp.staging = true;
-            staging_screen::reset();
-            aim::requireFreshPress();
-            return;
-        }
-    }
-    else if (const auto& at = em.registry().get<Transform>(player::entity());
-             descent::openableUnderfoot(em, at.x, at.y) >= 0)
-    {
-        // BREAKING IT OPEN is his act. A floor answers being disturbed, so nothing presses
-        // until he decides which hole to disturb -- and he can read the room first.
-        prompt::offer("Open");
-        if (player::consumeInteract())
-        {
-            descent::open(em, descent::openableUnderfoot(em, at.x, at.y));
-            aim::requireFreshPress();
-        }
-    }
-    else if (const entt::entity down = descendSiteUnderfoot(em);
-             down != entt::null && !em.registry().get<DescendSite>(down).leaking)
-    {
-        // THE WAY DOWN. Descending is a deliberate act, never a walk-on: you
-        // do not fall into the wound by accident.
-        // WHERE, not what: "B1A -> B2A" says which way this goes, which "Descend" stops being
-        // able to say the moment a wall hole opens a room at the same depth.
-        const int hole = em.registry().get<DescendSite>(down).hole;
-        prompt::offerStep(descent::beyondLabel(hole, /*downward=*/true),
-                          descent::stepDir(hole, /*downward=*/true));
-        if (player::consumeInteract())
-        {
-            // Behind the curtain, exactly as a door is: the world is torn down and rebuilt,
-            // and that is not something to show him.
-            const int to = em.registry().get<DescendSite>(down).hole;
-            travel::cut([&engine, &em, to] { descent::descend(engine, em, to); });
-            aim::requireFreshPress();
-            return;
-        }
-    }
-    else if (const entt::entity up = ascendSiteInRange(em);
-             up != entt::null && !em.registry().get<AscendSite>(up).leaking)
-    {
-        // The way back out of a dug floor, as deliberate as the way in.
-        prompt::offerStep(descent::beyondLabel(/*hole=*/-1, /*downward=*/false),
-                          descent::stepDir(/*hole=*/-1, /*downward=*/false));
-        if (player::consumeInteract())
-        {
-            travel::cut([&engine, &em] { descent::ascend(engine, em); });
-            aim::requireFreshPress();
-            return;
-        }
-    }
-    else
-        player::consumeInteract(); // a Space pressed in the field means nothing yet -- drop it
+    if (offerUnderfoot(engine, em))
+        return;
+
     // The field is rebuilt toward the player, then everything reads it -- see Chase.h.
     const auto& pt = em.registry().get<Transform>(player::entity());
     FlowFieldSystem::update(em, pt.x, pt.y);
@@ -525,46 +502,39 @@ void enactPause(Engine& engine, pause_screen::Action a)
     }
 }
 
-// The shell, drawn over everything. Which surface is up follows from the phase; pausing is a
-// flag on Playing rather than a phase, because the world is still loaded behind it.
-void gameRenderUI(Engine& engine, EntityManager& em)
+// The world's own layer of the HUD -- anchored to the camera the world was drawn with, and the
+// two black curtains that cover a changeover, which fade the HUD along with everything else.
+void renderPlayOverlays(Engine& engine, EntityManager& em)
 {
-    const bool playing = sApp.phase == app::Phase::Playing && !sApp.paused && !sApp.staging;
-    // The dev panel needs a pointer to click, and it opens while playing -- so it counts as a
-    // screen with options, exactly like a menu.
-    // The system cursor gives way ONLY where the crosshair takes its place.
-    hud::cursorForPhase(playing && !debug_panel::visible() && zone::combat());
-    if (playing)
+    // World-anchored, so it needs the camera the world was drawn with.
+    const auto& cam = em.registry().get<Camera>(player::entity());
+    const float cx = std::round(cam.x);
+    const float cy = std::round(cam.y);
+    hud::renderWorldOverlays(engine, em, cx, cy, debug_panel::zoom());
+    floaters::render(engine, cx, cy, debug_panel::zoom());
+    hud::render(engine, em);
+
+    // The black, over everything -- the HUD fades with the world.
+    if (sDeathBeat != DeathBeat::None)
     {
-        // World-anchored, so it needs the camera the world was drawn with.
-        const auto& cam = em.registry().get<Camera>(player::entity());
-        const float cx = std::round(cam.x);
-        const float cy = std::round(cam.y);
-        hud::renderWorldOverlays(engine, em, cx, cy, debug_panel::zoom());
-        floaters::render(engine, cx, cy, debug_panel::zoom());
-        hud::render(engine, em);
-
-        // The black, over everything -- the HUD fades with the world.
-        if (sDeathBeat != DeathBeat::None)
-        {
-            const float a = (sDeathBeat == DeathBeat::FadeOut) ? sDeathTimer / kDeathFadeOut
-                                                               : 1.0f - sDeathTimer / kDeathFadeIn;
-            UIRenderer::drawRect(0.0f, 0.0f, static_cast<float>(engine.windowWidth()),
-                                 static_cast<float>(engine.windowHeight()),
-                                 screen_style::black(std::min(1.0f, std::max(0.0f, a))));
-        }
-        // The door curtain, same cloth as the death black.
-        if (travel::active())
-            UIRenderer::drawRect(0.0f, 0.0f, static_cast<float>(engine.windowWidth()),
-                                 static_cast<float>(engine.windowHeight()),
-                                 screen_style::black(travel::curtainAlpha()));
+        const float a = (sDeathBeat == DeathBeat::FadeOut) ? sDeathTimer / kDeathFadeOut
+                                                           : 1.0f - sDeathTimer / kDeathFadeIn;
+        UIRenderer::drawRect(0.0f, 0.0f, static_cast<float>(engine.windowWidth()),
+                             static_cast<float>(engine.windowHeight()),
+                             screen_style::black(std::min(1.0f, std::max(0.0f, a))));
     }
-    const int ww = engine.windowWidth();
-    const int wh = engine.windowHeight();
+    // The door curtain, same cloth as the death black.
+    if (travel::active())
+        UIRenderer::drawRect(0.0f, 0.0f, static_cast<float>(engine.windowWidth()),
+                             static_cast<float>(engine.windowHeight()),
+                             screen_style::black(travel::curtainAlpha()));
+}
 
-    const shell_input::Frame in = shell_input::read(em.mouse_wheel_y);
-    em.mouse_wheel_y = 0;
-
+// WHICH SURFACE IS UP follows from the phase; pausing is a flag on Playing rather than a phase
+// of its own, because the world is still loaded behind it. Keyboard is read first and the mouse
+// second over what was drawn -- either may commit, neither twice.
+void runShellPhase(Engine& engine, EntityManager& em, const shell_input::Frame& in, int ww, int wh)
+{
     switch (sApp.phase)
     {
     case app::Phase::Title:
@@ -575,6 +545,7 @@ void gameRenderUI(Engine& engine, EntityManager& em)
             enactTitle(engine, title_screen::render(in.mouse, ww, wh));
         break;
     }
+
     case app::Phase::Settings:
     {
         // Erasing the file is offered from the TITLE only: there is no job running there to
@@ -621,6 +592,22 @@ void gameRenderUI(Engine& engine, EntityManager& em)
         }
         break;
     }
+}
+
+// The shell, drawn over everything.
+void gameRenderUI(Engine& engine, EntityManager& em)
+{
+    const bool playing = sApp.phase == app::Phase::Playing && !sApp.paused && !sApp.staging;
+    // The dev panel needs a pointer to click, and it opens while playing -- so it counts as a
+    // screen with options, exactly like a menu. The system cursor gives way ONLY where the
+    // crosshair takes its place.
+    hud::cursorForPhase(playing && !debug_panel::visible() && zone::combat());
+    if (playing)
+        renderPlayOverlays(engine, em);
+
+    const shell_input::Frame in = shell_input::read(em.mouse_wheel_y);
+    em.mouse_wheel_y = 0;
+    runShellPhase(engine, em, in, engine.windowWidth(), engine.windowHeight());
 }
 
 void gameOnResize(Engine& /*engine*/, int w, int h)

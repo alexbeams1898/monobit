@@ -10,12 +10,38 @@ namespace savegame
 namespace
 {
 
+nlohmann::json encode(const descent::Hole& h)
+{
+    return nlohmann::json{{"to", {{"node", h.to.node}, {"hole", h.to.hole}}},
+                          {"kind", h.kind},
+                          {"opened", h.opened},
+                          {"cleared", h.cleared},
+                          {"killed", h.killed}};
+}
+
 nlohmann::json encode(const descent::Floor& f)
 {
-    return nlohmann::json{{"area", f.area},   {"label", f.label},     {"seed", f.seed},
-                          {"depth", f.depth}, {"from", f.from},       {"from_hole", f.from_hole},
-                          {"child", f.child}, {"cleared", f.cleared}, {"opened", f.opened},
-                          {"kind", f.kind},   {"killed", f.killed}};
+    nlohmann::json holes = nlohmann::json::array();
+    for (const auto& h : f.holes)
+        holes.push_back(encode(h));
+    return nlohmann::json{{"area", f.area},     {"label", f.label}, {"type", f.type},
+                          {"seed", f.seed},     {"depth", f.depth}, {"hops", f.hops},
+                          {"way_in", f.way_in}, {"holes", holes}};
+}
+
+descent::Hole decodeHole(const nlohmann::json& j)
+{
+    descent::Hole h;
+    if (!j.is_object())
+        return h;
+    const auto to = j.value("to", nlohmann::json::object());
+    h.to.node = to.value("node", -1);
+    h.to.hole = to.value("hole", -1);
+    h.kind = j.value("kind", h.kind);
+    h.opened = j.value("opened", h.opened);
+    h.cleared = j.value("cleared", h.cleared);
+    h.killed = j.value("killed", h.killed);
+    return h;
 }
 
 descent::Floor decodeFloor(const nlohmann::json& j)
@@ -25,25 +51,14 @@ descent::Floor decodeFloor(const nlohmann::json& j)
         return f;
     f.area = j.value("area", f.area);
     f.label = j.value("label", f.label);
+    // A floor written before kinds of space existed is a cellar, which is what every floor was.
+    f.type = j.value("type", f.type);
     f.seed = j.value("seed", f.seed);
     f.depth = j.value("depth", f.depth);
-    // Read the old key too: a save written when a floor had one parent still knows the way
-    // back, it just called it something else.
-    f.from = j.value("from", j.value("parent", f.from));
-    f.from_hole = j.value("from_hole", j.value("parent_hole", f.from_hole));
-    f.child = j.value("child", std::vector<int>{});
-    f.cleared = j.value("cleared", std::vector<bool>{});
-    f.opened = j.value("opened", std::vector<bool>{});
-    f.kind = j.value("kind", std::vector<std::string>{});
-    f.killed = j.value("killed", std::vector<int>{});
-    // A hole is a hole in both lists or the floor cannot answer for it.
-    const std::size_t holes = std::max(
-        {f.child.size(), f.cleared.size(), f.opened.size(), f.killed.size(), f.kind.size()});
-    f.child.resize(holes, -1);
-    f.cleared.resize(holes, false);
-    f.opened.resize(holes, false);
-    f.killed.resize(holes, 0);
-    f.kind.resize(holes);
+    f.hops = j.value("hops", f.hops);
+    f.way_in = j.value("way_in", f.way_in);
+    for (const auto& h : j.value("holes", nlohmann::json::array()))
+        f.holes.push_back(decodeHole(h));
     return f;
 }
 
@@ -134,15 +149,109 @@ Data decodeData(const nlohmann::json& j)
     return d;
 }
 
-// Carry an older document forward. Runs AFTER the read, never during it: a
-// decoder that migrates is a decoder that has to know every shape there has
-// ever been.
+// WHAT v1 KNEW ABOUT A TREE, read off every floor before any of them is rewritten. A floor's
+// way in wears the kind of the hole on the far side, so by the time the fold reaches floor two
+// the answer it needs from floor one is already gone -- it is taken up front instead.
+struct Legacy
+{
+    std::vector<int> shifts; // 1 where a floor gains a way in, which shifts its own holes up
+    std::vector<std::vector<std::string>> kinds;
+
+    int shift(int at) const
+    {
+        return at >= 0 && static_cast<std::size_t>(at) < shifts.size()
+                   ? shifts[static_cast<std::size_t>(at)]
+                   : 0;
+    }
+    std::string kindAt(int floor, int hole) const
+    {
+        if (floor < 0 || static_cast<std::size_t>(floor) >= kinds.size() || hole < 0)
+            return {};
+        const auto& theirs = kinds[static_cast<std::size_t>(floor)];
+        return static_cast<std::size_t>(hole) < theirs.size()
+                   ? theirs[static_cast<std::size_t>(hole)]
+                   : std::string{};
+    }
+};
+
+Legacy readLegacy(const nlohmann::json& floors)
+{
+    Legacy was;
+    for (const auto& f : floors)
+    {
+        was.shifts.push_back(f.value("from", f.value("parent", -1)) >= 0 ? 1 : 0);
+        was.kinds.push_back(f.value("kind", std::vector<std::string>{}));
+    }
+    return was;
+}
+
+// One floor's five parallel per-hole arrays become ONE list of holes, and the way he came in --
+// which v1 kept on the far side as from/from_hole and drew as its own kind of square -- becomes
+// hole zero of the floor it leads into.
+void foldFloor(nlohmann::json& f, const Legacy& was)
+{
+    const auto child = f.value("child", std::vector<int>{});
+    const auto cleared = f.value("cleared", std::vector<bool>{});
+    const auto opened = f.value("opened", std::vector<bool>{});
+    const auto kind = f.value("kind", std::vector<std::string>{});
+    const auto killed = f.value("killed", std::vector<int>{});
+    const int from = f.value("from", f.value("parent", -1));
+    const int fromHole = f.value("from_hole", f.value("parent_hole", -1));
+
+    nlohmann::json holes = nlohmann::json::array();
+    if (from >= 0)
+        // The way in wears the kind of the hole on the other side, because it IS that hole seen
+        // from this end -- and it arrives spent, which is what a passage is.
+        holes.push_back({{"to", {{"node", from}, {"hole", fromHole + was.shift(from)}}},
+                         {"kind", was.kindAt(from, fromHole)},
+                         {"opened", true},
+                         {"cleared", true},
+                         {"killed", 0}});
+
+    const std::size_t held =
+        std::max({child.size(), cleared.size(), opened.size(), kind.size(), killed.size()});
+    for (std::size_t h = 0; h < held; ++h)
+    {
+        // Where a hole leads, in the new numbering: its far floor, entered at that floor's own
+        // way in -- which is hole zero wherever one exists.
+        const int to = h < child.size() ? child[h] : -1;
+        holes.push_back({{"to", {{"node", to}, {"hole", to >= 0 && was.shift(to) == 1 ? 0 : -1}}},
+                         {"kind", h < kind.size() ? kind[h] : std::string{}},
+                         {"opened", h < opened.size() && opened[h]},
+                         {"cleared", h < cleared.size() && cleared[h]},
+                         {"killed", h < killed.size() ? killed[h] : 0}});
+    }
+
+    f["way_in"] = from >= 0 ? 0 : -1;
+    f["holes"] = std::move(holes);
+    for (const char* gone : {"child", "cleared", "opened", "kind", "killed", "from", "from_hole",
+                             "parent", "parent_hole"})
+        f.erase(gone);
+}
+
+void foldHoles(nlohmann::json& lives)
+{
+    for (auto& life : lives)
+    {
+        if (!life.is_object() || !life["descent"].is_array())
+            continue;
+        auto& floors = life["descent"];
+        const Legacy was = readLegacy(floors);
+        for (auto& f : floors)
+            foldFloor(f, was);
+    }
+}
+
+// Carry an older document forward. Runs AFTER the read, never during it: a decoder that
+// migrates is a decoder that has to know every shape there has ever been.
 void migrate(nlohmann::json& doc)
 {
     const int from = doc.value("schema_version", 0);
     if (from == kSchemaVersion)
         return;
     poe::log().info("save: carrying a version {} file forward to {}", from, kSchemaVersion);
+    if (from < 2 && doc["lives"].is_array())
+        foldHoles(doc["lives"]);
     doc["schema_version"] = kSchemaVersion;
 }
 

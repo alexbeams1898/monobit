@@ -31,7 +31,7 @@ namespace savegame
 
 // Bump when the shape changes in a way defaults alone cannot satisfy, and
 // teach migrate() to carry the old shape forward.
-inline constexpr int kSchemaVersion = 1;
+inline constexpr int kSchemaVersion = 2;
 
 // One thing in the satchel (the item's blueprint is authored).
 struct Item

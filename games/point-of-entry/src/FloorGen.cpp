@@ -1,6 +1,7 @@
 #include "FloorGen.h"
 
 #include "ecs/EntityManager.h"
+#include "ops/FloorTypeOps.h"
 #include "ops/LogUtils.h"
 
 #include <nlohmann/json.hpp>
@@ -61,21 +62,9 @@ struct Config
     int spaced_min_count = 2;           // a lone spawner is a fight with one bearing -- campable
 };
 
-Config loadConfig(const std::string& path)
+Config loadConfig(const nlohmann::json& j)
 {
     Config cfg;
-    std::ifstream in(path);
-    if (!in)
-    {
-        poe::log().warn("floor: no config at '{}' -- using defaults", path);
-        return cfg;
-    }
-    const nlohmann::json j = nlohmann::json::parse(in, nullptr, /*allow_exceptions=*/false);
-    if (j.is_discarded())
-    {
-        poe::log().warn("floor: config at '{}' is not valid JSON -- using defaults", path);
-        return cfg;
-    }
     cfg.width = j.value("width", cfg.width);
     cfg.height = j.value("height", cfg.height);
     cfg.tile_size = j.value("tile_size", cfg.tile_size);
@@ -93,14 +82,8 @@ Config loadConfig(const std::string& path)
 
 // Per-tile-id colours. With no tileset the renderer draws flat quads from these,
 // which is what the art-less skeleton wants.
-void loadVisuals(const std::string& path, TileConfig& out)
+void loadVisuals(const nlohmann::json& j, TileConfig& out)
 {
-    std::ifstream in(path);
-    if (!in)
-        return;
-    const nlohmann::json j = nlohmann::json::parse(in, nullptr, /*allow_exceptions=*/false);
-    if (j.is_discarded())
-        return;
     const auto vis = j.find("tile_visuals");
     if (vis == j.end() || !vis->is_object())
         return;
@@ -479,18 +462,26 @@ int spawnerCount(const Config& cfg, const Floor& floor)
 }
 } // namespace
 
-Floor generate(EntityManager& em, const std::string& configPath, const std::string& roomsDir,
-               unsigned seed)
+Floor generate(EntityManager& em, const std::string& typePath, unsigned seed)
 {
-    const Config cfg = loadConfig(configPath);
-    const std::vector<Room> rooms = loadRooms(roomsDir);
+    const nlohmann::json type = floor_types::read(typePath);
+    const Config cfg = loadConfig(type);
+    // POOLS, shared first: a type draws on the common templates plus whatever is its own, so a
+    // plain corridor is authored once rather than copied into every kind of space.
+    std::vector<Room> rooms;
+    for (const auto& dir : type.value("rooms", std::vector<std::string>{"config/rooms/common"}))
+    {
+        std::vector<Room> pool = loadRooms(dir);
+        rooms.insert(rooms.end(), std::make_move_iterator(pool.begin()),
+                     std::make_move_iterator(pool.end()));
+    }
     if (rooms.empty())
         return Floor{};
 
     if (seed == 0)
         seed = static_cast<unsigned>(std::chrono::steady_clock::now().time_since_epoch().count() &
                                      0xFFFFFFFF);
-    loadVisuals(configPath, em.tile_config); // seed-independent; once, not per attempt
+    loadVisuals(type, em.tile_config); // seed-independent; once, not per attempt
 
     // THE SEEP GUARANTEE. A floor with one spawner is a fight with one bearing, which is
     // campable however the emergence behaves -- so a layout that cannot seat min_count seeps

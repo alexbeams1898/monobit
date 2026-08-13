@@ -65,18 +65,18 @@ TEST_CASE("a way down is quiet until he leaves something running under it")
     EntityManager em;
     descent::reset();
 
-    DescendSite site;
+    PassageSite site;
     site.hole = 0; // every way down is a hole of some floor
     const entt::entity e = em.registry().create();
-    em.registry().emplace<DescendSite>(e, site);
+    em.registry().emplace<PassageSite>(e, site);
 
     descent::refreshLeaks(em);
-    REQUIRE_FALSE(em.registry().get<DescendSite>(e).leaking);
+    REQUIRE_FALSE(em.registry().get<PassageSite>(e).leaking);
 
     // Nor does a hole numbered past the end of the floor he is standing in.
-    em.registry().get<DescendSite>(e).hole = 99;
+    em.registry().get<PassageSite>(e).hole = 99;
     descent::refreshLeaks(em);
-    REQUIRE_FALSE(em.registry().get<DescendSite>(e).leaking);
+    REQUIRE_FALSE(em.registry().get<PassageSite>(e).leaking);
 }
 
 // THE WORK STATE: one answer per tick, and everything that looks different between
@@ -90,26 +90,26 @@ TEST_CASE("the work state follows the leak")
     REQUIRE_FALSE(zone::combat());
 
     const entt::entity e = em.registry().create();
-    DescendSite site;
-    em.registry().emplace<DescendSite>(e, site);
+    PassageSite site;
+    em.registry().emplace<PassageSite>(e, site);
 
     SECTION("a quiet way down in an authored room is not the trade's ground")
     {
-        em.registry().get<DescendSite>(e).leaking = false; // everything below it is finished
+        em.registry().get<PassageSite>(e).leaking = false; // everything below it is finished
         zone::update(em, 1.0f, /*cut=*/false);
         REQUIRE_FALSE(zone::combat());
     }
 
     SECTION("a leaking one is")
     {
-        em.registry().get<DescendSite>(e).leaking = true;
+        em.registry().get<PassageSite>(e).leaking = true;
         zone::update(em, 1.0f, /*cut=*/false);
         REQUIRE(zone::combat());
     }
 
     SECTION("a passage carrying nothing is furniture")
     {
-        em.registry().get<DescendSite>(e).leaking = false;
+        em.registry().get<PassageSite>(e).leaking = false;
         zone::update(em, 1.0f, /*cut=*/false);
         REQUIRE_FALSE(zone::combat());
     }
@@ -121,9 +121,9 @@ TEST_CASE("the changeover waits for something to see")
     descent::reset();
     zone::reset();
     const entt::entity e = em.registry().create();
-    DescendSite site;
+    PassageSite site;
     site.leaking = true;
-    em.registry().emplace<DescendSite>(e, site);
+    em.registry().emplace<PassageSite>(e, site);
 
     SECTION("a flip starts the changeover over again")
     {
@@ -131,7 +131,7 @@ TEST_CASE("the changeover waits for something to see")
         REQUIRE(zone::combat());
         REQUIRE(zone::settle() == 1.0f); // a whole second: long since arrived
 
-        em.registry().get<DescendSite>(e).leaking = false;
+        em.registry().get<PassageSite>(e).leaking = false;
         zone::update(em, 0.0f, /*cut=*/false);
         REQUIRE_FALSE(zone::combat());
         REQUIRE(zone::settle() == 0.0f);
@@ -365,4 +365,68 @@ TEST_CASE("the descent converges at act boundaries", "[descent]")
     {
         REQUIRE_FALSE(descent::convergesAt(-4));
     }
+}
+
+// WHICH WAY A HOLE GOES is the only thing its kind decides, and it is decided by where the hole
+// is: one in the ground is a way underneath, one in a wall is a run through a cavity to a room
+// at the same depth. Everything else a passage does -- carrying, leaking, refusing to be
+// travelled while it delivers -- is identical, which is why nothing else here is direction-aware.
+//
+// (The tree's traversal needs GL to build a floor, so what a passage CARRIES is integration-
+// tested by playing. Restoring a tree and asking about its holes needs neither.)
+TEST_CASE("a hole in the ground goes down; a hole in a wall goes across", "[descent]")
+{
+    descent::reset();
+    descent::Floor floor;
+    floor.depth = 2;
+    floor.holes = {
+        descent::Hole{descent::Link{}, "config/seeps/foundation_crack.json", false, false, 0},
+        descent::Hole{descent::Link{}, "config/seeps/gnaw_hole.json", false, false, 0}};
+    descent::restore({floor});
+
+    CHECK(descent::descends(0, 0));       // a crack in the foundation
+    CHECK_FALSE(descent::descends(0, 1)); // a gnawed gap in a wall
+
+    SECTION("a hole that is not one of this floor's does not answer")
+    {
+        CHECK_FALSE(descent::descends(0, 9));
+        CHECK_FALSE(descent::descends(0, -1));
+        CHECK_FALSE(descent::descends(7, 0));
+    }
+    descent::reset();
+}
+
+// A FLOOR CARRIES ITS OWN TAG and never recomputes it, so a room keeps its name however many
+// neighbours are dug afterwards. Rooms at one depth run A, B, C -- which is what makes lateral
+// rooms nameable at all, since they share the depth of the floor they were opened from.
+TEST_CASE("a restored floor keeps the name it was given", "[descent]")
+{
+    descent::reset();
+    descent::Floor first;
+    first.depth = 2;
+    first.label = "B2-A";
+    descent::Floor sideways;
+    sideways.depth = 2; // reached through a wall, so it sits at the same depth
+    sideways.label = "B2-B";
+    descent::restore({first, sideways});
+
+    CHECK(descent::floorLabel(0) == "B2-A");
+    CHECK(descent::floorLabel(1) == "B2-B");
+    // Holes are numbered from one in the floor's own order, the way in included: it is a point
+    // of entry the moment something comes through it.
+    CHECK(descent::poeTag(1, 0) == "B2-B-1");
+    CHECK(descent::poeTag(1, 2) == "B2-B-3");
+    CHECK(descent::floorLabel(9).empty());
+    descent::reset();
+}
+
+// AN ACT BOUNDARY IS AN ARRIVAL, NOT A DEPTH. Every branch that DESCENDS into one lands in the
+// same room; a room reached sideways sits at that depth without being an arrival into the act,
+// which is what keeps lateral rooms possible there at all.
+TEST_CASE("convergence is a property of the depth descended into", "[descent]")
+{
+    CHECK(descent::convergesAt(4));
+    CHECK(descent::convergesAt(8));
+    CHECK_FALSE(descent::convergesAt(3));
+    CHECK_FALSE(descent::convergesAt(0)); // the first floor converges nothing
 }

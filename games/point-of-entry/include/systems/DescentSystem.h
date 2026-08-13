@@ -18,46 +18,74 @@ class EntityManager;
 // history. An UNFINISHED hole's assault re-musters on re-entry: the source
 // keeps pressing until a hole is spent, and a spent hole is spent forever.
 //
-// A hole whose program exhausts flips from spawner to a WAY DOWN and starts
-// carrying whatever he left running below it. Descending opens (or re-enters) the
-// child floor at depth+1;
-// every floor's way in carries the way back up. Death touches none of this --
-// the tree survives everything but leaving the job.
+// A hole whose program exhausts flips from spawner to a PASSAGE and starts carrying whatever
+// he left running on the other side of it. Travelling a passage opens (or re-enters) the floor
+// beyond it -- one floor down through a hole in the ground, or another room at the SAME depth
+// through a hole in a wall. Depth is therefore governed entirely by floor holes, which is what
+// makes being locked into one kind of trail impossible by construction. Death touches none of
+// this -- the tree survives everything but leaving the job.
 namespace descent
 {
 
-// WHAT A FLOOR IS once the world it built is gone -- everything needed to make
-// it again, and nothing that can be derived. Its space (an authored level's
-// name, or a seed), where it sits in the tree, and which of its holes are
-// spent. Holes, art and leaks all rebuild from the space, so they are absent
-// here on purpose: this struct IS the save's shape for the descent, so a field
-// that does not persist must not be able to appear in it.
+// ONE END OF A PASSAGE. A hole names the floor on the far side AND which of that floor's holes
+// it comes out at, so the connection is the same object read from either side -- there is no
+// direction in it, and nothing has to look up a parent to find its way back.
+struct Link
+{
+    int node = -1;
+    int hole = -1;
+};
+
+// A POINT OF ENTRY. Its three states are the whole of what a floor tracks about it: SEALED is
+// a question (neither opened nor cleared), OPEN is a fight, SPENT is a passage. The way he came
+// IN is a hole like the rest -- it simply arrives already spent, which is what a passage is --
+// so a floor has one kind of connection to everywhere and every rule is written once.
+//
+// A hole's KIND decides which way it goes: a wall-placed kind opens a room at the SAME depth, a
+// floor-placed one opens the floor below. That is the ONLY thing direction changes.
+struct Hole
+{
+    Link to;          // the far end, -1 until it has been dug
+    std::string kind; // a seep file; kept because a floor across the passage rebuilds this
+                      // hole's program without building the floor it belongs to
+    bool opened = false;
+    bool cleared = false;
+    int killed = 0; // how much of its program he has taken, so it resumes rather than restarts
+};
+
+// WHAT A FLOOR IS once the world it built is gone -- everything needed to make it again, and
+// nothing that can be derived. Its space (an authored level's name, or a seed), where it sits,
+// and its holes. Art and leaks rebuild from the space, so they are absent on purpose: this
+// struct IS the save's shape for the descent, and a field that does not persist must not be
+// able to appear in it.
 struct Floor
 {
     std::string area; // an authored level, or empty for generated space
-    // THE FLOOR'S TAG, as it appears on every surface that names it: B<depth><room>, where the
+    // THE FLOOR'S TAG, as it appears on every surface that names it: B<depth>-<room>, where the
     // room letter runs A..Z then AA, AB the way spreadsheet columns do -- unbounded, and never
     // a digit, which would make the boundary with the depth unreadable. Written once when the
-    // floor is first dug and never recomputed: a tag that changed when a neighbour was dug is
-    // a tag nobody can rely on, and the whole point of numbering a thing is that its number is
-    // permanent.
+    // floor is first dug and never recomputed: a tag that changed when a neighbour was dug is a
+    // tag nobody can rely on, and the whole point of numbering a thing is that it is permanent.
     std::string label;
+    // WHAT KIND OF SPACE THIS IS (config/floors/*.json): its shape, its look, the holes it can
+    // grow. Decided by the hole that opened it -- a gnawed gap opens a warren -- and kept,
+    // because the floor rebuilds from it on every visit and a retuned table must not turn a
+    // room he has stood in into a different room.
+    std::string type;
     unsigned seed = 0;
     int depth = 0;
-    // THE WAY HE LAST CAME IN, which is not the same as where the floor came from: at an act
-    // boundary several holes lead into ONE floor, so a floor has many ways in and only one of
-    // them is the way back. Rewritten on every arrival, because the way out is whichever way
-    // he came -- a field that recorded only the first would send him somewhere he never was.
-    int from = -1;
-    int from_hole = -1;
-    std::vector<int> child;    // per hole: node index, -1 = never dug
-    std::vector<bool> cleared; // per hole: assault spent?
-    std::vector<bool> opened;  // per hole: has he broken it open? a sealed hole sends nothing
-    // Per hole: which KIND of hole it is (a seep file). Kept rather than re-derived because a
-    // floor ABOVE has to rebuild this hole's program -- its waves, its fauna, its pacing --
-    // without building the floor it belongs to.
-    std::vector<std::string> kind;
-    std::vector<int> killed; // per hole: how much of its program he has taken
+    // HOW MANY HOLES IN WALLS HE HAS COME THROUGH since the last one in a floor. Zero on any
+    // floor arrived at by going down. A type stops growing wall holes past its own limit, so a
+    // run sideways ends by construction rather than by a counter refusing a hole that already
+    // looks like a passage.
+    int hops = 0;
+    // WHICH HOLE HE CAME IN BY, or -1 on the first floor, which has nothing above it. Always 0
+    // where it exists -- the way in is placed before the floor's own holes -- but stored rather
+    // than assumed, because a floor that is authored AND dug into would break the assumption
+    // silently. Rewritten on every arrival: at an act boundary several holes lead into one
+    // floor, so the way back is whichever way he actually came.
+    int way_in = -1;
+    std::vector<Hole> holes;
 };
 
 // The whole tree, and where in it he stands (-1 = nowhere). What a save keeps.
@@ -86,46 +114,45 @@ void reset();
 // He is no longer standing in the dig (the ride home) -- the tree survives.
 void leave();
 
-// Dig (or re-enter) the child behind the current floor's `hole`. Only a
-// cleared hole digs; anything else refuses loudly.
-bool descend(Engine& engine, EntityManager& em, int hole);
+// TRAVEL A PASSAGE: dig (or re-enter) the floor beyond this floor's `hole`. The way he came in
+// is one of these, so climbing back out is the same call on a different hole. Only a SPENT hole
+// is a passage; anything else refuses loudly, as does one that is currently delivering.
+bool travel(Engine& engine, EntityManager& em, int hole);
 
-// Climb back out of the current floor -- to the parent floor's hole, or to
-// the authored basement at the root.
-bool ascend(Engine& engine, EntityManager& em);
+// Does this hole go DOWN a floor, or across at the same depth? Read from its kind's placement:
+// a hole in the ground is a way underneath, a hole in a wall is a run through a cavity.
+bool descends(int node, int hole);
 
-// Watch the current floor: a hole whose assault exhausts flips into a dig
-// site with a leak previewing what lies below.
+// Watch the current floor: a hole whose assault exhausts becomes a passage.
 void update(Engine& engine, EntityManager& em, float dt);
 
-// Set every dig site's leak from the tree: a way down leaks while the floor
-// BEHIND it has something running -- a hole he broke open and did not finish --
-// and is quiet otherwise, including when nothing has been dug there at all.
-// Runs whether or not he is in the dig, because the basement's hole is a way
-// down like any other. Called by update.
+// Set every passage's leak from the tree: a passage leaks while the floor BEYOND it has
+// something running -- a hole he broke open and did not finish -- and is quiet otherwise,
+// including when nothing has been dug there at all. Runs whether or not he is in the dig,
+// because the basement's hole is a passage like any other. Called by update.
 void refreshLeaks(EntityManager& em);
 
-// The hole he is standing on that could be broken open, or -1. Sealed holes only: an open one
-// is a fight and a spent one is a way down.
-// IS THIS DEPTH AN ACT BOUNDARY -- one floor that every branch above it leads into? The
-// descent branches within an act and converges at its end, which is what makes it a delta
-// narrowing onto one root rather than a tree that only ever widens.
+// IS THIS DEPTH AN ACT BOUNDARY -- one floor that every branch DESCENDING into it leads to?
+// The descent branches within an act and converges at its end, which is what makes it a delta
+// narrowing onto one root rather than a tree that only ever widens. Asked of the descending
+// edge and never of the depth alone: a room reached sideways sits at the act's depth without
+// being an arrival into the act, and collapsing those would delete lateral rooms there.
 bool convergesAt(int depth);
 
-// The tag of a floor, and of one of its points of entry (B2A-03). The POE number is 1-based
-// because it is a thing written on a wall, not an index.
+// The tag of a floor, and of one of its points of entry (B2-A-01). Holes are numbered from one
+// in the order the floor lists them, because a number on a wall is not an index.
 std::string floorLabel(int node);
 std::string poeTag(int node, int hole);
 
-// Where he is standing, and where a way down or up would put him -- the tag the floor beyond
-// it will carry, whether or not it has been dug yet.
+// Where he is standing, and where a passage would put him -- the tag the floor beyond it will
+// carry, whether or not it has been dug yet.
 std::string hereLabel();
-std::string beyondLabel(int hole, bool downward);
+std::string beyondLabel(int hole);
 
-// Which way a way leads, as a mark for the prompt: down a floor, up one, or across at the same
-// depth. Shown instead of naming the act, because "descend" stops being true the moment a wall
-// hole opens a room on the floor he is already on. +1 down, -1 up, 0 across.
-int stepDir(int hole, bool downward);
+// Which way a passage leads, as a mark for the prompt: +1 deeper, -1 back up, 0 across at the
+// same depth. A mark rather than a word, because no single verb stays true once a hole in a
+// wall opens a room on the floor he is already standing on.
+int stepDir(int hole);
 
 // THE FLOOR'S EXCLUSION LIST: every point of entry on it and what it is doing. Sealed ones are
 // on it too -- a hole he has not touched is work outstanding, and leaving it off the list would
@@ -149,14 +176,16 @@ struct Point
 };
 std::vector<Point> exclusions();
 
+// The hole he is standing on that could be broken open, or -1. SEALED holes only: an open one
+// is already a fight and a spent one is already a passage.
 int openableUnderfoot(const EntityManager& em, float x, float y);
 
 // Break one open: its assault begins, and its art stops pretending to be floor.
 bool open(EntityManager& em, int hole);
 
 // HOW MANY FRONTS he is holding: holes he broke open on this floor that are not yet spent,
-// plus every passage currently carrying something up from below. One is the careful way to
-// work. More than one is a choice, and what it buys is in the sheet's rate.
+// plus every passage currently carrying something through. One is the careful way to work.
+// More than one is a choice, and what it buys is in the sheet's rate.
 int frontsOpen();
 
 // Does the floor he is standing in still have a hole that has not been spent?

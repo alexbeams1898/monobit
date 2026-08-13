@@ -156,12 +156,31 @@ entt::entity entity()
     return sPlayer;
 }
 
+// The box movement tests with, which is what a spot has to clear to be a spot he can be in.
+void bodyBox(const EntityManager& em, entt::entity p, float& w, float& h)
+{
+    const auto* col = em.registry().try_get<Collider>(p);
+    w = (col != nullptr ? col->width : 16.0f) - kMoveInset;
+    h = (col != nullptr ? col->height : 12.0f) - kMoveInset;
+}
+
 void standAt(EntityManager& em, float x, float y)
 {
     auto& reg = em.registry();
     const entt::entity p = entity();
     if (!reg.valid(p))
         return;
+    // HE IS NEVER PUT INSIDE THE ARCHITECTURE. Callers choose a spot by offset arithmetic -- a
+    // fixed step below a hole -- or replay one out of a save written against a layout that has
+    // since been retuned, and neither can know what the floor looks like now. The guarantee
+    // lives at the ONE place a position is ever set rather than in each of the callers, so a
+    // caller added later cannot forget it.
+    float bw = 0.0f;
+    float bh = 0.0f;
+    bodyBox(em, p, bw, bh);
+    if (!world::freeSpotNear(em, x, y, bw, bh))
+        poe::log().error("player: nothing standable near ({},{}) -- the floor has no room in it", x,
+                         y);
     auto& at = reg.get<Transform>(p);
     at.x = x;
     at.y = y;
@@ -188,10 +207,35 @@ void moveIntent(float& dx, float& dy)
     dy = sIntentY;
 }
 
+// A WATCH ON THE INVARIANT, not a way of maintaining it: standAt guarantees standable ground
+// and movement can climb out of solid, so reaching here means something got past both and that
+// is a bug to be found rather than absorbed. It is LOUD on purpose -- a rescue that said nothing
+// would turn the next placement bug into a mystery instead of a log line -- and it fires on the
+// edge, because a fault worth reading once is not worth reading sixty times a second.
+void watchFooting(EntityManager& em)
+{
+    static bool sWasStuck = false;
+    const auto& at = em.registry().get<Transform>(sPlayer);
+    float bw = 0.0f;
+    float bh = 0.0f;
+    bodyBox(em, sPlayer, bw, bh);
+    const bool stuck = !world::boxFree(em, at.x, at.y, bw, bh);
+    if (stuck && !sWasStuck)
+    {
+        poe::log().error(
+            "player: standing inside the architecture at ({},{}) -- placing him back on the floor",
+            at.x, at.y);
+        standAt(em, at.x, at.y);
+    }
+    sWasStuck = stuck;
+}
+
 void update(Engine& /*engine*/, EntityManager& em, double dt)
 {
     if (!em.registry().valid(sPlayer))
         return;
+
+    watchFooting(em);
 
     sEm = &em;
     const Uint8* keys = SDL_GetKeyboardState(nullptr);
