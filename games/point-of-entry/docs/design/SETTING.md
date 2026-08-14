@@ -333,35 +333,30 @@ kind -- a warren is a cellar with the walls closer in, browner, and more of it
 running sideways. Nothing about the generator changes per type; only its
 numbers do.
 
-**A run sideways CLOSES rather than ending.** Wall holes at one depth form a
-network, and a kind of space grows its network to a certain size and no
-further. Past that, a hole becoming a passage leads back into a room the
-network already has instead of opening a new one. So a run sideways is bounded
-without anything ever refusing a hole that already looks like a passage -- and
-the size is part of what a kind of space IS: a warren is a wider network than a
-cellar because its number is higher.
+**A run sideways EXPANDS OUTWARD AND STOPS.** Wall holes spread the floor
+outward from wherever he first came down into it, and a kind of space may hold
+only so many rooms at one depth. Once a depth is full, floors built there grow
+no more holes in walls at all -- a wall kind falls back to a floor kind exactly
+as it does where there is no wall to arch into -- so the spread ends because
+there is nothing left to open rather than because something refused to open a
+hole that was already drawn.
 
-The decision is made the moment a hole becomes a passage, not when he walks it,
-which is what lets the prompt NAME the room on the other side before he
-commits. That gives the question mark a meaning it did not have: a tag is a way
-back to somewhere he has been, and **`?` is new ground**. Where the network is
-full but nothing has a spare passage to bind to, it opens new ground anyway --
-a spent hole leading nowhere is the dead end all of this exists to avoid.
+**The count is per DEPTH, not per way down.** A depth is one floor of the world
+however many holes reach it. Counting the rooms he can walk to sideways instead
+would give every new way down its own allowance and put the total back where it
+started -- which is the same failure as bounding how FAR a run goes while
+letting it branch, one level up.
 
-**Wall holes go sideways; floor holes go down.** A wall-placed point of entry
-is a run through a cavity, not a way underneath: it opens a floor at the SAME
-depth. This is what makes lock-in impossible -- depth is governed entirely by
-floor holes, so no amount of following one kind of trail can trap him in it.
-
-A passage is a passage whichever way it goes. Direction changes exactly one
-thing, the depth of the floor on the far side; carrying, leaking, refusing to
-be travelled while it delivers, counting as a front, being sealed and opened
-and spent -- all identical. Sealing what he does not follow is exclusion work
-either way. The way he came IN is a hole too: it wears the kind of the hole it
-is the far end of, and it arrives already spent, which is exactly what a
-passage is. There is therefore one connection type in the game and one set of
-rules about it. *(Lateral floors still pay the same as any other; paying in
-goods, guide entries and rank rather than progress is not built.)*
+*(FUTURE -- LOOPING. The obvious next move is for a run sideways to rejoin the
+rooms it already opened, so a warren reads as a network rather than a spray:
+the prompt could then NAME the room a hole leads back to, and `?` would come to
+mean new ground rather than merely unknown. Built once and removed again for
+being three mechanisms holding one invariant -- binding to spare passages,
+gnawing new holes into rooms that had none spare, and holes whose position is
+searched for rather than taken from the map. Worth returning to once the shape
+of a floor is settled and the second half of this section -- kinds of room
+triggered by what he has done rather than by where he is -- has a home. The
+tree is the minimal thing that works; the graph is the thing to grow into.)*
 
 **Deep floors may have no way down at all.** Past a certain depth a floor can
 be a dead end that must be cleared and then LEFT sideways, hunting the branch

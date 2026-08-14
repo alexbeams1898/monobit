@@ -213,7 +213,7 @@ TEST_CASE("every floor type parses and keeps its promises", "[bestiary]")
             CHECK(std::filesystem::is_directory(dir));
         // A network that never closes is a run sideways that never has to come back down, which
         // is a descent the player can decline to make.
-        CHECK(floorCfg.value("lateral_rooms", 0) > 0);
+        CHECK(floorCfg.value("max_rooms", 0) > 0);
 
         for (const auto& kind : kinds)
         {

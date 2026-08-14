@@ -167,8 +167,7 @@ struct Rules
     // How many rooms a network of wall holes grows to before its connections start leading back
     // into rooms it already has. THIS is what bounds a run sideways: the network CLOSES rather
     // than stopping, so nothing ever has to refuse a hole that already looks like a passage.
-    int lateral_rooms =
-        2; // how far a run of wall holes may carry before this space stops growing them
+    int max_rooms = 2; // how far a run of wall holes may carry before this space stops growing them
     int wall_depth = 2; // tiles of solid a wall needs behind it before a hole may be gnawed through
 };
 
@@ -189,7 +188,7 @@ Rules loadKindTable(const std::string& typePath, std::vector<SeepKind>& kinds,
     for (const auto& [letter, path] : ms.items())
         if (!letter.empty() && path.is_string())
             pinned.emplace(letter.front(), path.get<std::string>());
-    rules.lateral_rooms = j.value("lateral_rooms", rules.lateral_rooms);
+    rules.max_rooms = j.value("max_rooms", rules.max_rooms);
     rules.wall_depth = j.value("wall_depth", rules.wall_depth);
     return rules;
 }
@@ -467,6 +466,48 @@ void syncArea(EntityManager& em)
     sCurrent = fresh ? adoptArea(em, area) : indexOfArea(area);
 }
 
+// WHAT A DEPTH IS ALREADY COMMITTED TO: the rooms it holds, plus the rooms it has PROMISED.
+//
+// A hole in a wall that leads nowhere yet is a room that does not exist and will: travelling it
+// digs one, and nothing between here and there can decide otherwise. Counting only the rooms
+// that exist is counting deliveries and ignoring orders -- and since a room carries two or three
+// wall holes, a depth allowed five rooms settles at ten or more. A promise counts as the room it
+// is going to be.
+//
+// A depth is one floor of the world however many ways down reach it, so this counts all of them:
+// counting only what he can walk to sideways would give every way down its own allowance.
+int roomsPromisedAt(int depth)
+{
+    int rooms = 0;
+    for (std::size_t n = 0; n < sNodes.size(); ++n)
+    {
+        const Floor& floor = sNodes[n].floor;
+        if (floor.depth != depth)
+            continue;
+        ++rooms;
+        for (std::size_t i = 0; i < floor.holes.size(); ++i)
+            if (floor.holes[i].to.node < 0 && !descends(static_cast<int>(n), static_cast<int>(i)))
+                ++rooms;
+    }
+    return rooms;
+}
+
+// IS THIS DEPTH FULL? A run sideways expands OUTWARD from wherever he first came down and stops
+// when the floor is committed to as many rooms as its kind of space is allowed. `granted` is what
+// the floor being built has been handed already, since its own holes are promises the moment they
+// are drawn and the count has to see them coming.
+//
+// The limit belongs to the space a wall hole would OPEN rather than to the one it is cut into: a
+// gnawed run makes a warren, and how wide a warren spreads is a fact about warrens.
+bool depthIsFull(int depth, const SeepKind& kind, int granted)
+{
+    std::vector<SeepKind> kinds;
+    std::unordered_map<char, std::string> pinned;
+    const Rules rules =
+        loadKindTable(kind.opens.empty() ? defaultType() : kind.opens, kinds, pinned);
+    return roomsPromisedAt(depth) + granted >= rules.max_rooms;
+}
+
 // WHICH KIND OF HOLE A MARKER BECOMES: a pinned letter takes its named kind, anything else
 // rolls the floor's weighted mix. A wall kind rolled onto a marker with no wall in reach falls
 // back to the table's first floor kind -- deterministically, with no extra roll, so the seed
@@ -474,7 +515,7 @@ void syncArea(EntityManager& em)
 const SeepKind* chooseKind(const EntityManager& em, const floorgen::Marker& m,
                            std::vector<SeepKind>& kinds,
                            const std::unordered_map<char, std::string>& pinned, int totalWeight,
-                           std::mt19937& rng, int wallDepth)
+                           std::mt19937& rng, int wallDepth, int depth, int& granted)
 {
     const auto pin = pinned.find(m.type);
     // A PIN IS AN INTENT, NOT AN EXEMPTION. An authored letter saying "this spot is a gnawed
@@ -496,13 +537,17 @@ const SeepKind* chooseKind(const EntityManager& em, const floorgen::Marker& m,
             }
         }
     }
-    // A wall kind needs a wall to arch into, and needs this run to have somewhere left to go.
-    // Either way it falls back to the table's first floor kind -- deterministically, with no
-    // extra roll, so the seed still reproduces the floor exactly.
-    if (kind != nullptr && kind->on_wall && archWallY(em, m.x, m.y, wallDepth) < 0.0f)
+    // A wall kind needs a wall to arch into, and needs the floor it would open onto to have
+    // room left on it. Either way it falls back to the table's first floor kind --
+    // deterministically, with no extra roll, so the seed still reproduces the floor exactly, and
+    // nothing anywhere has to refuse a hole that is already drawn.
+    if (kind != nullptr && kind->on_wall &&
+        (archWallY(em, m.x, m.y, wallDepth) < 0.0f || depthIsFull(depth, *kind, granted)))
         for (const auto& k : kinds)
             if (!k.on_wall)
                 return &k;
+    if (kind != nullptr && kind->on_wall)
+        ++granted; // one more room this floor has just promised the depth
     return kind;
 }
 
@@ -604,12 +649,14 @@ bool buildNode(EntityManager& em, int nodeId, float& spawnX, float& spawnY)
         totalWeight += k.weight;
 
     std::mt19937 rng(floor.seed * 2654435761u + 97u);
+    int granted = 0; // wall holes handed out on this floor, which the depth is committed to
     int index = offset;
     for (const auto& m : floor.markers)
     {
         if (m.type != 'P' && pinned.find(m.type) == pinned.end())
             continue;
-        const SeepKind* kind = chooseKind(em, m, kinds, pinned, totalWeight, rng, rules.wall_depth);
+        const SeepKind* kind = chooseKind(em, m, kinds, pinned, totalWeight, rng, rules.wall_depth,
+                                          node.floor.depth, granted);
         const auto slot = static_cast<std::size_t>(index);
         if (slot >= node.floor.holes.size())
             node.floor.holes.resize(slot + 1);
@@ -694,53 +741,6 @@ bool enterNode(Engine& engine, EntityManager& em, int nodeId, int atHole)
     return true;
 }
 
-// THE ROOMS THIS ONE RUNS SIDEWAYS TO, itself included -- the component reached by walking wall
-// holes only. Not "every room at this depth": two descents into the same depth each grow their
-// own network, and counting by depth would silently merge them into one.
-std::vector<int> lateralCluster(int nodeId)
-{
-    std::vector<int> found;
-    if (nodeId < 0 || nodeId >= static_cast<int>(sNodes.size()))
-        return found;
-    std::vector<bool> seen(sNodes.size(), false);
-    seen[static_cast<std::size_t>(nodeId)] = true;
-    std::vector<int> edge{nodeId};
-    while (!edge.empty())
-    {
-        const int at = edge.back();
-        edge.pop_back();
-        found.push_back(at);
-        const Floor& floor = sNodes[static_cast<std::size_t>(at)].floor;
-        for (std::size_t i = 0; i < floor.holes.size(); ++i)
-        {
-            const int to = floor.holes[i].to.node;
-            if (to < 0 || to >= static_cast<int>(sNodes.size()) ||
-                seen[static_cast<std::size_t>(to)] || descends(at, static_cast<int>(i)))
-                continue;
-            seen[static_cast<std::size_t>(to)] = true;
-            edge.push_back(to);
-        }
-    }
-    return found;
-}
-
-// A SPENT HOLE IN THE CLUSTER THAT LEADS NOWHERE YET, which is what a new connection binds to.
-// Its own floor is excluded: a passage from a room to itself is not a passage.
-Link spareHoleIn(const std::vector<int>& cluster, int notThis)
-{
-    for (const int at : cluster)
-    {
-        if (at == notThis)
-            continue;
-        const Floor& floor = sNodes[static_cast<std::size_t>(at)].floor;
-        for (std::size_t i = 0; i < floor.holes.size(); ++i)
-            if (floor.holes[i].cleared && floor.holes[i].to.node < 0 &&
-                !descends(at, static_cast<int>(i)))
-                return Link{at, static_cast<int>(i)};
-    }
-    return Link{};
-}
-
 // EVERYTHING UNFINISHED ON THE FAR SIDE OF ONE PASSAGE, nearest floor first. What he broke
 // open and walked away from is still coming, however far he has travelled since and however
 // long the trail of abandoned holes runs -- but a passage is one passage, so they arrive
@@ -752,9 +752,8 @@ Link spareHoleIn(const std::vector<int>& cluster, int notThis)
 // lets a hole in a wall answer it identically to a hole in the ground.
 //
 // Breadth-first, so the floor immediately across reaches him before what is beyond that; and
-// visited, because the graph is not a tree -- branches rejoin at an act boundary and a pair of
-// rooms joined by a wall hole is a genuine cycle. Without it a rejoined floor is counted once
-// per branch that reaches it, and a cycle never returns at all.
+// visited, because the graph is not quite a tree: branches rejoin at an act boundary, so a
+// rejoined floor would otherwise be counted once per branch that reaches it.
 std::vector<Link> queueThrough(int from, int via)
 {
     std::vector<Link> found;
@@ -793,49 +792,6 @@ std::vector<Link> queueThrough(int from, int via)
 std::vector<Link> queueBeyond(int node, int hole)
 {
     return queueThrough(node, beyond(node, hole));
-}
-
-// A NETWORK CLOSES ON ITSELF RATHER THAN GROWING FOREVER. The moment a hole in a wall becomes a
-// passage, it either leads somewhere new or leads back into the network it belongs to -- and
-// which one is decided HERE, once, so the prompt can name the room before he commits to it.
-// A question mark then means new ground rather than merely unknown, which is the difference the
-// decision is worth making early for.
-//
-// It binds only when the network is already as big as its kind of space grows, and only to a
-// room holding a spare passage. Where there is nothing to bind to it stays a question and
-// travelling digs, because a spent hole leading nowhere is the dead end all of this avoids.
-void closeTheLoop(int hole)
-{
-    if (sCurrent < 0 || hole < 0 || descends(sCurrent, hole))
-        return; // a hole in the ground goes down; only the sideways ones form a network
-    Floor& floor = sNodes[static_cast<std::size_t>(sCurrent)].floor;
-    if (static_cast<std::size_t>(hole) >= floor.holes.size() ||
-        floor.holes[static_cast<std::size_t>(hole)].to.node >= 0)
-        return; // already bound: whatever it leads to, it has led there since before now
-
-    // THE NETWORK'S SIZE IS A PROPERTY OF THE KIND OF NETWORK, so it comes from the space this
-    // hole OPENS rather than the one he happens to be standing in. A cluster holds rooms of more
-    // than one kind -- the first room of a warren is whatever he came from -- and reading the
-    // standing floor would give the same network two different sizes depending on where he was
-    // when it grew.
-    std::vector<SeepKind> kinds;
-    std::unordered_map<char, std::string> pinned;
-    const std::string& opens = kindFacts(floor.holes[static_cast<std::size_t>(hole)].kind).opens;
-    const Rules rules = loadKindTable(opens.empty() ? defaultType() : opens, kinds, pinned);
-    const std::vector<int> cluster = lateralCluster(sCurrent);
-    if (static_cast<int>(cluster.size()) < rules.lateral_rooms)
-        return; // room to grow: leave it a question and let travelling dig
-
-    const Link spare = spareHoleIn(cluster, sCurrent);
-    if (spare.node < 0)
-        return; // a full network with nothing spare still has to lead somewhere
-
-    floor.holes[static_cast<std::size_t>(hole)].to = spare;
-    sNodes[static_cast<std::size_t>(spare.node)]
-        .floor.holes[static_cast<std::size_t>(spare.hole)]
-        .to = Link{sCurrent, hole};
-    poe::log().info("descent: {} runs back to {}", poeTag(sCurrent, hole),
-                    poeTag(spare.node, spare.hole));
 }
 
 // START THE FLOOR: one seep per hole, in hole order, so a slot index IS a hole index.
@@ -1185,7 +1141,6 @@ void spendFinished(EntityManager& em, Node& node)
                 site.spawn_y = node.seeps[static_cast<std::size_t>(art.hole)].y;
                 em.registry().emplace_or_replace<PassageSite>(e, site);
             }
-        closeTheLoop(slot.owner.hole);
         poe::log().info("descent: {} spent -- a way through now",
                         poeTag(sCurrent, slot.owner.hole));
     }
