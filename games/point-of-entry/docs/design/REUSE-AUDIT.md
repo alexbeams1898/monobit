@@ -151,11 +151,11 @@ it ports. "Port" always means rewrite against the reference, never copy.
   path stay behind; the shape comes over.
 
 **Stats + formulas — port the MODEL, not the stats.**
-- `Stats{str,dex,end,lck}` + `Body` (what a creature IS: base hp, defense,
+- `Stats{str,dex,end,lck}` + `Body` (what a pest IS: base hp, defense,
   natural-weapon properties — not levelable) + `FormulaConfig` (every combat
   formula's tunables in one JSON-loaded struct).
 - The Stats/Body split is the important idea: the exterminator's SKILLS vs a
-  creature's MATERIAL. Point-of-entry wants 3-4 trade-flavoured stats; the
+  pest's MATERIAL. Point-of-entry wants 3-4 trade-flavoured stats; the
   machinery is identical, the names are not.
 - **Derived attributes**: entity configs do not author HP — health is derived
   from stats at load (`applyInitialDerivations`). One source of truth.
@@ -163,10 +163,10 @@ it ports. "Port" always means rewrite against the reference, never copy.
   Only those function bodies change when stats arrive.
 
 **Enemies-from-JSON (`ConfigLoader` + `config/entities/*.json`) — the
-bestiary foundation.** An enemy is a JSON file listing components: stats,
+field-guide foundation.** An enemy is a JSON file listing components: stats,
 body, loot, sounds, AI tuning. Ants are currently hardcoded in `emerge()`;
-porting this makes every creature an authored file, which IS the bestiary as
-data. (Prison-escape has no bestiary UI — only a kills counter. A "seen /
+porting this makes every pest an authored file, which IS the field guide as
+data. (Prison-escape has no field guide UI — only a kills counter. A "seen /
 exterminated" record would be new work on top of this.)
 
 **Rest spots — a stub, and a design question.** Prison-escape's bonfire heals

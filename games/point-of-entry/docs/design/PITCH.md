@@ -16,7 +16,7 @@ section is newer than this document and wins wherever the two disagree.)*
 An action RPG — Zelda-ish combat crossed with Vampire Survivors, in a
 Link-to-the-Past / Mother 1 aesthetic — about a man who takes an extermination
 job he has no business taking, and unearths what is rotting the world. You find
-the hole the vermin are coming through and you open it up, going further down
+the hole the pests are coming through and you open it up, going further down
 after it as it gets worse. You exterminate, come back up, spend, and go deeper.
 The things you kill get stranger the further down you go: ants, then mice, then
 things that are neither.
@@ -54,8 +54,8 @@ is producing horrors, and the only frame the game offers is a man whose job it i
 to get rid of it.
 
 This is a scoping decision as much as a creative one: what gets authored is
-**creatures and his reactions to them**, not documents, factions, or histories.
-The content unit is a creature, not a chapter.
+**pests and his reactions to them**, not documents, factions, or histories.
+The content unit is a pest, not a chapter.
 
 ## The premise
 
@@ -283,10 +283,10 @@ standing, and the fiction and the difficulty curve are the same object.
 
 What proximity drives (all through one formula surface, never per-case):
 
-- What a seep produces, and how hard its waves press.
+- What a hole produces, and how hard its waves press.
 - How JUICED what emerges is -- the same species, scaled.
 - When a species' EVOLVED form starts coming through instead. Evolution is
-  bestiary data: a creature file pointing at its worse self.
+  field guide data: a pest file pointing at its worse self.
 
 (Authorial note, unlocked: the working idea for the source is industrial -- a
 spill, not a god -- which keeps the horror OSHA-shaped. Whether that is ever
@@ -367,7 +367,7 @@ read from outside):
 - Rungs check different KINDS of fact: early ones check totals, the
   Applicator tier checks the spread's shape per discipline (the real thing has
   an exam per category), the top tiers check the record -- verified kills,
-  which is also the bestiary's data.
+  which is also the field guide's data.
 - **Rank gates gear and unlocks** -- the trade's own logic: an apprentice may
   not handle restricted chemicals, and the game never has to invent a reason.
 - The deadpan: the descent counts toward his verified field experience, and he
@@ -388,14 +388,14 @@ walls, it explains why nobody outside is helping, and it means the authorities
 know *something* is wrong without knowing what — they have cordoned the symptom
 and missed the cause entirely.
 
-## The bestiary IS the escalation
+## The field guide IS the escalation
 
 Ants → mice → worse → demons. This single ladder is simultaneously:
 
 - the difficulty curve
 - the art progression
 - the tonal drift from comedy to horror
-- the content-scaling model (a new creature is a week's work and buys real play)
+- the content-scaling model (a new pest is a week's work and buys real play)
 - the natural end of entry one — **whatever tier this game stops at is where the
   sequel starts**
 
@@ -408,7 +408,7 @@ world.
 constraint.** Modern resolution, modern field of view. Limited palettes, chunky
 readable shapes, thick outlines, minimal shading, low frame counts.
 
-- **Minimal but effective.** A creature is a silhouette plus two colours. Mother
+- **Minimal but effective.** A pest is a silhouette plus two colours. Mother
   1's enemies are memorable because they are simple and strange, not detailed.
 - **The "amateurish" quality is deliberate and hard to fake.** Mother 1 looks
   naive because Itoi was not a game artist. Bold simple shapes, slightly-off

@@ -39,7 +39,7 @@ travels with the art.
 | `PlayerStart` | — | THE start: exactly one in the whole project, and a new game wakes on it. Every other level is entered through its warps. Without one the game falls back to a bare generated floor. |
 | `RestSpot` | — | The staging area. |
 | `Prop` | `size` (float), `solid` (bool), `sprite` (string, optional) | A placed thing; a box until it names sprite art. |
-| `DigSite` | `depth` (int, default 0), `sprite` (string, optional), `trickle` (string, optional), `interval` (float, default 8) | The way down. In range it offers Descend; interacting generates the dungeon floor at `depth`. `trickle` names a creature the site leaks (`ant` — bestiary names, not paths) — one every `interval` seconds, accumulating until the room is left. A room with a dig site counts as an extermination zone: the weapon fires there and in dug floors, nowhere else. |
+| `DigSite` | `depth` (int, default 0), `sprite` (string, optional), `trickle` (string, optional), `interval` (float, default 8) | The way down. In range it offers Descend; interacting generates the dungeon floor at `depth`. `trickle` names a pest the hole leaks (`ant` — species names, not paths) — one every `interval` seconds, accumulating until the room is left. A room with a dig site counts as an extermination zone: the weapon fires there and in dug floors, nowhere else. |
 
 Adding a new kind of thing = a new entity definition here + a registered
 builder in code (`area::registerBuilder`). The importer never changes.

@@ -89,7 +89,7 @@ The game stacks vertically in a single landmark building:
   a hole generates its floor once, permanently. Sealing the holes you don't
   follow is exclusion work — the player doing his job, not the game closing
   doors. Sealed is sealed until NG+.
-- **Holes advertise.** Seeps are typed; the hole's kind — its art, what
+- **Holes advertise.** Holes are typed; the kind — its art, what
   trickles out, what you can hear — is the preview. Picking a path is reading
   the infestation. Special floors (gifts, bosses) are special-looking holes.
 - **Depth composes.** The floor number carries the authored structure: species
@@ -170,7 +170,7 @@ The game stacks vertically in a single landmark building:
   all time."
 - Leaning: **recurring at act boundaries**, the signs getting less like phone
   calls as depth grows — escalating attempts to scare a man who cannot be
-  scared, running parallel to the bestiary ladder. His non-reaction is the
+  scared, running parallel to the field guide's ladder. His non-reaction is the
   punchline every time.
 - Constraint held from the pitch: never named, never shown plainly, never
   explained. A horror beat, not lore.
@@ -206,7 +206,7 @@ The game stacks vertically in a single landmark building:
   crack; the wound *branches* below it) and the death section (rest-point
   respawn vs floor reset vs bed-wake).
 
-## Creature stats & THE SMELL [settled in shape, 2026-08-11]
+## Pest stats & THE SMELL [settled in shape, 2026-08-11]
 
 > Named **smell**, not rot: rot names a process (a small theory); smell names
 > only the EVIDENCE, which is all anyone has. Comedic, gross, simple -- the
@@ -225,7 +225,7 @@ Smell multiplies all derived outputs. Reserved system names: "pressure"
 (infestation pressure = the wave programs), "fecundity" (per-species spawn
 output, if wanted).
 
-- Creatures get a tiny SHEET + base power per species; hp/contact/speed are
+- Pests get a tiny SHEET + base power per species; hp/contact/speed are
   DERIVED (same derive-at-load doctrine as the player). Depth adds sheet
   points -- replacing the juice multipliers with one system. Sheet stat
   names still open; reference: prison-escape's enemy formulas.
@@ -237,7 +237,7 @@ output, if wanted).
   transforms bodies, depth governs statistically, and boundary depths get
   GRADIENTS -- the first evolved form arrives as a surprise among normals.
 - Future scene (not actionable yet): deep floors leak visible rot pools; a
-  creature runs to one, FEEDS (its rot number rises live), and evolves
+  pest runs to one, FEEDS (its rot number rises live), and evolves
   mid-fight if not killed first -- pure emergent consequence of rot being
   one live number everything derives from. Wants overworld animations.
 
@@ -267,42 +267,47 @@ output, if wanted).
 
 ## How the descent works [settled in shape, 2026-08-12]
 
-The floor-by-floor rules, settled while building them. Everything here is
+> The words below are exact and the distinctions are load-bearing: a **floor**
+> is a depth (`B2`), a **room** is one space on it (`B2-A`), a **chamber** is a
+> template a room is built from, a **hole** is a point of entry and a **passage**
+> is a spent one. See [VOCABULARY.md](VOCABULARY.md).
+
+The room-by-room rules, settled while building them. Everything here is
 running in the game unless marked otherwise.
 
 **Holes are opened deliberately.** A point of entry has three states, and each
 says one thing: SEALED is a question, OPEN is a fight, SPENT is a way down.
 Sealed art is the hole's outline with the floor showing through it -- the same
 sealed drawing works on every tileset because the "fill" is whatever ground it
-sits in. A floor answers being DISTURBED, not being walked into: nothing
+sits in. A room answers being DISTURBED, not being walked into: nothing
 presses until he breaks something open, so arriving somewhere is a chance to
 read the room and choose which hole to take, and the pressure that follows is
 pressure he chose.
 
 **Killing is the only progress.** A hole's program is a fixed number of
-creatures; what he has killed out of it is remembered per hole, and the
-program resumes past it. Leaving a floor -- by the stairs, by dying, by
+pests; what he has killed out of it is remembered per hole, and the
+program resumes past it. Leaving a room -- by the stairs, by dying, by
 quitting -- costs nothing and gains nothing. Anything that emerged and was NOT
 killed simply comes up again, which is what makes walking out and back in
 worth no XP, and what let the anti-grind rule cost the player nothing.
 
 **A leak is unfinished business.** A way down is quiet unless something is
-running below it. Not "a floor exists down there": a floor he never dug, or
+running below it. Not "a room exists down there": a room he never dug, or
 dug and never broke anything open on, sends nothing. What comes up a hole is
 what he disturbed and walked away from -- so a leaking hole is a report on his
 own unfinished work, and a quiet one means there is nothing to answer for.
 
 **A way down is a PASSAGE.** What is unfinished below reaches him THROUGH it:
-the actual hole from below, at that floor's depth, out of that hole's own
-remaining program. Not a trickle and not a decoration -- he is fighting floor
-three's hole in floor two's room. It chains: open something on three, run up,
+the actual hole from below, at that room's depth, out of that hole's own
+remaining program. Not a trickle and not a decoration -- he is fighting the hole he left
+running two floors down, in the room he is standing in. It chains: open something on three, run up,
 open something on two, run up, and both are still trying to reach him. But a
-passage is one passage, so they arrive in turn, nearest floor first, never as
-a merged blob. Each way down on a floor carries its own queue, so running from
+passage is one passage, so they arrive in turn, nearest room first, never as
+a merged blob. Each way down carries its own queue, so running from
 several branches stacks pressure without ever collapsing into one wave.
 
 **A passage in use is not a way down.** He cannot descend a hole that is
-delivering. That is what leaving a floor unfinished costs: not a scolding, not
+delivering. That is what leaving a room unfinished costs: not a scolding, not
 lost progress -- just no way back in until he has answered for what he
 started, and what he started is currently coming up the stairs.
 
@@ -320,9 +325,9 @@ is one visit. The rate shows on the HUD while he is deciding, because a
 multiplier he only learns about at the staging area is not a reason to take a
 risk.
 
-**A kind of hole leads to its own kind of floor.** Each point-of-entry type
-names the floor type it opens -- a crack in a foundation into the default
-cellar, a gnawed gap into a warren. A floor type is the whole recipe for a kind
+**A kind of hole leads to its own kind of room.** Each point-of-entry type
+names the room type it opens -- a crack in a foundation into the default
+cellar, a gnawed gap into a warren. A room type is the whole recipe for a kind
 of space: its shape, its look, the pools of room templates it draws on, its own
 mix of holes, and how far sideways it runs. A type varies from a base and
 overrides only what differs, so two kinds of space share their shape and are
@@ -335,8 +340,8 @@ numbers do.
 
 **A run sideways EXPANDS OUTWARD AND STOPS.** Wall holes spread the floor
 outward from wherever he first came down into it, and a kind of space may hold
-only so many rooms at one depth. Once a depth is full, floors built there grow
-no more holes in walls at all -- a wall kind falls back to a floor kind exactly
+only so many rooms at one depth. Once a floor is full, rooms opened on it grow
+no more holes in walls at all -- a wall kind falls back to a ground kind exactly
 as it does where there is no wall to arch into -- so the spread ends because
 there is nothing left to open rather than because something refused to open a
 hole that was already drawn.
@@ -354,7 +359,7 @@ mean new ground rather than merely unknown. Built once and removed again for
 being three mechanisms holding one invariant -- binding to spare passages,
 gnawing new holes into rooms that had none spare, and holes whose position is
 searched for rather than taken from the map. Worth returning to once the shape
-of a floor is settled and the second half of this section -- kinds of room
+of a room is settled and the second half of this section -- kinds of room
 triggered by what he has done rather than by where he is -- has a home. The
 tree is the minimal thing that works; the graph is the thing to grow into.)*
 
@@ -365,7 +370,7 @@ K lateral hops a way down must exist, and K grows with depth. Stranding is
 therefore impossible by construction rather than by a check that notices it
 afterwards. *(Not built.)*
 
-**Breakers.** Deep creatures -- the ones the smell has made smarter -- can run
+**Breakers.** Deep pests -- the ones the smell has made smarter -- can run
 at a sealed hole and break it open themselves, letting their own kind in. It
 is the counterweight to deliberate opening: unopposed, a careful player fights
 exactly one hole forever, which is safe to the point of being tension-free.
@@ -381,9 +386,9 @@ tell and a wind-up, or it is an unavoidable tax rather than a threat.
   stays legible. If not, it is genuine search -- and then K has to stay small
   or it is a slog. The root smell already exists in the fiction for exactly
   this.
-- **The gadget.** The pitch has the floor generating when the robot is sent
+- **The gadget.** The pitch has the room generating when the robot is sent
   in; today Descend generates it directly. It is a pacing gate, the diegetic
   reason procedural space is procedural, and a thing he can upgrade -- and it
-  sits on the same seam floor types would.
+  sits on the same seam room types would.
 - **How fast K grows with depth**, which is the difference between a flavour
   and a whole mode.
