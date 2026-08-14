@@ -36,7 +36,7 @@ add_library(poe-systems STATIC
     src/formats/SpriteDefLoader.cpp
     src/formats/SaveGame.cpp
     src/screens/TitleScreen.cpp
-    src/formats/FloorGen.cpp
+    src/formats/RoomGen.cpp
     src/formats/AreaLoader.cpp
     src/ops/SpawnUtils.cpp
     src/formats/FloorTypes.cpp
@@ -88,7 +88,7 @@ endif()
 # Tests -- link the same poe-systems the game does, so what is tested is what ships.
 add_executable(poe-tests
     tests/nav_test.cpp
-    tests/floorgen_test.cpp
+    tests/roomgen_test.cpp
     tests/sprite_anim_test.cpp
     tests/loot_test.cpp
     tests/reward_test.cpp

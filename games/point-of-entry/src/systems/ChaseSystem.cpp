@@ -20,18 +20,18 @@ namespace chase
 namespace
 {
 
-// Contact hurts once every this many seconds. Vermin have no attack: touching you IS the attack,
+// Contact hurts once every this many seconds. Pest have no attack: touching you IS the attack,
 // which is what lets hundreds of them exist without hundreds of attack animations.
 constexpr float kTouchInterval = 0.6f;
 constexpr float kTouchRadius = 12.0f;
 
 // Movement character is the SPECIES' business (see Motion in GameComponents): a tremor makes an
-// insect, a plain glide makes a mammal, and this system applies whatever the creature declared
+// insect, a plain glide makes a mammal, and this system applies whatever the pest declared
 // without knowing which is which. The tremor is a DRAW OFFSET, never movement -- the body
-// buzzes while the creature travels straight, so it cannot shiver through a wall.
+// buzzes while the pest travels straight, so it cannot shiver through a wall.
 
 // Bodies shove each other out of overlap AFTER moving. Nothing
-// ever deflects a creature's heading (steering forces make a swarm swerve and fidget); each one
+// ever deflects a pest's heading (steering forces make a swarm swerve and fidget); each one
 // walks dead-straight at the player, and the crowd spreads only because two bodies cannot share
 // a spot. That is what makes a swarm press onto you as a tide instead of milling around you.
 void shoveApart(EntityManager& em)
@@ -50,11 +50,11 @@ void shoveApart(EntityManager& em)
         const auto cy = static_cast<uint32_t>(static_cast<int>(y / kCell) + 32768);
         return (static_cast<uint64_t>(cx) << 32) | cy;
     };
-    for (auto [entity, t, vermin] : reg.view<Transform, Vermin>().each())
+    for (auto [entity, t, pest] : reg.view<Transform, Pest>().each())
         if (!reg.all_of<Dying>(entity))
             grid[key(t.x, t.y)].push_back(entity);
 
-    for (auto [entity, t, vermin] : reg.view<Transform, Vermin>().each())
+    for (auto [entity, t, pest] : reg.view<Transform, Pest>().each())
     {
         if (reg.all_of<Dying>(entity))
             continue;
@@ -98,15 +98,15 @@ void integrate(EntityManager& em, float dt)
         return;
     const auto& pt = reg.get<Transform>(playerEnt);
 
-    for (auto [entity, t, vel, vermin] : reg.view<Transform, Velocity, Vermin>().each())
+    for (auto [entity, t, vel, pest] : reg.view<Transform, Velocity, Pest>().each())
     {
         // One axis at a time, against the same walls the player obeys. The flow field routes
-        // AROUND walls but only suggests a direction -- a creature off the field, or one that
+        // AROUND walls but only suggests a direction -- a pest off the field, or one that
         // separation is pushing sideways, would otherwise walk straight through a wall.
         world::stepBlocked(em, t.x, vel.dx * dt, /*horizontal=*/true, t.y, 3.0f, 3.0f);
         world::stepBlocked(em, t.y, vel.dy * dt, /*horizontal=*/false, t.x, 3.0f, 3.0f);
 
-        // Touching him costs him. On a timer per creature rather than per frame, or standing in
+        // Touching him costs him. On a timer per pest rather than per frame, or standing in
         // a crowd would drain a full bar in the time it takes to notice.
         auto& touch = reg.get_or_emplace<TouchCooldown>(entity, TouchCooldown{0.0f});
         touch.remaining -= dt;
@@ -121,7 +121,7 @@ void integrate(EntityManager& em, float dt)
                 // keeps a crowd dangerous no matter how broad his shoulders get.
                 const int def =
                     reg.all_of<Stats>(playerEnt) ? stats::defense(reg.get<Stats>(playerEnt)) : 0;
-                const int raw = static_cast<int>(reg.get<Vermin>(entity).contact_damage);
+                const int raw = static_cast<int>(reg.get<Pest>(entity).contact_damage);
                 // The guard stands between the hit and the bar -- see absorbWithGuard.
                 hp->current -= tools::absorbWithGuard(em, std::max(1, raw - def), aim::guarding());
             }
@@ -142,7 +142,7 @@ void update(EntityManager& em, float dt)
     const auto& pt = reg.get<Transform>(playerEnt);
     const auto& ff = em.flow_field;
 
-    for (auto [entity, t, vel, vermin] : reg.view<Transform, Velocity, Vermin>().each())
+    for (auto [entity, t, vel, pest] : reg.view<Transform, Velocity, Pest>().each())
     {
         if (reg.all_of<Dying>(entity))
         {
@@ -152,7 +152,7 @@ void update(EntityManager& em, float dt)
         }
 
         // Surfacing: the burst owns the velocity until it expires, and only then does the
-        // creature start hunting. Walls still apply -- integrate() moves everything.
+        // pest start hunting. Walls still apply -- integrate() moves everything.
         if (auto* surge = reg.try_get<Surge>(entity))
         {
             surge->remaining -= dt;
@@ -184,7 +184,7 @@ void update(EntityManager& em, float dt)
             dy = ff.cells[row][col].dy;
         }
         // Off the field, or standing in an unreachable cell: walk straight at him. Better a
-        // creature that bumps a wall than one that stands still looking broken.
+        // pest that bumps a wall than one that stands still looking broken.
         if (dx == 0.0f && dy == 0.0f)
         {
             dx = pt.x - t.x;
@@ -200,19 +200,19 @@ void update(EntityManager& em, float dt)
         auto& sk = reg.get_or_emplace<Skitter>(entity, Skitter{});
         if (sk.phase == 0.0f)
             sk.phase = static_cast<float>(entt::to_integral(entity) % 997) * 0.618f;
-        sk.until += dt; // doubles as this creature's own clock
+        sk.until += dt; // doubles as this pest's own clock
 
         const auto& motion = reg.get_or_emplace<Motion>(entity, Motion{});
         const float drift = std::sin((sk.until + sk.phase) * motion.drift_hz) * motion.drift_amount;
         const float gx = dx - dy * drift;
         const float gy = dy + dx * drift;
 
-        // Speed is the species' own (see Vermin) -- generally slower than the exterminator in a
+        // Speed is the species' own (see Pest) -- generally slower than the exterminator in a
         // straight line, so positioning beats reflexes; a faster species narrows that margin.
-        vel.dx = gx * vermin.speed;
-        vel.dy = gy * vermin.speed;
+        vel.dx = gx * pest.speed;
+        vel.dy = gy * pest.speed;
 
-        // Face the way it is actually heading; a creature gliding left while drawn facing right
+        // Face the way it is actually heading; a pest gliding left while drawn facing right
         // is the moonwalk bug at swarm scale. Vertical-only travel keeps the last side.
         if (auto* facing = reg.try_get<FacingDirection>(entity); facing != nullptr && gx != 0.0f)
         {

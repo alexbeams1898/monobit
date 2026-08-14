@@ -4,8 +4,8 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
-#include "formats/FloorGen.h"
 #include "formats/FloorTypes.h"
+#include "formats/RoomGen.h"
 #include "formats/SpriteDefLoader.h"
 #include "ops/LogUtils.h"
 #include "ops/NavUtils.h"
@@ -33,45 +33,39 @@ namespace
 
 constexpr float kPoeSize = 32.0f;
 
-// One dug floor. The seed rebuilds its exact layout; `cleared` is the state
-// worth keeping between visits.
-// A floor's SPACE comes from one of two places and nothing else about it
-// differs: an authored level, or a seed that rebuilds the same generated layout
-// every visit. What persists is the Floor; the rest is rebuilt from it, which
-// is why it lives out here rather than in the saved half.
-struct Node
-{
-    Floor floor;
-    std::vector<swarm::Seep> seeps; // rebuilt every arrival, same every time
-};
+std::vector<Room> sRooms;
 
-std::vector<Node> sNodes;
+// WHERE THE HOLES OF THE ROOM HE IS IN PHYSICALLY STAND, rebuilt on arrival and identical every
+// time because the layout is. Only ever the room being built or stood in: a room he is not in
+// has no positions, because it has no world. Kept out of Room for exactly that reason -- Room is
+// the save's shape, and a thing that is rebuilt has no business persisting.
+std::vector<swarm::Hole> sMouths;
 
 // ONE RECORD PER SEEP THE SWARM IS RUNNING, in the swarm's own order -- which is hole order,
 // one slot per hole of the floor he stands on. `owner` is whose program it is: this floor's own
 // hole, or a hole on the far side of the passage that this hole has become. Asking the slot is
 // the ONLY way to tell the two apart. Working it out three ways is how this went wrong before:
-// two parallel arrays tied together by an index offset, and a heuristic comparing node ids.
-struct SeepSlot
+// two parallel arrays tied together by an index offset, and a heuristic comparing room ids.
+struct HoleSlot
 {
     Link owner;  // whose program is running here
     int at = -1; // which of THIS floor's holes it arrives at
     float x = 0.0f;
     float y = 0.0f;
 };
-std::vector<SeepSlot> sSlots;
-int sCurrent = -1; // node the player stands in; -1 = not in the dig
+std::vector<HoleSlot> sSlots;
+int sCurrent = -1; // room the player stands in; -1 = not in the dig
 
 // IS ANYTHING ACTUALLY RUNNING on this floor -- a hole he broke open and did not
 // finish? Not "does it have holes left": a floor nobody has disturbed is quiet by
 // definition, because a sealed hole sends nothing. One definition, asked of the
 // floor he stands on (is this work?) and of the floor below a hole (is that hole
-// leaking?), so the two can never disagree about what an unfinished floor is.
-bool workUnderway(int nodeId)
+// in_use?), so the two can never disagree about what an unfinished floor is.
+bool workUnderway(int roomId)
 {
-    if (nodeId < 0 || nodeId >= static_cast<int>(sNodes.size()))
+    if (roomId < 0 || roomId >= static_cast<int>(sRooms.size()))
         return false;
-    for (const Hole& hole : sNodes[static_cast<std::size_t>(nodeId)].floor.holes)
+    for (const Hole& hole : sRooms[static_cast<std::size_t>(roomId)].holes)
         if (hole.opened && !hole.cleared)
             return true;
     return false;
@@ -83,30 +77,30 @@ bool workUnderway(int nodeId)
 // disturbed and walked away from -- so a leak is a report on his own unfinished
 // business, and a quiet hole means there is nothing down there to answer for.
 // The floor a hole leads to, or -1 where it has never been dug.
-int beyond(int node, int hole)
+int beyond(int room, int hole)
 {
-    if (node < 0 || node >= static_cast<int>(sNodes.size()) || hole < 0)
+    if (room < 0 || room >= static_cast<int>(sRooms.size()) || hole < 0)
         return -1;
-    const auto& holes = sNodes[static_cast<std::size_t>(node)].floor.holes;
-    return hole < static_cast<int>(holes.size()) ? holes[static_cast<std::size_t>(hole)].to.node
+    const auto& holes = sRooms[static_cast<std::size_t>(room)].holes;
+    return hole < static_cast<int>(holes.size()) ? holes[static_cast<std::size_t>(hole)].to.room
                                                  : -1;
 }
 
-// What a marker becomes: its kind's look and where creatures surface. Rolled
+// What a marker becomes: its kind's look and where pests surface. Rolled
 // from the floor's seed, so a layout is the same holes every time.
-struct SeepKind
+struct HoleKind
 {
     std::string path;
     int weight = 1;
     sprite_def::Def def;
     bool on_wall = false;
-    std::string opens;          // the floor type on the far side; empty = the descent's default
-    std::string first_creature; // the vein's face, for the leak preview
+    std::string opens;      // the floor type on the far side; empty = the descent's default
+    std::string first_pest; // the vein's face, for the leak preview
 };
 
-SeepKind loadKind(const std::string& path)
+HoleKind loadKind(const std::string& path)
 {
-    SeepKind kind;
+    HoleKind kind;
     kind.path = path;
     std::ifstream sf(path);
     const nlohmann::json sj =
@@ -116,18 +110,18 @@ SeepKind loadKind(const std::string& path)
         kind.def = sprite_def::load(sj.value("sprite", std::string{}));
         kind.on_wall = sj.value("placement", std::string{"floor"}) == "wall";
         kind.opens = sj.value("opens", std::string{});
-        const auto& creatures = sj.value("creatures", nlohmann::json::array());
-        if (!creatures.empty())
-            kind.first_creature = creatures.front().value("creature", std::string{});
+        const auto& pests = sj.value("pests", nlohmann::json::array());
+        if (!pests.empty())
+            kind.first_pest = pests.front().value("pest", std::string{});
     }
     return kind;
 }
 
 // WHERE A KIND OF HOLE SITS AND WHAT IT OPENS. Cached by path: which way a hole goes is asked
 // every frame by the prompt, and a per-frame question must not reopen a config file to answer.
-const SeepKind& kindFacts(const std::string& path)
+const HoleKind& kindFacts(const std::string& path)
 {
-    static std::unordered_map<std::string, SeepKind> cache;
+    static std::unordered_map<std::string, HoleKind> cache;
     const auto known = cache.find(path);
     return known != cache.end() ? known->second : cache.emplace(path, loadKind(path)).first->second;
 }
@@ -142,21 +136,21 @@ const std::string& defaultType()
 {
     static const std::string type = []
     {
-        std::ifstream in("config/floor.json");
+        std::ifstream in("config/descent.json");
         const nlohmann::json j =
             in ? nlohmann::json::parse(in, nullptr, /*allow_exceptions=*/false) : nlohmann::json{};
         return j.is_discarded() || !j.is_object()
-                   ? std::string{"config/floors/cellar.json"}
-                   : j.value("default", std::string{"config/floors/cellar.json"});
+                   ? std::string{"config/rooms/cellar.json"}
+                   : j.value("default", std::string{"config/rooms/cellar.json"});
     }();
     return type;
 }
 
 // WHICH KIND OF SPACE A FLOOR IS, with the fallback applied once here so nothing downstream has
 // to remember that an empty string means the default.
-const std::string& typeOf(const Node& node)
+const std::string& typeOf(const Room& room)
 {
-    return node.floor.type.empty() ? defaultType() : node.floor.type;
+    return room.type.empty() ? defaultType() : room.type;
 }
 
 // This kind of space's mix of hole kinds, plus any letter-pinned kinds. Read through the type's
@@ -167,33 +161,34 @@ struct Rules
     // How many rooms a network of wall holes grows to before its connections start leading back
     // into rooms it already has. THIS is what bounds a run sideways: the network CLOSES rather
     // than stopping, so nothing ever has to refuse a hole that already looks like a passage.
-    int max_rooms = 2; // how far a run of wall holes may carry before this space stops growing them
+    int rooms_per_floor =
+        2; // how far a run of wall holes may carry before this space stops growing them
     int wall_depth = 2; // tiles of solid a wall needs behind it before a hole may be gnawed through
 };
 
-Rules loadKindTable(const std::string& typePath, std::vector<SeepKind>& kinds,
+Rules loadKindTable(const std::string& typePath, std::vector<HoleKind>& kinds,
                     std::unordered_map<char, std::string>& pinned)
 {
     Rules rules;
     const nlohmann::json j = formats::read(typePath);
     if (!j.is_object())
         return rules;
-    for (const auto& entry : j.value("seep_types", nlohmann::json::array()))
+    for (const auto& entry : j.value("hole_types", nlohmann::json::array()))
     {
-        SeepKind kind = loadKind(entry.value("seep", std::string{}));
+        HoleKind kind = loadKind(entry.value("hole", std::string{}));
         kind.weight = entry.value("weight", 1);
         kinds.push_back(std::move(kind));
     }
-    const nlohmann::json ms = j.value("marker_seeps", nlohmann::json::object());
+    const nlohmann::json ms = j.value("marker_holes", nlohmann::json::object());
     for (const auto& [letter, path] : ms.items())
         if (!letter.empty() && path.is_string())
             pinned.emplace(letter.front(), path.get<std::string>());
-    rules.max_rooms = j.value("max_rooms", rules.max_rooms);
+    rules.rooms_per_floor = j.value("rooms_per_floor", rules.rooms_per_floor);
     rules.wall_depth = j.value("wall_depth", rules.wall_depth);
     return rules;
 }
 
-const SeepKind* kindByPath(std::vector<SeepKind>& kinds, const std::string& path)
+const HoleKind* kindByPath(std::vector<HoleKind>& kinds, const std::string& path)
 {
     for (const auto& k : kinds)
         if (k.path == path)
@@ -214,12 +209,12 @@ float archWallY(const EntityManager& em, float x, float y, int depth)
 }
 
 // Place one hole's art (wall kinds snap their arch to the nearest front wall,
-// spawn moving WITH the art) and return where its creatures surface.
+// spawn moving WITH the art) and return where its pests surface.
 // A hole's two faces, read from the art by TAG. Missing tags are loud: a hole whose art cannot
 // say which frame is closed would sit there looking open and never react to being opened.
-SeepArt artOf(const SeepKind* kind, int index)
+PlacedHole artOf(const HoleKind* kind, int index)
 {
-    SeepArt art;
+    PlacedHole art;
     art.hole = index;
     if (kind == nullptr || !kind->def.ok)
         return art;
@@ -236,18 +231,18 @@ SeepArt artOf(const SeepKind* kind, int index)
     return art;
 }
 
-void placeHole(EntityManager& em, float mx, float my, const SeepKind* kind, int index,
-               int wallDepth, float& seepX, float& seepY)
+void placeHole(EntityManager& em, float mx, float my, const HoleKind* kind, int index,
+               int wallDepth, float& mouthX, float& mouthY)
 {
     const entt::entity hole = spawn::box(em, mx, my, kPoeSize, 0.75f, 0.15f, 0.15f);
-    em.registry().emplace<SeepArt>(hole, artOf(kind, index));
-    seepX = mx;
-    seepY = my;
+    em.registry().emplace<PlacedHole>(hole, artOf(kind, index));
+    mouthX = mx;
+    mouthY = my;
     if (kind == nullptr || !kind->def.ok)
         return;
     auto& spr = em.registry().get<Sprite>(hole);
     spr.texture_path = kind->def.sheet;
-    spr.src_x = em.registry().get<SeepArt>(hole).closed_x; // sealed until he opens it
+    spr.src_x = em.registry().get<PlacedHole>(hole).closed_x; // sealed until he opens it
     spr.src_w = kind->def.frame_w;
     spr.src_h = kind->def.frame_h;
     spr.layer = 1;
@@ -262,11 +257,11 @@ void placeHole(EntityManager& em, float mx, float my, const SeepKind* kind, int 
     t.x = std::floor(mx / ts) * ts + ts * 0.5f;
     t.y = wallBottom - static_cast<float>(kind->def.frame_h) * 0.5f;
     em.registry().get<Sprite>(hole).layer = 2;
-    seepX = t.x;
-    seepY = wallBottom + 8.0f; // the floor at the arch's mouth
+    mouthX = t.x;
+    mouthY = wallBottom + 8.0f; // the floor at the arch's mouth
 }
 
-// Build a node's world into `em`: everything except the player, who is
+// Build a room's world into `em`: everything except the player, who is
 // preserved and placed by the caller. GL-free. Reports the floor's way in
 // and where its ascend spot settled.
 // What a floor's holes look like and carry when he walks back into it. A hole he already
@@ -276,7 +271,7 @@ void placeHole(EntityManager& em, float mx, float my, const SeepKind* kind, int 
 // component, since a second sprite would stack and fight.
 // Defined below, beside the queue it reads: arriving on a floor needs it, and what it needs
 // to know about the floors beneath is the last thing this file works out.
-void beginFloor(int nodeId);
+void beginFloor(int roomId);
 
 // IT REEKS WHEN IT IS WORKING. A hole he has opened and not finished, or a passage carrying
 // something up from below, gives off a slow rise of vapour -- and one that has nothing to send
@@ -289,27 +284,28 @@ constexpr int kReekBlobs = 5; // a cloud is a LUMP: several offset blobs read as
 float sReekTimer = 0.0f;
 int sReekSide = 0;
 
-void restoreSpentHoles(EntityManager& em, int nodeId)
+void restoreSpentHoles(EntityManager& em, int roomId)
 {
-    Node& node = sNodes[static_cast<std::size_t>(nodeId)];
+    Room& room = sRooms[static_cast<std::size_t>(roomId)];
     auto& reg = em.registry();
-    for (const auto [e, art] : reg.view<SeepArt>().each())
+    // The hole's ONE component is already on the entity -- placement put it there to carry the
+    // art. What arriving adds is the rest of it: where its mouth ended up this visit, and the
+    // reach that makes it offerable once it is spent. Written INTO the component rather than
+    // over it, or the faces it was drawn with go with the assignment.
+    for (auto [e, placed] : reg.view<PlacedHole>().each())
     {
-        const auto i = static_cast<std::size_t>(art.hole);
-        if (art.hole < 0 || i >= node.floor.holes.size() || i >= node.seeps.size())
+        const auto i = static_cast<std::size_t>(placed.hole);
+        if (placed.hole < 0 || i >= room.holes.size() || i >= sMouths.size())
             continue;
-        const Hole& hole = node.floor.holes[i];
+        const Hole& hole = room.holes[i];
         if (hole.opened)
             if (auto* spr = reg.try_get<Sprite>(e))
-                spr->src_x = art.open_x;
-        if (!hole.cleared || reg.all_of<PassageSite>(e))
-            continue;
-        PassageSite site;
-        site.radius = siteFeel().reach;
-        site.hole = art.hole;
-        site.spawn_x = node.seeps[i].x;
-        site.spawn_y = node.seeps[i].y;
-        reg.emplace<PassageSite>(e, site);
+                spr->src_x = placed.open_x;
+        placed.mouth_x = sMouths[i].x;
+        placed.mouth_y = sMouths[i].y;
+        // A SPENT hole is a passage and can be stood on; anything else is scenery, and a reach
+        // of nothing is what keeps the prompt off it.
+        placed.reach = hole.cleared ? holeReach() : 0.0f;
     }
 }
 
@@ -319,7 +315,7 @@ int actEvery()
 {
     static const int every = []
     {
-        std::ifstream in("config/floor.json");
+        std::ifstream in("config/descent.json");
         const nlohmann::json j =
             in ? nlohmann::json::parse(in, nullptr, /*allow_exceptions=*/false) : nlohmann::json{};
         if (j.is_discarded() || !j.is_object())
@@ -333,8 +329,8 @@ int actEvery()
 // a copy: the second hole to reach it opens the same room the first one did.
 int sharedAt(int depth)
 {
-    for (std::size_t i = 0; i < sNodes.size(); ++i)
-        if (sNodes[i].floor.depth == depth && sNodes[i].floor.area.empty())
+    for (std::size_t i = 0; i < sRooms.size(); ++i)
+        if (sRooms[i].depth == depth && sRooms[i].area.empty())
             return static_cast<int>(i);
     return -1;
 }
@@ -354,16 +350,16 @@ std::string roomLetter(int index)
 std::string labelFor(int depth)
 {
     int rooms = 0;
-    for (const auto& node : sNodes)
-        if (node.floor.depth == depth)
+    for (const auto& room : sRooms)
+        if (room.depth == depth)
             ++rooms;
     return "B" + std::to_string(depth) + "-" + roomLetter(rooms);
 }
 
 int indexOfArea(const std::string& area)
 {
-    for (std::size_t i = 0; i < sNodes.size(); ++i)
-        if (sNodes[i].floor.area == area)
+    for (std::size_t i = 0; i < sRooms.size(); ++i)
+        if (sRooms[i].area == area)
             return static_cast<int>(i);
     return -1;
 }
@@ -379,7 +375,7 @@ int adoptArea(EntityManager& em, const std::string& area)
 {
     auto& reg = em.registry();
     std::vector<entt::entity> holes;
-    for (const auto e : reg.view<AuthoredSeep, Transform>())
+    for (const auto e : reg.view<AuthoredHole, Transform>())
         holes.push_back(e);
     if (holes.empty())
         return -1; // a room with nothing coming into it is not a floor
@@ -394,23 +390,23 @@ int adoptArea(EntityManager& em, const std::string& area)
     int id = indexOfArea(area);
     if (id < 0)
     {
-        Node node;
-        node.floor.area = area;
-        node.floor.label = labelFor(node.floor.depth);
-        sNodes.push_back(std::move(node));
-        id = static_cast<int>(sNodes.size()) - 1;
+        Room room;
+        room.area = area;
+        room.label = labelFor(room.depth);
+        sRooms.push_back(std::move(room));
+        id = static_cast<int>(sRooms.size()) - 1;
     }
-    Node& node = sNodes[static_cast<std::size_t>(id)];
-    const std::vector<Hole> kept = node.floor.holes;
-    node.seeps.clear();
-    node.floor.holes.clear();
+    Room& room = sRooms[static_cast<std::size_t>(id)];
+    const std::vector<Hole> kept = room.holes;
+    sMouths.clear();
+    room.holes.clear();
     for (std::size_t i = 0; i < holes.size(); ++i)
     {
         const auto& at = reg.get<Transform>(holes[i]);
-        const SeepKind kind = loadKind(reg.get<AuthoredSeep>(holes[i]).kind);
+        const HoleKind kind = loadKind(reg.get<AuthoredHole>(holes[i]).kind);
         // A hole wears its KIND's face wherever it is: the map says where one is and what sort,
         // never what it looks like.
-        const SeepArt art = artOf(&kind, static_cast<int>(i));
+        const PlacedHole art = artOf(&kind, static_cast<int>(i));
         if (kind.def.ok)
         {
             auto& spr = reg.get<Sprite>(holes[i]);
@@ -421,23 +417,23 @@ int adoptArea(EntityManager& em, const std::string& area)
             spr.layer = 1;
             reg.remove<SolidColor>(holes[i]);
         }
-        node.seeps.push_back(swarm::Seep{at.x, at.y, kind.path});
-        node.floor.holes.push_back(Hole{Link{}, kind.path, false, false, 0});
-        reg.emplace_or_replace<SeepArt>(holes[i], art);
+        sMouths.push_back(swarm::Hole{at.x, at.y, kind.path});
+        room.holes.push_back(Hole{Link{}, kind.path, false, false, 0});
+        reg.emplace_or_replace<PlacedHole>(holes[i], art);
     }
     // An authored floor keeps whatever state the save brought back for holes the map still has.
-    for (std::size_t i = 0; i < node.floor.holes.size() && i < kept.size(); ++i)
+    for (std::size_t i = 0; i < room.holes.size() && i < kept.size(); ++i)
     {
-        node.floor.holes[i].to = kept[i].to;
-        node.floor.holes[i].opened = kept[i].opened;
-        node.floor.holes[i].cleared = kept[i].cleared;
-        node.floor.holes[i].killed = kept[i].killed;
+        room.holes[i].to = kept[i].to;
+        room.holes[i].opened = kept[i].opened;
+        room.holes[i].cleared = kept[i].cleared;
+        room.holes[i].killed = kept[i].killed;
     }
 
     restoreSpentHoles(em, id);
     beginFloor(id);
-    poe::log().info("descent: '{}' is a floor -- {} hole(s) at depth {}", area, node.seeps.size(),
-                    node.floor.depth);
+    poe::log().info("descent: '{}' is a floor -- {} hole(s) at depth {}", area, sMouths.size(),
+                    room.depth);
     return id;
 }
 
@@ -451,14 +447,14 @@ void syncArea(EntityManager& em)
     if (area.empty())
         return;
     auto& reg = em.registry();
-    if (reg.view<AuthoredSeep>().empty())
+    if (reg.view<AuthoredHole>().empty())
     {
         sCurrent = -1; // a room he is only passing through
         return;
     }
     bool fresh = false;
-    for (const auto e : reg.view<AuthoredSeep>())
-        if (!reg.all_of<SeepArt>(e))
+    for (const auto e : reg.view<AuthoredHole>())
+        if (!reg.all_of<PlacedHole>(e))
         {
             fresh = true;
             break;
@@ -479,14 +475,14 @@ void syncArea(EntityManager& em)
 int roomsPromisedAt(int depth)
 {
     int rooms = 0;
-    for (std::size_t n = 0; n < sNodes.size(); ++n)
+    for (std::size_t n = 0; n < sRooms.size(); ++n)
     {
-        const Floor& floor = sNodes[n].floor;
-        if (floor.depth != depth)
+        const Room& room = sRooms[n];
+        if (room.depth != depth)
             continue;
         ++rooms;
-        for (std::size_t i = 0; i < floor.holes.size(); ++i)
-            if (floor.holes[i].to.node < 0 && !descends(static_cast<int>(n), static_cast<int>(i)))
+        for (std::size_t i = 0; i < room.holes.size(); ++i)
+            if (room.holes[i].to.room < 0 && !descends(static_cast<int>(n), static_cast<int>(i)))
                 ++rooms;
     }
     return rooms;
@@ -499,35 +495,45 @@ int roomsPromisedAt(int depth)
 //
 // The limit belongs to the space a wall hole would OPEN rather than to the one it is cut into: a
 // gnawed run makes a warren, and how wide a warren spreads is a fact about warrens.
-bool depthIsFull(int depth, const SeepKind& kind, int granted)
+bool depthIsFull(int depth, const HoleKind& kind, int granted)
 {
-    std::vector<SeepKind> kinds;
+    std::vector<HoleKind> kinds;
     std::unordered_map<char, std::string> pinned;
     const Rules rules =
         loadKindTable(kind.opens.empty() ? defaultType() : kind.opens, kinds, pinned);
-    return roomsPromisedAt(depth) + granted >= rules.max_rooms;
+    return roomsPromisedAt(depth) + granted >= rules.rooms_per_floor;
 }
 
 // WHICH KIND OF HOLE A MARKER BECOMES: a pinned letter takes its named kind, anything else
 // rolls the floor's weighted mix. A wall kind rolled onto a marker with no wall in reach falls
 // back to the table's first floor kind -- deterministically, with no extra roll, so the seed
 // still reproduces the floor exactly.
-const SeepKind* chooseKind(const EntityManager& em, const floorgen::Marker& m,
-                           std::vector<SeepKind>& kinds,
-                           const std::unordered_map<char, std::string>& pinned, int totalWeight,
-                           std::mt19937& rng, int wallDepth, int depth, int& granted)
+// EVERYTHING A MARKER NEEDS to become a hole: the kinds this room may grow, the letters pinned
+// to one, and the rules the space imposes. Passed together because they are read together and
+// come from one file -- nine loose arguments is a signature nobody calls correctly twice.
+struct KindTable
 {
-    const auto pin = pinned.find(m.type);
+    std::vector<HoleKind> kinds;
+    std::unordered_map<char, std::string> pinned;
+    Rules rules;
+    int total_weight = 0;
+};
+
+const HoleKind* chooseKind(const EntityManager& em, const roomgen::Marker& m, KindTable& table,
+                           std::mt19937& rng, int depth, int& granted)
+{
+    const auto pin = table.pinned.find(m.type);
     // A PIN IS AN INTENT, NOT AN EXEMPTION. An authored letter saying "this spot is a gnawed
     // gap" still needs a wall to gnaw through, so it falls through to the same check a rolled
     // kind faces -- a mouse hole in open floor is not a mouse hole.
-    const SeepKind* kind = pin != pinned.end() ? kindByPath(kinds, pin->second)
-                                               : (kinds.empty() ? nullptr : &kinds.front());
-    if (pin == pinned.end() && totalWeight > 0)
+    const HoleKind* kind = pin != table.pinned.end()
+                               ? kindByPath(table.kinds, pin->second)
+                               : (table.kinds.empty() ? nullptr : &table.kinds.front());
+    if (pin == table.pinned.end() && table.total_weight > 0)
     {
-        std::uniform_int_distribution<int> roll(0, totalWeight - 1);
+        std::uniform_int_distribution<int> roll(0, table.total_weight - 1);
         int ticket = roll(rng);
-        for (const auto& k : kinds)
+        for (const auto& k : table.kinds)
         {
             ticket -= k.weight;
             if (ticket < 0)
@@ -542,8 +548,9 @@ const SeepKind* chooseKind(const EntityManager& em, const floorgen::Marker& m,
     // deterministically, with no extra roll, so the seed still reproduces the floor exactly, and
     // nothing anywhere has to refuse a hole that is already drawn.
     if (kind != nullptr && kind->on_wall &&
-        (archWallY(em, m.x, m.y, wallDepth) < 0.0f || depthIsFull(depth, *kind, granted)))
-        for (const auto& k : kinds)
+        (archWallY(em, m.x, m.y, table.rules.wall_depth) < 0.0f ||
+         depthIsFull(depth, *kind, granted)))
+        for (const auto& k : table.kinds)
             if (!k.on_wall)
                 return &k;
     if (kind != nullptr && kind->on_wall)
@@ -554,10 +561,10 @@ const SeepKind* chooseKind(const EntityManager& em, const floorgen::Marker& m,
 // THE WAY IN, placed beside the floor's own entrance and drawn as the hole it is the far end
 // of. Anything placed by offset must land on floor: a fixed nudge from the entrance can sit
 // inside a wall in a tight room.
-void placeWayIn(EntityManager& em, Node& node, const floorgen::Floor& floor,
-                std::vector<SeepKind>& kinds, int wallDepth)
+void placeWayIn(EntityManager& em, Room& room, const roomgen::Layout& floor,
+                std::vector<HoleKind>& kinds, int wallDepth)
 {
-    const SeepKind* kind = kindByPath(kinds, node.floor.holes.front().kind);
+    const HoleKind* kind = kindByPath(kinds, room.holes.front().kind);
     // THE WAY IN IS THE FAR END OF THE HOLE HE CAME THROUGH, so it wears that hole's kind -- and
     // a kind that arches into a wall needs a wall wherever that puts it. The floor's own entrance
     // is chosen for standing room and knows nothing about what is above it, so the spot is
@@ -574,13 +581,13 @@ void placeWayIn(EntityManager& em, Node& node, const floorgen::Floor& floor,
         // A floor with no wall to arch into is a floor that failed to build, but he still has to
         // come out somewhere -- standable beats correct-looking.
         poe::log().error("descent: no wall for the way in on {} -- placing it on open floor",
-                         node.floor.label);
+                         room.label);
         world::freeSpotNear(em, ux, uy, kPoint, kPoint);
     }
-    float seepX = ux;
-    float seepY = uy;
-    placeHole(em, ux, uy, kind, 0, wallDepth, seepX, seepY);
-    node.seeps[0] = swarm::Seep{seepX, seepY, node.floor.holes.front().kind};
+    float mouthX = ux;
+    float mouthY = uy;
+    placeHole(em, ux, uy, kind, 0, wallDepth, mouthX, mouthY);
+    sMouths[0] = swarm::Hole{mouthX, mouthY, room.holes.front().kind};
 }
 
 // WHICH KIND A HOLE KEEPS between visits. A FLOOR IS THE SAME PLACE EVERY VISIT: a hole keeps
@@ -588,7 +595,7 @@ void placeWayIn(EntityManager& em, Node& node, const floorgen::Floor& floor,
 // already stood in. `rolled` is what this marker would take if it were fresh, which is both the
 // answer for a new hole and the replacement for a broken one.
 const std::string& keptKind(std::string& held, const std::string& rolled, const EntityManager& em,
-                            const floorgen::Marker& m, int wallDepth, const std::string& tag)
+                            const roomgen::Marker& m, int wallDepth, const std::string& tag)
 {
     // What it may NOT keep is a kind that cannot exist where it stands. A hole in a wall with no
     // wall to it was never a place, it was a fault -- and preserving a fault faithfully means
@@ -609,9 +616,9 @@ const std::string& keptKind(std::string& held, const std::string& rolled, const 
     return held;
 }
 
-bool buildNode(EntityManager& em, int nodeId, float& spawnX, float& spawnY)
+bool buildNode(EntityManager& em, int roomId, float& spawnX, float& spawnY)
 {
-    Node& node = sNodes[static_cast<std::size_t>(nodeId)];
+    Room& room = sRooms[static_cast<std::size_t>(roomId)];
     auto& reg = em.registry();
     // The world he came from goes; he does not.
     {
@@ -625,63 +632,60 @@ bool buildNode(EntityManager& em, int nodeId, float& spawnX, float& spawnY)
     travel::leaveAuthored();
     em.tile_config = TileConfig{}; // the floor's own tile vocabulary
 
-    const floorgen::Floor floor = floorgen::generate(em, typeOf(node), node.floor.seed);
+    const roomgen::Layout floor = roomgen::generate(em, typeOf(room), room.seed);
     if (!floor.ok)
     {
-        poe::log().error("descent: could not build floor at depth {}", node.floor.depth);
+        poe::log().error("descent: could not build floor at depth {}", room.depth);
         return false;
     }
-    node.floor.seed = floor.seed; // first generation picks; every later visit repeats
+    room.seed = floor.seed; // first generation picks; every later visit repeats
     spawnX = floor.spawn_x;
     spawnY = floor.spawn_y;
 
     // THE WAY HE CAME IN IS HOLE ZERO, placed before the floor's own. It is a hole like the
     // rest -- same art, same mouth, same passage rules -- that simply arrives already spent,
     // which is what a passage is. A floor with nothing above it has none and starts at its own.
-    const int offset = node.floor.way_in >= 0 ? 1 : 0;
-    node.seeps.assign(static_cast<std::size_t>(offset), swarm::Seep{});
+    const int offset = room.way_in >= 0 ? 1 : 0;
+    sMouths.assign(static_cast<std::size_t>(offset), swarm::Hole{});
 
-    std::vector<SeepKind> kinds;
-    std::unordered_map<char, std::string> pinned;
-    const Rules rules = loadKindTable(typeOf(node), kinds, pinned);
-    int totalWeight = 0;
-    for (const auto& k : kinds)
-        totalWeight += k.weight;
+    KindTable table;
+    table.rules = loadKindTable(typeOf(room), table.kinds, table.pinned);
+    for (const auto& k : table.kinds)
+        table.total_weight += k.weight;
 
     std::mt19937 rng(floor.seed * 2654435761u + 97u);
     int granted = 0; // wall holes handed out on this floor, which the depth is committed to
     int index = offset;
     for (const auto& m : floor.markers)
     {
-        if (m.type != 'P' && pinned.find(m.type) == pinned.end())
+        if (m.type != 'P' && table.pinned.find(m.type) == table.pinned.end())
             continue;
-        const SeepKind* kind = chooseKind(em, m, kinds, pinned, totalWeight, rng, rules.wall_depth,
-                                          node.floor.depth, granted);
+        const HoleKind* kind = chooseKind(em, m, table, rng, room.depth, granted);
         const auto slot = static_cast<std::size_t>(index);
-        if (slot >= node.floor.holes.size())
-            node.floor.holes.resize(slot + 1);
+        if (slot >= room.holes.size())
+            room.holes.resize(slot + 1);
         const std::string rolled = kind != nullptr ? kind->path : std::string{};
-        // Resolved once, AFTER every decision: kindByPath appends to `kinds` for a path it has
-        // not seen, and a pointer taken before that append is a pointer into the old buffer.
-        kind = kindByPath(kinds, keptKind(node.floor.holes[slot].kind, rolled, em, m,
-                                          rules.wall_depth, poeTag(nodeId, index)));
-        float seepX = m.x;
-        float seepY = m.y;
-        placeHole(em, m.x, m.y, kind, index, rules.wall_depth, seepX, seepY);
-        node.seeps.push_back(swarm::Seep{seepX, seepY, node.floor.holes[slot].kind});
+        // Resolved once, AFTER every decision: kindByPath appends to `table.kinds` for a path it
+        // has not seen, and a pointer taken before that append is a pointer into the old buffer.
+        kind = kindByPath(table.kinds, keptKind(room.holes[slot].kind, rolled, em, m,
+                                                table.rules.wall_depth, poeTag(roomId, index)));
+        float mouthX = m.x;
+        float mouthY = m.y;
+        placeHole(em, m.x, m.y, kind, index, table.rules.wall_depth, mouthX, mouthY);
+        sMouths.push_back(swarm::Hole{mouthX, mouthY, room.holes[slot].kind});
         ++index;
     }
-    node.floor.holes.resize(static_cast<std::size_t>(index));
+    room.holes.resize(static_cast<std::size_t>(index));
 
     if (offset > 0)
-        placeWayIn(em, node, floor, kinds, rules.wall_depth);
+        placeWayIn(em, room, floor, table.kinds, table.rules.wall_depth);
 
-    restoreSpentHoles(em, nodeId);
-    beginFloor(nodeId);
+    restoreSpentHoles(em, roomId);
+    beginFloor(roomId);
     return true;
 }
 
-// Enter a node: build, upload, and stand the player at (x,y) -- or at the
+// Enter a room: build, upload, and stand the player at (x,y) -- or at the
 // floor's own way in when the caller passes atWayIn.
 // Arriving on an authored floor is TRAVEL, not generation -- the map already
 // holds the space, and the level's own start is where he lands unless the
@@ -691,19 +695,18 @@ bool buildNode(EntityManager& em, int nodeId, float& spawnX, float& spawnY)
 // arrival, so a floor nobody has walked into this sitting has none yet, and a
 // caller that worked one out in advance would be reading a floor that does not
 // exist. Returns false when the hole is not one this floor has.
-bool standAtHole(EntityManager& em, int nodeId, int hole)
+bool standAtHole(EntityManager& em, int hole)
 {
-    const auto& seeps = sNodes[static_cast<std::size_t>(nodeId)].seeps;
-    if (hole < 0 || hole >= static_cast<int>(seeps.size()))
+    if (hole < 0 || hole >= static_cast<int>(sMouths.size()))
         return false;
-    const auto& at = seeps[static_cast<std::size_t>(hole)];
+    const auto& at = sMouths[static_cast<std::size_t>(hole)];
     player::standAt(em, at.x, at.y + 24.0f);
     return true;
 }
 
-bool enterAuthored(Engine& engine, EntityManager& em, int nodeId, int atHole)
+bool enterAuthored(Engine& engine, EntityManager& em, int roomId, int atHole)
 {
-    const std::string area = sNodes[static_cast<std::size_t>(nodeId)].floor.area;
+    const std::string area = sRooms[static_cast<std::size_t>(roomId)].area;
     if (!travel::enter(engine, em, area))
     {
         poe::log().error("descent: could not climb out into '{}'", area);
@@ -712,32 +715,32 @@ bool enterAuthored(Engine& engine, EntityManager& em, int nodeId, int atHole)
     sCurrent = adoptArea(em, area);
     if (sCurrent < 0)
         return false;
-    standAtHole(em, sCurrent, atHole); // otherwise the level's own start stands
+    standAtHole(em, atHole); // otherwise the level's own start stands
     return true;
 }
 
 // `atHole` names the hole he arrives at; -1 falls back to the floor's own way in, which is
 // what arriving without having come through anything means.
-bool enterNode(Engine& engine, EntityManager& em, int nodeId, int atHole)
+bool enterNode(Engine& engine, EntityManager& em, int roomId, int atHole)
 {
-    if (!sNodes[static_cast<std::size_t>(nodeId)].floor.area.empty())
-        return enterAuthored(engine, em, nodeId, atHole);
+    if (!sRooms[static_cast<std::size_t>(roomId)].area.empty())
+        return enterAuthored(engine, em, roomId, atHole);
     float sx = 0.0f;
     float sy = 0.0f;
-    if (!buildNode(em, nodeId, sx, sy))
+    if (!buildNode(em, roomId, sx, sy))
         return false;
     TileMapRenderer::upload(em.tile_map, em.tile_config, engine.textureManager());
     em.flow_field.last_player_col = -1;
     em.flow_field.last_player_row = -1;
     // In front of the hole he came out of, never on it, so no prompt greets the landing. A
     // floor with no way in and no named hole falls back to the space's own start.
-    if (!standAtHole(em, nodeId, atHole) &&
-        !standAtHole(em, nodeId, sNodes[static_cast<std::size_t>(nodeId)].floor.way_in))
+    if (!standAtHole(em, atHole) &&
+        !standAtHole(em, sRooms[static_cast<std::size_t>(roomId)].way_in))
         player::standAt(em, sx, sy);
-    sCurrent = nodeId;
-    const Node& here = sNodes[static_cast<std::size_t>(nodeId)];
-    poe::log().info("descent: at {} (depth {}, node {}, seed {})", here.floor.label,
-                    here.floor.depth, nodeId, here.floor.seed);
+    sCurrent = roomId;
+    const Room& here = sRooms[static_cast<std::size_t>(roomId)];
+    poe::log().info("descent: at {} (depth {}, room {}, seed {})", here.label, here.depth, roomId,
+                    here.seed);
     return true;
 }
 
@@ -757,10 +760,10 @@ bool enterNode(Engine& engine, EntityManager& em, int nodeId, int atHole)
 std::vector<Link> queueThrough(int from, int via)
 {
     std::vector<Link> found;
-    if (via < 0 || via >= static_cast<int>(sNodes.size()))
+    if (via < 0 || via >= static_cast<int>(sRooms.size()))
         return found;
-    std::vector<bool> seen(sNodes.size(), false);
-    if (from >= 0 && from < static_cast<int>(sNodes.size()))
+    std::vector<bool> seen(sRooms.size(), false);
+    if (from >= 0 && from < static_cast<int>(sRooms.size()))
         seen[static_cast<std::size_t>(from)] = true;
     seen[static_cast<std::size_t>(via)] = true;
     std::vector<int> edge{via};
@@ -769,17 +772,17 @@ std::vector<Link> queueThrough(int from, int via)
         std::vector<int> next;
         for (const int at : edge)
         {
-            const Node& node = sNodes[static_cast<std::size_t>(at)];
-            for (std::size_t i = 0; i < node.floor.holes.size(); ++i)
+            const Room& room = sRooms[static_cast<std::size_t>(at)];
+            for (std::size_t i = 0; i < room.holes.size(); ++i)
             {
-                const Hole& hole = node.floor.holes[i];
+                const Hole& hole = room.holes[i];
                 if (hole.opened && !hole.cleared)
                     found.push_back(Link{at, static_cast<int>(i)});
-                if (hole.to.node >= 0 && hole.to.node < static_cast<int>(sNodes.size()) &&
-                    !seen[static_cast<std::size_t>(hole.to.node)])
+                if (hole.to.room >= 0 && hole.to.room < static_cast<int>(sRooms.size()) &&
+                    !seen[static_cast<std::size_t>(hole.to.room)])
                 {
-                    seen[static_cast<std::size_t>(hole.to.node)] = true;
-                    next.push_back(hole.to.node);
+                    seen[static_cast<std::size_t>(hole.to.room)] = true;
+                    next.push_back(hole.to.room);
                 }
             }
         }
@@ -789,48 +792,48 @@ std::vector<Link> queueThrough(int from, int via)
 }
 
 // What one of this floor's holes is carrying, if anything: everything unfinished beyond it.
-std::vector<Link> queueBeyond(int node, int hole)
+std::vector<Link> queueBeyond(int room, int hole)
 {
-    return queueThrough(node, beyond(node, hole));
+    return queueThrough(room, beyond(room, hole));
 }
 
-// START THE FLOOR: one seep per hole, in hole order, so a slot index IS a hole index.
+// START THE FLOOR: one hole per hole, in hole order, so a slot index IS a hole index.
 //
 // A hole runs its OWN program until it is spent. A SPENT hole is a passage, and a passage runs
 // the nearest thing still unfinished beyond it -- at that hole's own depth and out of what is
 // left of that hole's own program. It carries them in TURN, nearest first, never as a merged
 // blob, and a hole that is carrying nothing simply sits there being a way through.
-void beginFloor(int nodeId)
+void beginFloor(int roomId)
 {
-    Node& node = sNodes[static_cast<std::size_t>(nodeId)];
-    std::vector<swarm::Seep> seeps;
+    Room& room = sRooms[static_cast<std::size_t>(roomId)];
+    std::vector<swarm::Hole> holes;
     std::vector<bool> cleared;
     std::vector<bool> opened;
     std::vector<int> killed;
     sSlots.clear();
 
-    for (std::size_t i = 0; i < node.floor.holes.size() && i < node.seeps.size(); ++i)
+    for (std::size_t i = 0; i < room.holes.size() && i < sMouths.size(); ++i)
     {
-        const Hole& hole = node.floor.holes[i];
-        SeepSlot slot{Link{nodeId, static_cast<int>(i)}, static_cast<int>(i), node.seeps[i].x,
-                      node.seeps[i].y};
+        const Hole& hole = room.holes[i];
+        HoleSlot slot{Link{roomId, static_cast<int>(i)}, static_cast<int>(i), sMouths[i].x,
+                      sMouths[i].y};
         std::string kind = hole.kind;
-        int depth = node.floor.depth;
+        int depth = room.depth;
         bool isOpen = hole.opened;
         bool isSpent = hole.cleared;
         int taken = hole.killed;
 
         if (hole.cleared)
         {
-            for (const Link& waiting : queueBeyond(nodeId, static_cast<int>(i)))
+            for (const Link& waiting : queueBeyond(roomId, static_cast<int>(i)))
             {
                 // ONE HOLE IS CARRIED BY ONE PASSAGE. Two holes on this floor can lead into the
                 // same place, and a program delivered through both would drain twice.
                 if (std::any_of(
-                        sSlots.begin(), sSlots.end(), [&](const SeepSlot& s)
-                        { return s.owner.node == waiting.node && s.owner.hole == waiting.hole; }))
+                        sSlots.begin(), sSlots.end(), [&](const HoleSlot& s)
+                        { return s.owner.room == waiting.room && s.owner.hole == waiting.hole; }))
                     continue;
-                const Floor& other = sNodes[static_cast<std::size_t>(waiting.node)].floor;
+                const Room& other = sRooms[static_cast<std::size_t>(waiting.room)];
                 const Hole& carried = other.holes[static_cast<std::size_t>(waiting.hole)];
                 slot.owner = waiting;
                 kind = carried.kind;
@@ -839,56 +842,52 @@ void beginFloor(int nodeId)
                 isSpent = false;
                 taken = carried.killed;
                 poe::log().info("descent: {} carries {} (depth {})",
-                                poeTag(nodeId, static_cast<int>(i)),
-                                poeTag(waiting.node, waiting.hole), other.depth);
+                                poeTag(roomId, static_cast<int>(i)),
+                                poeTag(waiting.room, waiting.hole), other.depth);
                 break;
             }
         }
 
-        seeps.push_back(swarm::Seep{slot.x, slot.y, kind, depth});
+        holes.push_back(swarm::Hole{slot.x, slot.y, kind, depth});
         cleared.push_back(isSpent);
         opened.push_back(isOpen);
         killed.push_back(taken);
         sSlots.push_back(slot);
     }
 
-    swarm::begin("config/swarm.json", seeps, node.floor.depth, cleared, killed, opened);
+    swarm::begin("config/swarm.json", holes, room.depth, cleared, killed, opened);
     // The whole table, once, where a floor starts: what is running here and whose it is.
     // Anything reading wrong on the HUD is readable here first.
     const auto carried = static_cast<std::size_t>(std::count_if(
-        sSlots.begin(), sSlots.end(), [&](const SeepSlot& s) { return s.owner.node != nodeId; }));
-    poe::log().info("descent: {} running {} seep(s) -- {} own, {} carried", node.floor.label,
+        sSlots.begin(), sSlots.end(), [&](const HoleSlot& s) { return s.owner.room != roomId; }));
+    poe::log().info("descent: {} running {} hole(s) -- {} own, {} carried", room.label,
                     sSlots.size(), sSlots.size() - carried, carried);
 }
 
 } // namespace
 
-const SiteFeel& siteFeel()
+float holeReach()
 {
-    // Read once, on the first hole that asks -- after boot has found the
-    // source tree, and never again per site.
-    static const SiteFeel feel = []
+    // Read once, on the first hole that asks -- after boot has found the source tree, and never
+    // again per hole.
+    static const float reach = []
     {
-        SiteFeel f;
         std::ifstream in("config/swarm.json");
         const nlohmann::json j =
             in ? nlohmann::json::parse(in, nullptr, /*allow_exceptions=*/false) : nlohmann::json{};
         if (j.is_discarded() || !j.is_object())
-            return f;
-        const nlohmann::json site = j.value("sites", nlohmann::json::object());
-        f.reach = site.value("reach", f.reach);
-        f.leak_interval = site.value("leak_interval", f.leak_interval);
-        return f;
+            return 18.0f;
+        return j.value("holes", nlohmann::json::object()).value("reach", 18.0f);
     }();
-    return feel;
+    return reach;
 }
 
-std::vector<Floor> snapshot()
+std::vector<Room> snapshot()
 {
-    std::vector<Floor> out;
-    out.reserve(sNodes.size());
-    for (const auto& node : sNodes)
-        out.push_back(node.floor);
+    std::vector<Room> out;
+    out.reserve(sRooms.size());
+    for (const auto& room : sRooms)
+        out.push_back(room);
     return out;
 }
 
@@ -897,48 +896,47 @@ int standing()
     return sCurrent;
 }
 
-void restore(const std::vector<Floor>& floors)
+void restore(const std::vector<Room>& floors)
 {
-    sNodes.clear();
-    sNodes.reserve(floors.size());
-    for (const auto& floor : floors)
+    sRooms.clear();
+    sRooms.reserve(floors.size());
+    for (const auto& saved : floors)
     {
-        Node node;
-        node.floor = floor;
+        Room room = saved;
         // A save written before floors carried tags brings them back untagged. Name them here,
         // in the order they were dug, which is the order they would have been named in --
         // assigned BEFORE the push so each one counts only the rooms that came before it.
-        if (node.floor.label.empty())
-            node.floor.label = labelFor(node.floor.depth);
+        if (room.label.empty())
+            room.label = labelFor(room.depth);
         // And one written before the fields were separated brings back B2A where the game now
         // says B2-A. The room KEEPS its letter -- a tag may change shape when the format does,
         // but a room must never change which room it is.
-        else if (node.floor.label.find('-') == std::string::npos)
+        else if (room.label.find('-') == std::string::npos)
         {
             // Past the leading B, then past the digits: the first non-digit is where the room
             // begins. Scanning for "not one of B0123456789" instead would walk straight over
             // room B -- the letter is in the set it is looking past.
-            const auto letter = node.floor.label.find_first_not_of("0123456789", 1);
+            const auto letter = room.label.find_first_not_of("0123456789", 1);
             if (letter != std::string::npos)
-                node.floor.label.insert(letter, "-");
+                room.label.insert(letter, "-");
         }
-        sNodes.push_back(std::move(node));
+        sRooms.push_back(std::move(room));
     }
     sCurrent = -1; // nowhere until he is stood somewhere
 }
 
-bool stand(Engine& engine, EntityManager& em, int node)
+bool stand(Engine& engine, EntityManager& em, int room)
 {
-    if (node < 0 || node >= static_cast<int>(sNodes.size()))
+    if (room < 0 || room >= static_cast<int>(sRooms.size()))
         return false;
     // At the floor's own way in, the same as arriving: what it was mid-fight is
     // not kept, and its unfinished holes muster again.
-    return enterNode(engine, em, node, /*atHole=*/-1);
+    return enterNode(engine, em, room, /*atHole=*/-1);
 }
 
 void reset()
 {
-    sNodes.clear();
+    sRooms.clear();
     sCurrent = -1;
 }
 
@@ -947,11 +945,11 @@ void leave()
     sCurrent = -1;
 }
 
-bool descends(int node, int hole)
+bool descends(int room, int hole)
 {
-    if (node < 0 || node >= static_cast<int>(sNodes.size()) || hole < 0)
+    if (room < 0 || room >= static_cast<int>(sRooms.size()) || hole < 0)
         return false;
-    const auto& holes = sNodes[static_cast<std::size_t>(node)].floor.holes;
+    const auto& holes = sRooms[static_cast<std::size_t>(room)].holes;
     if (hole >= static_cast<int>(holes.size()))
         return false;
     // A HOLE IN A WALL IS A RUN THROUGH A CAVITY, not a way underneath: it opens a room at the
@@ -967,40 +965,40 @@ bool descends(int node, int hole)
 int openBeyond(int at, int hole)
 {
     const auto cur = static_cast<std::size_t>(at);
-    const int existing = sNodes[cur].floor.holes[static_cast<std::size_t>(hole)].to.node;
+    const int existing = sRooms[cur].holes[static_cast<std::size_t>(hole)].to.room;
     if (existing >= 0)
         return existing;
     const bool down = descends(at, hole);
-    const int depth = sNodes[cur].floor.depth + (down ? 1 : 0);
+    const int depth = sRooms[cur].depth + (down ? 1 : 0);
     // At an act boundary every hole DESCENDING into it opens the same floor: the branches
     // rejoin, and the man who explored three of them and the man who took one arrive at the
     // same door. A room reached sideways is not an arrival into the act and never rejoins.
     if (down && convergesAt(depth))
         if (const int shared = sharedAt(depth); shared >= 0)
         {
-            poe::log().info("descent: {} rejoins {}", poeTag(at, hole), floorLabel(shared));
+            poe::log().info("descent: {} rejoins {}", poeTag(at, hole), roomLabel(shared));
             return shared;
         }
-    Node fresh;
-    fresh.floor.depth = depth;
-    fresh.floor.label = labelFor(depth);
-    fresh.floor.way_in = 0;
+    Room fresh;
+    fresh.depth = depth;
+    fresh.label = labelFor(depth);
+    fresh.way_in = 0;
     // WHAT KIND OF SPACE IT IS comes from the hole: a gnawed gap opens a warren. A hole naming
     // none opens the descent's default, which is what a crack in a foundation should do.
     const std::string& opens =
-        kindFacts(sNodes[cur].floor.holes[static_cast<std::size_t>(hole)].kind).opens;
-    fresh.floor.type = opens.empty() ? defaultType() : opens;
+        kindFacts(sRooms[cur].holes[static_cast<std::size_t>(hole)].kind).opens;
+    fresh.type = opens.empty() ? defaultType() : opens;
     // The way in is the FAR END OF THE HOLE HE CAME THROUGH -- same kind, so it wears the same
     // art -- and it arrives already spent, because a passage is what a spent hole is.
     Hole back;
-    back.kind = sNodes[cur].floor.holes[static_cast<std::size_t>(hole)].kind;
+    back.kind = sRooms[cur].holes[static_cast<std::size_t>(hole)].kind;
     back.opened = true;
     back.cleared = true;
-    fresh.floor.holes.push_back(back);
-    // Indexed access on BOTH sides of the push: growing the vector moves every node, and a
+    fresh.holes.push_back(back);
+    // Indexed access on BOTH sides of the push: growing the vector moves every room, and a
     // reference held across it dangles.
-    sNodes.push_back(std::move(fresh));
-    return static_cast<int>(sNodes.size()) - 1;
+    sRooms.push_back(std::move(fresh));
+    return static_cast<int>(sRooms.size()) - 1;
 }
 
 bool travel(Engine& engine, EntityManager& em, int hole)
@@ -1008,8 +1006,8 @@ bool travel(Engine& engine, EntityManager& em, int hole)
     if (sCurrent < 0)
         return false;
     const auto cur = static_cast<std::size_t>(sCurrent);
-    if (hole < 0 || hole >= static_cast<int>(sNodes[cur].floor.holes.size()) ||
-        !sNodes[cur].floor.holes[static_cast<std::size_t>(hole)].cleared)
+    if (hole < 0 || hole >= static_cast<int>(sRooms[cur].holes.size()) ||
+        !sRooms[cur].holes[static_cast<std::size_t>(hole)].cleared)
     {
         poe::log().error("descent: hole {} is not a passage", hole);
         return false;
@@ -1029,14 +1027,14 @@ bool travel(Engine& engine, EntityManager& em, int hole)
     // he has been through before has its own way in pointing somewhere else entirely, and
     // arriving at that instead of at this hole is how the way back gets lost.
     const auto far = static_cast<std::size_t>(farId);
-    Hole& here = sNodes[cur].floor.holes[static_cast<std::size_t>(hole)];
-    const int arriveAt = here.to.node == farId ? here.to.hole : sNodes[far].floor.way_in;
+    Hole& here = sRooms[cur].holes[static_cast<std::size_t>(hole)];
+    const int arriveAt = here.to.room == farId ? here.to.hole : sRooms[far].way_in;
     here.to = Link{farId, arriveAt};
     // The far end points back at THIS hole only when he is arriving through that floor's way
     // in: at an act boundary several holes lead into one floor, and the way out is whichever
     // way he came. Climbing back out of a floor must not rewrite the way in of the floor above.
-    if (arriveAt >= 0 && arriveAt == sNodes[far].floor.way_in)
-        sNodes[far].floor.holes[static_cast<std::size_t>(arriveAt)].to = Link{sCurrent, hole};
+    if (arriveAt >= 0 && arriveAt == sRooms[far].way_in)
+        sRooms[far].holes[static_cast<std::size_t>(arriveAt)].to = Link{sCurrent, hole};
 
     const int fromId = sCurrent;
     if (enterNode(engine, em, farId, arriveAt))
@@ -1045,10 +1043,10 @@ bool travel(Engine& engine, EntityManager& em, int hole)
     return enterNode(engine, em, fromId, /*atHole=*/-1);
 }
 
-void refreshLeaks(EntityManager& em)
+void refreshPassages(EntityManager& em)
 {
-    for (auto [e, site] : em.registry().view<PassageSite>().each())
-        site.leaking = !queueBeyond(sCurrent, site.hole).empty();
+    for (auto [e, site] : em.registry().view<PlacedHole>().each())
+        site.in_use = !queueBeyond(sCurrent, site.hole).empty();
 }
 
 // One puff above a hole that is doing something: a handful of blobs at different sizes and
@@ -1100,53 +1098,50 @@ void creditKills()
     for (std::size_t i = 0; i < sSlots.size() && i < lost.size(); ++i)
     {
         const Link owner = sSlots[i].owner;
-        if (owner.node < 0 || owner.node >= static_cast<int>(sNodes.size()))
+        if (owner.room < 0 || owner.room >= static_cast<int>(sRooms.size()))
             continue;
-        auto& holes = sNodes[static_cast<std::size_t>(owner.node)].floor.holes;
+        auto& holes = sRooms[static_cast<std::size_t>(owner.room)].holes;
         if (static_cast<std::size_t>(owner.hole) < holes.size())
             holes[static_cast<std::size_t>(owner.hole)].killed = lost[i];
     }
 }
 
-void spendFinished(EntityManager& em, Node& node)
+void spendFinished(EntityManager& em)
 {
     // what it carried settles the floor across it, not the one underfoot.
     for (std::size_t s = 0; s < sSlots.size(); ++s)
     {
-        const SeepSlot& slot = sSlots[s];
-        if (slot.owner.node < 0 || !swarm::seepCleared(em, static_cast<int>(s)))
+        const HoleSlot& slot = sSlots[s];
+        if (slot.owner.room < 0 || !swarm::holeCleared(em, static_cast<int>(s)))
             continue;
-        auto& holes = sNodes[static_cast<std::size_t>(slot.owner.node)].floor.holes;
+        auto& holes = sRooms[static_cast<std::size_t>(slot.owner.room)].holes;
         const auto oh = static_cast<std::size_t>(slot.owner.hole);
         if (oh >= holes.size() || holes[oh].cleared)
             continue;
         holes[oh].cleared = true;
-        if (slot.owner.node != sCurrent)
+        if (slot.owner.room != sCurrent)
         {
             // A passage finished what it was carrying; the next thing beyond takes its place.
             poe::log().info("descent: {} spent through a passage",
-                            poeTag(slot.owner.node, slot.owner.hole));
+                            poeTag(slot.owner.room, slot.owner.hole));
             continue;
         }
         // Spent: from spawner to passage. The hole's OWN art carries the component, since a
         // second sprite would stack and fight.
-        for (const auto [e, art] : em.registry().view<SeepArt>().each())
-            if (art.hole == slot.owner.hole &&
-                static_cast<std::size_t>(art.hole) < node.seeps.size())
+        for (auto [e, placed] : em.registry().view<PlacedHole>().each())
+            if (placed.hole == slot.owner.hole &&
+                static_cast<std::size_t>(placed.hole) < sMouths.size())
             {
-                PassageSite site;
-                site.radius = siteFeel().reach;
-                site.hole = art.hole;
-                site.spawn_x = node.seeps[static_cast<std::size_t>(art.hole)].x;
-                site.spawn_y = node.seeps[static_cast<std::size_t>(art.hole)].y;
-                em.registry().emplace_or_replace<PassageSite>(e, site);
+                // It becomes offerable; it does not become a different hole. Only the reach it
+                // did not have before is added.
+                placed.reach = holeReach();
             }
         poe::log().info("descent: {} spent -- a way through now",
                         poeTag(sCurrent, slot.owner.hole));
     }
 }
 
-void breathe(EntityManager& em, const Node& node, float dt)
+void breathe(EntityManager& em, const Room& room, float dt)
 {
     // finished, or a passage with something coming through it. A puff rises out of a hole in
     // the ground and settles out of one in a wall, which is the difference said in the world.
@@ -1154,58 +1149,58 @@ void breathe(EntityManager& em, const Node& node, float dt)
     if (sReekTimer >= kReekEvery)
     {
         sReekTimer = 0.0f;
-        for (std::size_t i = 0; i < node.floor.holes.size() && i < node.seeps.size(); ++i)
+        for (std::size_t i = 0; i < room.holes.size() && i < sMouths.size(); ++i)
         {
-            const Hole& hole = node.floor.holes[i];
+            const Hole& hole = room.holes[i];
             const bool working =
                 hole.cleared ? !queueBeyond(sCurrent, static_cast<int>(i)).empty() : hole.opened;
             if (working)
-                reek(em, node.seeps[i].x, node.seeps[i].y,
+                reek(em, sMouths[i].x, sMouths[i].y,
                      /*rising=*/descends(sCurrent, static_cast<int>(i)));
         }
     }
 }
 
-void repointPassages(const Node& node)
+void repointPassages(const Room& room)
 {
     // finishes -- or when he opens something new over there -- the passage picks up whatever is
     // next, without disturbing the floor he is standing on.
     for (std::size_t s = 0; s < sSlots.size(); ++s)
     {
-        SeepSlot& slot = sSlots[s];
-        if (slot.at < 0 || static_cast<std::size_t>(slot.at) >= node.floor.holes.size() ||
-            !node.floor.holes[static_cast<std::size_t>(slot.at)].cleared)
+        HoleSlot& slot = sSlots[s];
+        if (slot.at < 0 || static_cast<std::size_t>(slot.at) >= room.holes.size() ||
+            !room.holes[static_cast<std::size_t>(slot.at)].cleared)
             continue; // not a passage: it is running its own program, or nothing
         const std::vector<Link> queue = queueBeyond(sCurrent, slot.at);
         Link head;
         for (const Link& waiting : queue)
             if (!std::any_of(sSlots.begin(), sSlots.end(),
-                             [&](const SeepSlot& other)
+                             [&](const HoleSlot& other)
                              {
-                                 return &other != &slot && other.owner.node == waiting.node &&
+                                 return &other != &slot && other.owner.room == waiting.room &&
                                         other.owner.hole == waiting.hole;
                              }))
             {
                 head = waiting;
                 break;
             }
-        if (head.node < 0)
+        if (head.room < 0)
         {
-            if (slot.owner.node != sCurrent || slot.owner.hole != slot.at)
+            if (slot.owner.room != sCurrent || slot.owner.hole != slot.at)
             {
-                swarm::retarget(static_cast<int>(s), swarm::Seep{}, 0);
+                swarm::retarget(static_cast<int>(s), swarm::Hole{}, 0);
                 slot.owner = Link{sCurrent, slot.at};
             }
             continue;
         }
-        if (head.node == slot.owner.node && head.hole == slot.owner.hole)
+        if (head.room == slot.owner.room && head.hole == slot.owner.hole)
             continue;
-        const Floor& other = sNodes[static_cast<std::size_t>(head.node)].floor;
+        const Room& other = sRooms[static_cast<std::size_t>(head.room)];
         const Hole& carried = other.holes[static_cast<std::size_t>(head.hole)];
-        swarm::retarget(static_cast<int>(s), swarm::Seep{slot.x, slot.y, carried.kind, other.depth},
+        swarm::retarget(static_cast<int>(s), swarm::Hole{slot.x, slot.y, carried.kind, other.depth},
                         carried.killed);
         poe::log().info("descent: {} now carries {} (depth {})", poeTag(sCurrent, slot.at),
-                        poeTag(head.node, head.hole), other.depth);
+                        poeTag(head.room, head.hole), other.depth);
         slot.owner = head;
     }
 }
@@ -1214,28 +1209,28 @@ void update(Engine& engine, EntityManager& em, float dt)
 {
     (void)engine;
     syncArea(em);
-    refreshLeaks(em);
+    refreshPassages(em);
     creditKills();
     if (sCurrent < 0)
         return;
-    Node& node = sNodes[static_cast<std::size_t>(sCurrent)];
-    spendFinished(em, node);
-    breathe(em, node, dt);
-    repointPassages(node);
+    const Room& room = sRooms[static_cast<std::size_t>(sCurrent)];
+    spendFinished(em);
+    breathe(em, room, dt);
+    repointPassages(room);
 }
 
 int openableUnderfoot(const EntityManager& em, float x, float y)
 {
     if (sCurrent < 0)
         return -1;
-    const Node& node = sNodes[static_cast<std::size_t>(sCurrent)];
-    const float reach = siteFeel().reach;
-    for (std::size_t i = 0; i < node.seeps.size(); ++i)
+    const Room& room = sRooms[static_cast<std::size_t>(sCurrent)];
+    const float reach = holeReach();
+    for (std::size_t i = 0; i < sMouths.size(); ++i)
     {
-        if (i < node.floor.holes.size() && node.floor.holes[i].opened)
+        if (i < room.holes.size() && room.holes[i].opened)
             continue; // already answered, one way or the other
-        const float dx = x - node.seeps[i].x;
-        const float dy = y - node.seeps[i].y;
+        const float dx = x - sMouths[i].x;
+        const float dy = y - sMouths[i].y;
         if (dx * dx + dy * dy < reach * reach)
             return static_cast<int>(i);
     }
@@ -1247,14 +1242,14 @@ bool open(EntityManager& em, int hole)
 {
     if (sCurrent < 0 || hole < 0)
         return false;
-    Node& node = sNodes[static_cast<std::size_t>(sCurrent)];
+    Room& room = sRooms[static_cast<std::size_t>(sCurrent)];
     const auto i = static_cast<std::size_t>(hole);
-    if (i >= node.floor.holes.size() || node.floor.holes[i].opened)
+    if (i >= room.holes.size() || room.holes[i].opened)
         return false;
-    node.floor.holes[i].opened = true;
+    room.holes[i].opened = true;
     swarm::wake(hole);
     // The art stops pretending to be floor.
-    for (const auto [e, art] : em.registry().view<SeepArt>().each())
+    for (const auto [e, art] : em.registry().view<PlacedHole>().each())
         if (art.hole == hole)
             if (auto* spr = em.registry().try_get<Sprite>(e))
                 spr->src_x = art.open_x;
@@ -1266,11 +1261,11 @@ int frontsOpen()
 {
     if (sCurrent < 0)
         return 0;
-    const Node& node = sNodes[static_cast<std::size_t>(sCurrent)];
+    const Room& room = sRooms[static_cast<std::size_t>(sCurrent)];
     int fronts = 0;
-    for (std::size_t i = 0; i < node.floor.holes.size(); ++i)
+    for (std::size_t i = 0; i < room.holes.size(); ++i)
     {
-        const Hole& hole = node.floor.holes[i];
+        const Hole& hole = room.holes[i];
         // A hole he broke open and has not finished, or a passage with something coming through
         // it -- both are something he is standing in front of, which is what a front is.
         if (hole.cleared ? !queueBeyond(sCurrent, static_cast<int>(i)).empty() : hole.opened)
@@ -1284,44 +1279,44 @@ std::vector<Point> exclusions()
     std::vector<Point> out;
     if (sCurrent < 0)
         return out;
-    const Node& node = sNodes[static_cast<std::size_t>(sCurrent)];
+    const Room& room = sRooms[static_cast<std::size_t>(sCurrent)];
     // One row per hole, in the floor's own order -- the way he came in included, because a
     // passage carrying something is a front like any other and leaving it off the list would
     // mean the only way to learn it is coming is to be standing there when it arrives.
-    for (std::size_t i = 0; i < node.floor.holes.size(); ++i)
+    for (std::size_t i = 0; i < room.holes.size(); ++i)
     {
         Point point;
         point.tag = poeTag(sCurrent, static_cast<int>(i));
         // The slot IS the hole: a hole that is carrying reads as working even though its own
         // program is long spent, because what it is doing is what arrives out of it.
-        const bool running = i < sSlots.size() && sSlots[i].owner.node >= 0 &&
-                             !swarm::seepSealed(static_cast<int>(i)) &&
-                             !sNodes[static_cast<std::size_t>(sSlots[i].owner.node)]
-                                  .floor.holes[static_cast<std::size_t>(sSlots[i].owner.hole)]
+        const bool running = i < sSlots.size() && sSlots[i].owner.room >= 0 &&
+                             !swarm::holeSealed(static_cast<int>(i)) &&
+                             !sRooms[static_cast<std::size_t>(sSlots[i].owner.room)]
+                                  .holes[static_cast<std::size_t>(sSlots[i].owner.hole)]
                                   .cleared;
         if (running)
         {
             point.state = PointState::Working;
-            point.wave = swarm::seepWave(static_cast<int>(i));
-            point.waves = swarm::seepWaves(static_cast<int>(i));
+            point.wave = swarm::holeWave(static_cast<int>(i));
+            point.waves = swarm::holeWaves(static_cast<int>(i));
         }
-        else if (node.floor.holes[i].cleared)
+        else if (room.holes[i].cleared)
             point.state = PointState::Cleared;
         out.push_back(std::move(point));
     }
     return out;
 }
 
-std::string floorLabel(int node)
+std::string roomLabel(int room)
 {
-    if (node < 0 || node >= static_cast<int>(sNodes.size()))
+    if (room < 0 || room >= static_cast<int>(sRooms.size()))
         return {};
-    return sNodes[static_cast<std::size_t>(node)].floor.label;
+    return sRooms[static_cast<std::size_t>(room)].label;
 }
 
-std::string poeTag(int node, int hole)
+std::string poeTag(int room, int hole)
 {
-    const std::string floor = floorLabel(node);
+    const std::string floor = roomLabel(room);
     if (floor.empty())
         return floor;
     // 0 IS THE WAY IN -- the passage he arrived by. It is a point of entry like any other the
@@ -1333,27 +1328,27 @@ std::string poeTag(int node, int hole)
 
 std::string hereLabel()
 {
-    return floorLabel(sCurrent);
+    return roomLabel(sCurrent);
 }
 
 std::string beyondLabel(int hole)
 {
     if (sCurrent < 0)
         return {};
-    const Node& node = sNodes[static_cast<std::size_t>(sCurrent)];
+    const Room& room = sRooms[static_cast<std::size_t>(sCurrent)];
     // A place he has been has a name. One he has not is a QUESTION, and saying so is the point:
     // walking back into a floor he cleared is walking, and opening one he has never seen is a
     // commitment. Naming it in advance would flatten the difference.
     const int there = beyond(sCurrent, hole);
     if (there >= 0)
-        return floorLabel(there);
+        return roomLabel(there);
     // Except where the branches rejoin: at an act boundary every hole DESCENDING into it opens
     // the same floor, so one he has not dug yet still leads somewhere he has been. The link is
     // only made when he digs, but the destination is known before he does, and calling a place
     // he has walked through a question would be a lie.
-    if (descends(sCurrent, hole) && convergesAt(node.floor.depth + 1))
-        if (const int shared = sharedAt(node.floor.depth + 1); shared >= 0)
-            return floorLabel(shared);
+    if (descends(sCurrent, hole) && convergesAt(room.depth + 1))
+        if (const int shared = sharedAt(room.depth + 1); shared >= 0)
+            return roomLabel(shared);
     return std::string{"?"};
 }
 
@@ -1363,11 +1358,11 @@ int stepDir(int hole)
         return 0;
     // From the DEPTHS themselves, so a hole in a wall marks itself as across without anything
     // here having to know what a wall is.
-    const Node& node = sNodes[static_cast<std::size_t>(sCurrent)];
+    const Room& room = sRooms[static_cast<std::size_t>(sCurrent)];
     const int there = beyond(sCurrent, hole);
-    const int depth = there >= 0 ? sNodes[static_cast<std::size_t>(there)].floor.depth
-                                 : node.floor.depth + (descends(sCurrent, hole) ? 1 : 0);
-    return depth > node.floor.depth ? 1 : depth < node.floor.depth ? -1 : 0;
+    const int depth = there >= 0 ? sRooms[static_cast<std::size_t>(there)].depth
+                                 : room.depth + (descends(sCurrent, hole) ? 1 : 0);
+    return depth > room.depth ? 1 : depth < room.depth ? -1 : 0;
 }
 
 bool convergesAt(int depth)
@@ -1376,7 +1371,7 @@ bool convergesAt(int depth)
     return every > 0 && depth > 0 && depth % every == 0;
 }
 
-bool floorHasWork()
+bool roomHasWork()
 {
     return workUnderway(sCurrent);
 }

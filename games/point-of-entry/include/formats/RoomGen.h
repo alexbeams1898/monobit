@@ -15,12 +15,12 @@ class EntityManager;
 // docs/design/PITCH.md, "The gadget"). This header is the generation half; the
 // persistence half arrives with the gadget.
 //
-// The .room format (config/rooms/**/*.room), one character per tile:
+// The .room format (config/chambers/**/*.room), one character per tile:
 //   '.' or ' '  floor
 //   'W'         wall
 //   any letter  floor, plus a named marker at that cell -- the game decides what
 //               the letter means. 'P' is a point of entry.
-namespace floorgen
+namespace roomgen
 {
 
 // A marker the generator found in a room template, in WORLD pixels (already
@@ -34,9 +34,9 @@ struct Marker
 
 // What generating a floor produced. The tiles themselves are written straight
 // into the EntityManager's tile map; this is everything else the caller needs.
-struct Floor
+struct Layout
 {
-    float spawn_x = 0.0f; // where the player starts -- centre of the first room
+    float spawn_x = 0.0f; // where the player starts -- centre of the first chamber
     float spawn_y = 0.0f;
     std::vector<Marker> markers;
     // The seed the ACCEPTED layout was built from (generation may reroll internally). Anything
@@ -47,7 +47,7 @@ struct Floor
 };
 
 // One room template, parsed. Public so it can be tested without touching disk.
-struct Room
+struct Chamber
 {
     int width = 0;
     int height = 0;
@@ -57,12 +57,12 @@ struct Room
 };
 
 // Parse one ASCII template. `name` is used only in warnings.
-Room parseRoom(const std::string& text, const std::string& name = {});
+Chamber parseChamber(const std::string& text, const std::string& name = {});
 
-// Generate a floor into `em`'s tile map from a FLOOR TYPE (config/floors/*.json): load every
+// Generate a floor into `em`'s tile map from a FLOOR TYPE (config/rooms/*.json): load every
 // .room in the pools it names, place them without overlapping, connect them with corridors, and
 // collect the markers. A type may name a `base` and override only what differs. `seed` of 0
 // picks one from the clock; pass a real seed for a repeatable floor.
-Floor generate(EntityManager& em, const std::string& typePath, unsigned seed);
+Layout generate(EntityManager& em, const std::string& typePath, unsigned seed);
 
-} // namespace floorgen
+} // namespace roomgen

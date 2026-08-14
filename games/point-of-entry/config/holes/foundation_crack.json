@@ -1,0 +1,17 @@
+{
+    "_comment": "A KIND OF HOLE: what it looks like, what it looks like, and what can come through it. The trade reads the entry to know the pest -- ants fit a 1/25-inch crack -- so the hole declares its own fauna, with weights for the mix, min_wave for when a species joins the assault, and min_depth for how far down it starts riding this hole at all -- the law of depth applied to the formulas table rather than to the numbers. The assault (swarm.json) still owns pacing; this owns the WHO.",
+    "sprite": "assets/sprites/hole.json",
+    "pests": [
+        {
+            "pest": "config/pests/ant.json",
+            "weight": 10,
+            "min_wave": 1
+        },
+        {
+            "pest": "config/pests/cockroach.json",
+            "weight": 5,
+            "min_wave": 1,
+            "min_depth": 4
+        }
+    ]
+}

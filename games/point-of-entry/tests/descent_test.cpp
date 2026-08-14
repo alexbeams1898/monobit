@@ -14,10 +14,10 @@
 
 namespace
 {
-std::vector<swarm::Seep> twoSeeps()
+std::vector<swarm::Hole> twoHoles()
 {
-    return {swarm::Seep{160.0f, 160.0f, "config/seeps/foundation_crack.json"},
-            swarm::Seep{480.0f, 160.0f, "config/seeps/gnaw_hole.json"}};
+    return {swarm::Hole{160.0f, 160.0f, "config/holes/foundation_crack.json"},
+            swarm::Hole{480.0f, 160.0f, "config/holes/gnaw_hole.json"}};
 }
 } // namespace
 
@@ -25,10 +25,10 @@ TEST_CASE("a pre-cleared hole starts spent; its neighbour presses", "[descent]")
 {
     EntityManager em;
     // Both broken open: a sealed hole sends nothing, which is a different test.
-    swarm::begin("config/swarm.json", twoSeeps(), 0, {true, false}, {}, {true, true});
+    swarm::begin("config/swarm.json", twoHoles(), 0, {true, false}, {}, {true, true});
 
-    CHECK(swarm::seepCleared(em, 0));
-    CHECK_FALSE(swarm::seepCleared(em, 1));
+    CHECK(swarm::holeCleared(em, 0));
+    CHECK_FALSE(swarm::holeCleared(em, 1));
     CHECK(swarm::phase() != swarm::Phase::Cleared);
 
     // Long enough for emergence: everything that surfaces belongs to the
@@ -37,7 +37,7 @@ TEST_CASE("a pre-cleared hole starts spent; its neighbour presses", "[descent]")
         swarm::update(em, 1.0f / 60.0f);
     int fromSpent = 0;
     int fromLive = 0;
-    for (const auto [e, src] : em.registry().view<SeepSource>().each())
+    for (const auto [e, src] : em.registry().view<FromHole>().each())
     {
         if (src.index == 0)
             ++fromSpent;
@@ -51,10 +51,10 @@ TEST_CASE("a pre-cleared hole starts spent; its neighbour presses", "[descent]")
 TEST_CASE("every hole pre-cleared is a floor already at rest", "[descent]")
 {
     EntityManager em;
-    swarm::begin("config/swarm.json", twoSeeps(), 0, {true, true});
+    swarm::begin("config/swarm.json", twoHoles(), 0, {true, true});
     CHECK(swarm::phase() == swarm::Phase::Cleared);
     swarm::update(em, 1.0f);
-    CHECK(em.registry().view<Vermin>().size() == 0);
+    CHECK(em.registry().view<Pest>().size() == 0);
 }
 
 // A LEAK IS A REPORT ON HIS OWN UNFINISHED BUSINESS, never a latch on the hole. Only the
@@ -65,18 +65,18 @@ TEST_CASE("a way down is quiet until he leaves something running under it")
     EntityManager em;
     descent::reset();
 
-    PassageSite site;
+    PlacedHole site;
     site.hole = 0; // every way down is a hole of some floor
     const entt::entity e = em.registry().create();
-    em.registry().emplace<PassageSite>(e, site);
+    em.registry().emplace<PlacedHole>(e, site);
 
-    descent::refreshLeaks(em);
-    REQUIRE_FALSE(em.registry().get<PassageSite>(e).leaking);
+    descent::refreshPassages(em);
+    REQUIRE_FALSE(em.registry().get<PlacedHole>(e).in_use);
 
     // Nor does a hole numbered past the end of the floor he is standing in.
-    em.registry().get<PassageSite>(e).hole = 99;
-    descent::refreshLeaks(em);
-    REQUIRE_FALSE(em.registry().get<PassageSite>(e).leaking);
+    em.registry().get<PlacedHole>(e).hole = 99;
+    descent::refreshPassages(em);
+    REQUIRE_FALSE(em.registry().get<PlacedHole>(e).in_use);
 }
 
 // THE WORK STATE: one answer per tick, and everything that looks different between
@@ -90,26 +90,26 @@ TEST_CASE("the work state follows the leak")
     REQUIRE_FALSE(zone::combat());
 
     const entt::entity e = em.registry().create();
-    PassageSite site;
-    em.registry().emplace<PassageSite>(e, site);
+    PlacedHole site;
+    em.registry().emplace<PlacedHole>(e, site);
 
     SECTION("a quiet way down in an authored room is not the trade's ground")
     {
-        em.registry().get<PassageSite>(e).leaking = false; // everything below it is finished
+        em.registry().get<PlacedHole>(e).in_use = false; // everything below it is finished
         zone::update(em, 1.0f, /*cut=*/false);
         REQUIRE_FALSE(zone::combat());
     }
 
-    SECTION("a leaking one is")
+    SECTION("a in_use one is")
     {
-        em.registry().get<PassageSite>(e).leaking = true;
+        em.registry().get<PlacedHole>(e).in_use = true;
         zone::update(em, 1.0f, /*cut=*/false);
         REQUIRE(zone::combat());
     }
 
     SECTION("a passage carrying nothing is furniture")
     {
-        em.registry().get<PassageSite>(e).leaking = false;
+        em.registry().get<PlacedHole>(e).in_use = false;
         zone::update(em, 1.0f, /*cut=*/false);
         REQUIRE_FALSE(zone::combat());
     }
@@ -121,9 +121,9 @@ TEST_CASE("the changeover waits for something to see")
     descent::reset();
     zone::reset();
     const entt::entity e = em.registry().create();
-    PassageSite site;
-    site.leaking = true;
-    em.registry().emplace<PassageSite>(e, site);
+    PlacedHole site;
+    site.in_use = true;
+    em.registry().emplace<PlacedHole>(e, site);
 
     SECTION("a flip starts the changeover over again")
     {
@@ -131,7 +131,7 @@ TEST_CASE("the changeover waits for something to see")
         REQUIRE(zone::combat());
         REQUIRE(zone::settle() == 1.0f); // a whole second: long since arrived
 
-        em.registry().get<PassageSite>(e).leaking = false;
+        em.registry().get<PlacedHole>(e).in_use = false;
         zone::update(em, 0.0f, /*cut=*/false);
         REQUIRE_FALSE(zone::combat());
         REQUIRE(zone::settle() == 0.0f);
@@ -162,7 +162,7 @@ TEST_CASE("the work state asks only whether anything can reach him")
     SECTION("one of the swarm still on its feet is enough, wherever he is")
     {
         const entt::entity v = em.registry().create();
-        em.registry().emplace<Vermin>(v);
+        em.registry().emplace<Pest>(v);
         zone::update(em, 1.0f, /*cut=*/false);
         REQUIRE(zone::combat());
     }
@@ -170,7 +170,7 @@ TEST_CASE("the work state asks only whether anything can reach him")
     SECTION("one already dying is not")
     {
         const entt::entity v = em.registry().create();
-        em.registry().emplace<Vermin>(v);
+        em.registry().emplace<Pest>(v);
         em.registry().emplace<Dying>(v);
         zone::update(em, 1.0f, /*cut=*/false);
         REQUIRE_FALSE(zone::combat());
@@ -179,14 +179,14 @@ TEST_CASE("the work state asks only whether anything can reach him")
 
 // KILLING IS THE ONLY PROGRESS. What a hole has lost is what advances it, so walking out of a
 // floor and back in -- or quitting and coming back -- resumes the assault rather than
-// re-running it. A creature that emerged and escaped was not killed, so it comes up again.
+// re-running it. A pest that emerged and escaped was not killed, so it comes up again.
 TEST_CASE("a hole resumes past what he has killed out of it", "[descent]")
 {
     EntityManager em;
 
     SECTION("a hole nothing has been taken from starts at the beginning")
     {
-        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {}, {true, true});
+        swarm::begin("config/swarm.json", twoHoles(), 0, {}, {}, {true, true});
         CHECK(swarm::phase() != swarm::Phase::Cleared);
         CHECK(swarm::remaining(em) == 0); // nothing has surfaced yet
     }
@@ -194,22 +194,22 @@ TEST_CASE("a hole resumes past what he has killed out of it", "[descent]")
     SECTION("a hole emptied of its whole program is spent, and the floor with it")
     {
         // Far more than any program holds: both holes have nothing left to send.
-        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {100000, 100000}, {true, true});
-        CHECK(swarm::seepCleared(em, 0));
-        CHECK(swarm::seepCleared(em, 1));
+        swarm::begin("config/swarm.json", twoHoles(), 0, {}, {100000, 100000}, {true, true});
+        CHECK(swarm::holeCleared(em, 0));
+        CHECK(swarm::holeCleared(em, 1));
         CHECK(swarm::phase() == swarm::Phase::Cleared);
     }
 
     SECTION("a hole part-way through is neither spent nor restarted")
     {
-        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {3, 0}, {true, true});
-        CHECK_FALSE(swarm::seepCleared(em, 0));
+        swarm::begin("config/swarm.json", twoHoles(), 0, {}, {3, 0}, {true, true});
+        CHECK_FALSE(swarm::holeCleared(em, 0));
         CHECK(swarm::phase() != swarm::Phase::Cleared);
     }
 
     SECTION("progress is reported per hole, and begins empty")
     {
-        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {}, {true, true});
+        swarm::begin("config/swarm.json", twoHoles(), 0, {}, {}, {true, true});
         REQUIRE(swarm::progress().size() == 2);
         CHECK(swarm::progress()[0] == 0);
         CHECK(swarm::progress()[1] == 0);
@@ -217,7 +217,7 @@ TEST_CASE("a hole resumes past what he has killed out of it", "[descent]")
 
     SECTION("a remembered tally is what the hole resumes with")
     {
-        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {4, 7}, {true, true});
+        swarm::begin("config/swarm.json", twoHoles(), 0, {}, {4, 7}, {true, true});
         REQUIRE(swarm::progress().size() == 2);
         CHECK(swarm::progress()[0] == 4);
         CHECK(swarm::progress()[1] == 7);
@@ -236,7 +236,7 @@ int surfacedFrom(EntityManager& em, int hole, float seconds = 30.0f)
     for (float t = 0.0f; t < seconds; t += 0.05f)
         swarm::update(em, 0.05f);
     int n = 0;
-    for (auto [e, vermin, source] : em.registry().view<Vermin, SeepSource>().each())
+    for (auto [e, pest, source] : em.registry().view<Pest, FromHole>().each())
         if (source.index == hole)
             ++n;
     return n;
@@ -245,8 +245,8 @@ int surfacedFrom(EntityManager& em, int hole, float seconds = 30.0f)
 
 TEST_CASE("a resumed hole owes the remainder, then whole waves", "[descent]")
 {
-    const std::vector<swarm::Seep> one{
-        swarm::Seep{160.0f, 160.0f, "config/seeps/foundation_crack.json"}};
+    const std::vector<swarm::Hole> one{
+        swarm::Hole{160.0f, 160.0f, "config/holes/foundation_crack.json"}};
 
     int firstWave = 0;
     {
@@ -283,27 +283,27 @@ TEST_CASE("a sealed hole sends nothing until it is opened", "[descent]")
 
     SECTION("a floor nobody has touched stays quiet however long he stands there")
     {
-        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {}, {});
-        REQUIRE(swarm::seepSealed(0));
-        REQUIRE(swarm::seepSealed(1));
+        swarm::begin("config/swarm.json", twoHoles(), 0, {}, {}, {});
+        REQUIRE(swarm::holeSealed(0));
+        REQUIRE(swarm::holeSealed(1));
         for (int i = 0; i < 600; ++i)
             swarm::update(em, 1.0f / 60.0f);
         CHECK(swarm::remaining(em) == 0);
         // Nor is a sealed hole mistaken for a spent one -- it is a question, not a way down.
-        CHECK_FALSE(swarm::seepCleared(em, 0));
+        CHECK_FALSE(swarm::holeCleared(em, 0));
     }
 
     SECTION("opening one presses that hole and leaves its neighbour sealed")
     {
-        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {}, {});
+        swarm::begin("config/swarm.json", twoHoles(), 0, {}, {}, {});
         swarm::wake(0);
-        CHECK_FALSE(swarm::seepSealed(0));
-        CHECK(swarm::seepSealed(1));
+        CHECK_FALSE(swarm::holeSealed(0));
+        CHECK(swarm::holeSealed(1));
         for (int i = 0; i < 900; ++i)
             swarm::update(em, 1.0f / 60.0f);
         int fromOpened = 0;
         int fromSealed = 0;
-        for (const auto [e, src] : em.registry().view<SeepSource>().each())
+        for (const auto [e, src] : em.registry().view<FromHole>().each())
         {
             if (src.index == 0)
                 ++fromOpened;
@@ -316,9 +316,9 @@ TEST_CASE("a sealed hole sends nothing until it is opened", "[descent]")
 
     SECTION("a hole opened on an earlier visit is still open on the next")
     {
-        swarm::begin("config/swarm.json", twoSeeps(), 0, {}, {}, {true, false});
-        CHECK_FALSE(swarm::seepSealed(0));
-        CHECK(swarm::seepSealed(1));
+        swarm::begin("config/swarm.json", twoHoles(), 0, {}, {}, {true, false});
+        CHECK_FALSE(swarm::holeSealed(0));
+        CHECK(swarm::holeSealed(1));
     }
 }
 
@@ -333,8 +333,8 @@ TEST_CASE("a floor's tag is stable, readable and unbounded", "[descent]")
     SECTION("nowhere has no tag")
     {
         REQUIRE(descent::hereLabel().empty());
-        REQUIRE(descent::floorLabel(0).empty());
-        REQUIRE(descent::floorLabel(-1).empty());
+        REQUIRE(descent::roomLabel(0).empty());
+        REQUIRE(descent::roomLabel(-1).empty());
     }
 
     SECTION("a point of entry reads as its floor and its number, from one")
@@ -369,7 +369,7 @@ TEST_CASE("the descent converges at act boundaries", "[descent]")
 
 // WHICH WAY A HOLE GOES is the only thing its kind decides, and it is decided by where the hole
 // is: one in the ground is a way underneath, one in a wall is a run through a cavity to a room
-// at the same depth. Everything else a passage does -- carrying, leaking, refusing to be
+// at the same depth. Everything else a passage does -- carrying, in_use, refusing to be
 // travelled while it delivers -- is identical, which is why nothing else here is direction-aware.
 //
 // (The tree's traversal needs GL to build a floor, so what a passage CARRIES is integration-
@@ -377,11 +377,11 @@ TEST_CASE("the descent converges at act boundaries", "[descent]")
 TEST_CASE("a hole in the ground goes down; a hole in a wall goes across", "[descent]")
 {
     descent::reset();
-    descent::Floor floor;
+    descent::Room floor;
     floor.depth = 2;
     floor.holes = {
-        descent::Hole{descent::Link{}, "config/seeps/foundation_crack.json", false, false, 0},
-        descent::Hole{descent::Link{}, "config/seeps/gnaw_hole.json", false, false, 0}};
+        descent::Hole{descent::Link{}, "config/holes/foundation_crack.json", false, false, 0},
+        descent::Hole{descent::Link{}, "config/holes/gnaw_hole.json", false, false, 0}};
     descent::restore({floor});
 
     CHECK(descent::descends(0, 0));       // a crack in the foundation
@@ -402,21 +402,21 @@ TEST_CASE("a hole in the ground goes down; a hole in a wall goes across", "[desc
 TEST_CASE("a restored floor keeps the name it was given", "[descent]")
 {
     descent::reset();
-    descent::Floor first;
+    descent::Room first;
     first.depth = 2;
     first.label = "B2-A";
-    descent::Floor sideways;
+    descent::Room sideways;
     sideways.depth = 2; // reached through a wall, so it sits at the same depth
     sideways.label = "B2-B";
     descent::restore({first, sideways});
 
-    CHECK(descent::floorLabel(0) == "B2-A");
-    CHECK(descent::floorLabel(1) == "B2-B");
+    CHECK(descent::roomLabel(0) == "B2-A");
+    CHECK(descent::roomLabel(1) == "B2-B");
     // Holes are numbered from one in the floor's own order, the way in included: it is a point
     // of entry the moment something comes through it.
     CHECK(descent::poeTag(1, 0) == "B2-B-1");
     CHECK(descent::poeTag(1, 2) == "B2-B-3");
-    CHECK(descent::floorLabel(9).empty());
+    CHECK(descent::roomLabel(9).empty());
     descent::reset();
 }
 

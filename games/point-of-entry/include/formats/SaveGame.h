@@ -31,7 +31,7 @@ namespace savegame
 
 // Bump when the shape changes in a way defaults alone cannot satisfy, and
 // teach migrate() to carry the old shape forward.
-inline constexpr int kSchemaVersion = 2;
+inline constexpr int kSchemaVersion = 4;
 
 // One thing in the satchel (the item's blueprint is authored).
 struct Item
@@ -59,14 +59,14 @@ struct Man
     std::vector<Item> satchel;
 };
 
-// Where he stopped, exactly. A node in the tree, or -1 with an area name for a
+// Where he stopped, exactly. A room in the tree, or -1 with an area name for a
 // room that is not a floor. The spot is worth keeping because it is still a
 // real spot on return: an authored room is the same room, and a floor rebuilds
 // its identical layout from its seed. What does NOT come back is the fight --
 // the floor musters its unfinished holes again around wherever he is standing.
 struct Where
 {
-    int node = -1;
+    int room = -1;
     std::string area;
     float x = 0.0f;
     float y = 0.0f;
@@ -78,7 +78,7 @@ struct Data
 {
     std::string id; // stable, never shown, never reused
     std::map<std::string, int> record;
-    std::vector<descent::Floor> descent;
+    std::vector<descent::Room> descent;
     Man man;
     Where where;
 };

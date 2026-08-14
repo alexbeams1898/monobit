@@ -1,4 +1,4 @@
-#include "formats/FloorGen.h"
+#include "formats/RoomGen.h"
 
 #include "ecs/EntityManager.h"
 #include "formats/FloorTypes.h"
@@ -14,7 +14,7 @@
 #include <random>
 #include <sstream>
 
-namespace floorgen
+namespace roomgen
 {
 namespace
 {
@@ -24,15 +24,15 @@ struct Placed
 {
     int col = 0;
     int row = 0;
-    const Room* room = nullptr;
+    const Chamber* chamber = nullptr;
 
     int centreCol() const
     {
-        return col + room->width / 2;
+        return col + chamber->width / 2;
     }
     int centreRow() const
     {
-        return row + room->height / 2;
+        return row + chamber->height / 2;
     }
 };
 
@@ -45,15 +45,19 @@ inline std::size_t tileIndex(int row, int col, int width)
            static_cast<std::size_t>(col);
 }
 
-// How the floor is laid out, from config/floor.json.
+// How the floor is laid out, from config/descent.json.
 struct Config
 {
     int width = 96; // the whole floor, in tiles
     int height = 72;
     int tile_size = 32;
-    int room_attempts = 40; // placement tries; more rooms than this is unlikely
-    int room_target = 6;    // stop once this many are down
-    int corridor_half = 1;  // corridors are (2*half + 1) tiles wide
+    int chamber_attempts = 40; // placement tries; more rooms than this is unlikely
+    // A CEILING, not a goal: placement stops once this many are down, but what decides the
+    // count in practice is the box measured against the templates -- an overlapping room is
+    // dropped rather than shuffled, so a floor runs out of legal spots long before it runs
+    // out of attempts.
+    int chamber_limit = 6;
+    int corridor_half = 1; // corridors are (2*half + 1) tiles wide
     // Placement rules for marker letters that are spawners. The generator stays agnostic about
     // what a letter MEANS -- the config names which letters carry the rule.
     std::string spaced_types;
@@ -68,8 +72,8 @@ Config loadConfig(const nlohmann::json& j)
     cfg.width = j.value("width", cfg.width);
     cfg.height = j.value("height", cfg.height);
     cfg.tile_size = j.value("tile_size", cfg.tile_size);
-    cfg.room_attempts = j.value("room_attempts", cfg.room_attempts);
-    cfg.room_target = j.value("room_target", cfg.room_target);
+    cfg.chamber_attempts = j.value("chamber_attempts", cfg.chamber_attempts);
+    cfg.chamber_limit = j.value("chamber_limit", cfg.chamber_limit);
     cfg.corridor_half = j.value("corridor_half", cfg.corridor_half);
     const auto& sm = j.value("spaced_markers", nlohmann::json::object());
     cfg.spaced_types = sm.value("types", cfg.spaced_types);
@@ -97,15 +101,15 @@ void loadVisuals(const nlohmann::json& j, TileConfig& out)
     }
 }
 
-// Floor cells a template seals off from its own floor: connected-component count from the first
+// Layout cells a template seals off from its own floor: connected-component count from the first
 // walkable cell, minus the total. Zero for a well-formed room.
-int sealedCellCount(const Room& room)
+int sealedCellCount(const Chamber& chamber)
 {
-    std::vector<char> seen(room.tiles.size(), 0);
+    std::vector<char> seen(chamber.tiles.size(), 0);
     int total = 0;
     int first = -1;
-    for (int i = 0; i < static_cast<int>(room.tiles.size()); ++i)
-        if (room.tiles[static_cast<std::size_t>(i)] != TileMap::SOLID_ID)
+    for (int i = 0; i < static_cast<int>(chamber.tiles.size()); ++i)
+        if (chamber.tiles[static_cast<std::size_t>(i)] != TileMap::SOLID_ID)
         {
             ++total;
             if (first < 0)
@@ -122,19 +126,19 @@ int sealedCellCount(const Room& room)
         const int i = q.front();
         q.pop();
         ++reached;
-        const int c = i % room.width;
-        const int r = i / room.width;
+        const int c = i % chamber.width;
+        const int r = i / chamber.width;
         const int dc[4] = {1, -1, 0, 0};
         const int dr[4] = {0, 0, 1, -1};
         for (int k = 0; k < 4; ++k)
         {
             const int nc = c + dc[k];
             const int nr = r + dr[k];
-            if (nc < 0 || nr < 0 || nc >= room.width || nr >= room.height)
+            if (nc < 0 || nr < 0 || nc >= chamber.width || nr >= chamber.height)
                 continue;
-            const int ni = nr * room.width + nc; // bounded by a validated template
+            const int ni = nr * chamber.width + nc; // bounded by a validated template
             if (seen[static_cast<std::size_t>(ni)] ||
-                room.tiles[static_cast<std::size_t>(ni)] == TileMap::SOLID_ID)
+                chamber.tiles[static_cast<std::size_t>(ni)] == TileMap::SOLID_ID)
                 continue;
             seen[static_cast<std::size_t>(ni)] = 1;
             q.push(ni);
@@ -143,9 +147,9 @@ int sealedCellCount(const Room& room)
     return total - reached;
 }
 
-std::vector<Room> loadRooms(const std::string& dir)
+std::vector<Chamber> loadChambers(const std::string& dir)
 {
-    std::vector<Room> rooms;
+    std::vector<Chamber> rooms;
     std::error_code ec;
     if (!std::filesystem::is_directory(dir, ec))
     {
@@ -156,7 +160,7 @@ std::vector<Room> loadRooms(const std::string& dir)
     // unordered directory scan would quietly make the seed meaningless.
     std::vector<std::filesystem::path> files;
     for (const auto& e : std::filesystem::directory_iterator(dir, ec))
-        if (e.is_regular_file() && e.path().extension() == ".room")
+        if (e.is_regular_file() && e.path().extension() == ".chamber")
             files.push_back(e.path());
     std::sort(files.begin(), files.end());
 
@@ -167,11 +171,11 @@ std::vector<Room> loadRooms(const std::string& dir)
             continue;
         std::stringstream ss;
         ss << in.rdbuf();
-        Room r = parseRoom(ss.str(), f.filename().string());
+        Chamber r = parseChamber(ss.str(), f.filename().string());
         if (r.width > 0 && r.height > 0)
         {
             // A template whose floor is not all one piece has sealed cells -- floor drawn inside
-            // a pillar, a walled-off corner. Nothing can ever reach them, and a seep placed there
+            // a pillar, a walled-off corner. Nothing can ever reach them, and a hole placed there
             // would be a wave that cannot end. Authoring error: refuse the room, loudly, so it is
             // fixed the day it is drawn rather than found by a player.
             const int sealed = sealedCellCount(r);
@@ -193,8 +197,8 @@ std::vector<Room> loadRooms(const std::string& dir)
 // Stamp a room's tiles into the map at (col,row).
 void stamp(TileMap& map, const Placed& p)
 {
-    for (int r = 0; r < p.room->height; ++r)
-        for (int c = 0; c < p.room->width; ++c)
+    for (int r = 0; r < p.chamber->height; ++r)
+        for (int c = 0; c < p.chamber->width; ++c)
         {
             const int mc = p.col + c;
             const int mr = p.row + r;
@@ -202,8 +206,8 @@ void stamp(TileMap& map, const Placed& p)
                 continue;
             // Widen before multiplying, so the index arithmetic itself cannot overflow as int.
             const int id =
-                p.room
-                    ->tiles[static_cast<std::size_t>(r) * static_cast<std::size_t>(p.room->width) +
+                p.chamber
+                    ->tiles[static_cast<std::size_t>(r) * static_cast<std::size_t>(p.chamber->width) +
                             static_cast<std::size_t>(c)];
             auto& tile =
                 map.tiles[static_cast<std::size_t>(mr) * static_cast<std::size_t>(map.width) +
@@ -279,16 +283,16 @@ bool overlaps(const Placed& a, const std::vector<Placed>& placed)
     // One tile of padding, so two rooms never share a wall and corridors always
     // have something to cut through.
     for (const auto& b : placed)
-        if (a.col < b.col + b.room->width + 1 && a.col + a.room->width + 1 > b.col &&
-            a.row < b.row + b.room->height + 1 && a.row + a.room->height + 1 > b.row)
+        if (a.col < b.col + b.chamber->width + 1 && a.col + a.chamber->width + 1 > b.col &&
+            a.row < b.row + b.chamber->height + 1 && a.row + a.chamber->height + 1 > b.row)
             return true;
     return false;
 }
 } // namespace
 
-Room parseRoom(const std::string& text, const std::string& name)
+Chamber parseChamber(const std::string& text, const std::string& name)
 {
-    Room room;
+    Chamber room;
     room.name = name;
 
     std::istringstream stream(text);
@@ -332,17 +336,17 @@ namespace
 // ROOMS, PLACED WITHOUT TOUCHING. Templates are tried at random spots until the floor holds as
 // many as it wants or the tries run out; a room that overlaps one already down is dropped rather
 // than shuffled, because a floor that is one room short is still a floor.
-std::vector<Placed> layRooms(TileMap& map, const Config& cfg, const std::vector<Room>& rooms,
+std::vector<Placed> layChambers(TileMap& map, const Config& cfg, const std::vector<Chamber>& rooms,
                              std::mt19937& rng)
 {
     std::vector<Placed> placed;
     std::uniform_int_distribution<int> pick(0, static_cast<int>(rooms.size()) - 1);
     for (int attempt = 0;
-         attempt < cfg.room_attempts &&
-         static_cast<int>(placed.size()) < static_cast<std::size_t>(cfg.room_target);
+         attempt < cfg.chamber_attempts &&
+         static_cast<int>(placed.size()) < static_cast<std::size_t>(cfg.chamber_limit);
          ++attempt)
     {
-        const Room& room = rooms[static_cast<std::size_t>(pick(rng))];
+        const Chamber& room = rooms[static_cast<std::size_t>(pick(rng))];
         if (room.width + 2 >= cfg.width || room.height + 2 >= cfg.height)
             continue; // too big for this floor
         std::uniform_int_distribution<int> cx(1, cfg.width - room.width - 2);
@@ -391,9 +395,9 @@ std::vector<Marker> spreadOut(const std::vector<Marker>& spawners, float spawnX,
 // where this floor's spawn landed or where another room's marker sits. The rule: spawner-type
 // markers keep their distance from the way in and from each other; violators are dropped, and a
 // floor keeps at least one -- the farthest from the spawn -- because a chamber with nothing
-// seeping is not a chamber. Greedy farthest-first, so the survivors are the well-spread ones
+// coming into it is not a chamber. Greedy farthest-first, so the survivors are the well-spread ones
 // rather than whichever the template list happened to order first.
-void spaceSpawners(const Config& cfg, float ts, Floor& out)
+void spaceSpawners(const Config& cfg, float ts, Layout& out)
 {
     if (cfg.spaced_types.empty())
         return;
@@ -422,10 +426,10 @@ void spaceSpawners(const Config& cfg, float ts, Floor& out)
     out.markers.insert(out.markers.end(), kept.begin(), kept.end());
 }
 
-Floor generateOnce(EntityManager& em, const Config& cfg, const std::vector<Room>& rooms,
+Layout generateOnce(EntityManager& em, const Config& cfg, const std::vector<Chamber>& rooms,
                    unsigned seed)
 {
-    Floor out;
+    Layout out;
     out.seed = seed;
     std::mt19937 rng(seed);
 
@@ -439,7 +443,7 @@ Floor generateOnce(EntityManager& em, const Config& cfg, const std::vector<Room>
     map.decoration.clear();
     map.overhang.clear();
 
-    const std::vector<Placed> placed = layRooms(map, cfg, rooms, rng);
+    const std::vector<Placed> placed = layChambers(map, cfg, rooms, rng);
 
     if (placed.empty())
     {
@@ -461,7 +465,7 @@ Floor generateOnce(EntityManager& em, const Config& cfg, const std::vector<Room>
     // Markers, lifted from room-local tiles into world pixels.
     const float ts = static_cast<float>(cfg.tile_size);
     for (const auto& p : placed)
-        for (const auto& m : p.room->markers)
+        for (const auto& m : p.chamber->markers)
             out.markers.push_back(Marker{m.type, (static_cast<float>(p.col) + m.x + 0.5f) * ts,
                                          (static_cast<float>(p.row) + m.y + 0.5f) * ts});
 
@@ -474,7 +478,7 @@ Floor generateOnce(EntityManager& em, const Config& cfg, const std::vector<Room>
     // about where this floor's spawn landed or where another room's marker sits. The rule:
     // spawner-type markers keep their distance from the way in and from each other; violators
     // are dropped, and a floor keeps at least one -- the farthest from the spawn -- because a
-    // chamber with nothing seeping is not a chamber. Greedy farthest-first, so the survivors
+    // chamber with nothing coming into it is not a chamber. Greedy farthest-first, so the survivors
     // are the well-spread ones rather than whichever the template list happened to order first.
     spaceSpawners(cfg, ts, out);
 
@@ -483,7 +487,7 @@ Floor generateOnce(EntityManager& em, const Config& cfg, const std::vector<Room>
 }
 
 // How many of the floor's markers are spawner-typed under this config.
-int spawnerCount(const Config& cfg, const Floor& floor)
+int spawnerCount(const Config& cfg, const Layout& floor)
 {
     int n = 0;
     for (const auto& m : floor.markers)
@@ -493,21 +497,21 @@ int spawnerCount(const Config& cfg, const Floor& floor)
 }
 } // namespace
 
-Floor generate(EntityManager& em, const std::string& typePath, unsigned seed)
+Layout generate(EntityManager& em, const std::string& typePath, unsigned seed)
 {
     const nlohmann::json type = formats::read(typePath);
     const Config cfg = loadConfig(type);
     // POOLS, shared first: a type draws on the common templates plus whatever is its own, so a
     // plain corridor is authored once rather than copied into every kind of space.
-    std::vector<Room> rooms;
-    for (const auto& dir : type.value("rooms", std::vector<std::string>{"config/rooms/common"}))
+    std::vector<Chamber> rooms;
+    for (const auto& dir : type.value("chambers", std::vector<std::string>{"config/chambers/common"}))
     {
-        std::vector<Room> pool = loadRooms(dir);
+        std::vector<Chamber> pool = loadChambers(dir);
         rooms.insert(rooms.end(), std::make_move_iterator(pool.begin()),
                      std::make_move_iterator(pool.end()));
     }
     if (rooms.empty())
-        return Floor{};
+        return Layout{};
 
     if (seed == 0)
         seed = static_cast<unsigned>(std::chrono::steady_clock::now().time_since_epoch().count() &
@@ -515,18 +519,18 @@ Floor generate(EntityManager& em, const std::string& typePath, unsigned seed)
     loadVisuals(type, em.tile_config); // seed-independent; once, not per attempt
 
     // THE SEEP GUARANTEE. A floor with one spawner is a fight with one bearing, which is
-    // campable however the emergence behaves -- so a layout that cannot seat min_count seeps
+    // campable however the emergence behaves -- so a layout that cannot seat min_count holes
     // (templates too sparse, or the spawn exclusion swallowing them) is not accepted. Reroll on
     // a seed DERIVED from the requested one, so a caller passing a fixed seed still gets a
     // repeatable floor; give up loudly after enough tries and ship the best attempt rather
-    // than nothing, because a playable floor with one seep beats no floor at all.
+    // than nothing, because a playable floor with one hole beats no floor at all.
     constexpr int kAttempts = 12;
-    Floor best;
+    Layout best;
     int bestCount = -1;
     for (int attempt = 0; attempt < kAttempts; ++attempt)
     {
         const unsigned derived = seed + static_cast<unsigned>(attempt) * 2654435761u;
-        Floor f = generateOnce(em, cfg, rooms, derived);
+        Layout f = generateOnce(em, cfg, rooms, derived);
         if (!f.ok)
             continue;
         const int count = cfg.spaced_types.empty() ? cfg.spaced_min_count : spawnerCount(cfg, f);
@@ -548,7 +552,7 @@ Floor generate(EntityManager& em, const std::string& typePath, unsigned seed)
     {
         // The tile map in `em` currently holds the LAST attempt; rebuild the best one so the
         // returned markers and the world agree.
-        Floor rebuilt;
+        Layout rebuilt;
         for (int attempt = 0; attempt < kAttempts; ++attempt)
         {
             const unsigned derived = seed + static_cast<unsigned>(attempt) * 2654435761u;
@@ -560,4 +564,4 @@ Floor generate(EntityManager& em, const std::string& typePath, unsigned seed)
     return best;
 }
 
-} // namespace floorgen
+} // namespace roomgen

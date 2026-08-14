@@ -1,7 +1,0 @@
-{
-    "_comment": "THE DESCENT ITSELF, as opposed to any one floor in it. What a KIND of space is made of lives in config/floors/*.json, one file per type, and a hole names which type it opens (see config/seeps/*.json). This file holds only what is true of the whole dig. default: the type a floor takes when nothing named one -- the house's own foundation. descent.act_every is where the delta NARROWS: every nth depth is one floor that every branch DESCENDING into it leads to, so the descent converges on its root instead of widening forever. 0 turns convergence off. Rooms reached sideways sit at that depth without being an arrival into the act, and never rejoin.",
-    "default": "config/floors/cellar.json",
-    "descent": {
-        "act_every": 4
-    }
-}

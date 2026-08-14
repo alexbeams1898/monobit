@@ -1,6 +1,6 @@
 #include "formats/AreaLoader.h"
 #include "Engine.h"
-#include "formats/FloorGen.h"
+#include "formats/RoomGen.h"
 #include "FontManager.h"
 #include "formats/SpriteDefLoader.h"
 #include "UIRenderer.h"
@@ -156,9 +156,9 @@ void loadConfigs()
     tools::load("config/tools.json");
 }
 
-// The way down underfoot, if any. Measured from the site's MOUTH (spawn_x/y)
+// The way down underfoot, if any. Measured from the site's MOUTH (mouth_x/y)
 // rather than its art: a wall-mounted hole's art sits in the wall, and the
-// standable spot is the floor at its base -- the same point its creatures
+// standable spot is the floor at its base -- the same point its pests
 // surface at, whatever kind of placement put it there.
 entt::entity passageUnderfoot(EntityManager& em)
 {
@@ -167,11 +167,11 @@ entt::entity passageUnderfoot(EntityManager& em)
     if (!reg.valid(p))
         return entt::null;
     const auto& pt = reg.get<Transform>(p);
-    for (const auto [e, site] : reg.view<PassageSite>().each())
+    for (const auto [e, site] : reg.view<PlacedHole>().each())
     {
-        const float dx = pt.x - site.spawn_x;
-        const float dy = pt.y - site.spawn_y;
-        if (dx * dx + dy * dy < site.radius * site.radius)
+        const float dx = pt.x - site.mouth_x;
+        const float dy = pt.y - site.mouth_y;
+        if (dx * dx + dy * dy < site.reach * site.reach)
             return e;
     }
     return entt::null;
@@ -250,13 +250,13 @@ bool offerUnderfoot(Engine& engine, EntityManager& em)
         }
     }
     else if (const entt::entity through = passageUnderfoot(em);
-             through != entt::null && !em.registry().get<PassageSite>(through).leaking)
+             through != entt::null && !em.registry().get<PlacedHole>(through).in_use)
     {
         // TAKING A PASSAGE IS DELIBERATE, never a walk-on: you do not fall into the wound by
         // accident, and the way he came in obeys the same rule going the other way.
         // WHERE, not what: "B1-A -> B2-A" says which way this goes, which no single verb can
         // once a hole in a wall opens a room at the depth he is already on.
-        const int hole = em.registry().get<PassageSite>(through).hole;
+        const int hole = em.registry().get<PlacedHole>(through).hole;
         prompt::offerStep(descent::beyondLabel(hole), descent::stepDir(hole));
         if (player::consumeInteract())
         {
@@ -354,7 +354,7 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     chase::update(em, static_cast<float>(dt));
     swarm::update(em, static_cast<float>(dt));
 
-    // THE TRADE HAS ITS PLACE: the weapon fires only where vermin can reach
+    // THE TRADE HAS ITS PLACE: the weapon fires only where pest can reach
     // him. At the bar he is a man carrying equipment, not a man spraying it --
     // and holstering is EXPLICIT, because a stream interrupted by death or a
     // door would otherwise hold its state (and his facing) forever.

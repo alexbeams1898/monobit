@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-// THE FIELD GUIDE's reading half. A page's printed sections ride the creature file itself (an
+// THE FIELD GUIDE's reading half. A page's printed sections ride the pest file itself (an
 // optional "guide" object), so a species and its page can never split; how much of a page is
 // shown is a pure function of the record's kill tally against thresholds in stats.json. The
 // screen draws this; record:: counts; nothing here keeps a tally of its own.
@@ -23,7 +23,7 @@ struct Entry
 
 struct Page
 {
-    std::string species;  // the creature file path -- the record's id for this species
+    std::string species;  // the pest file path -- the record's id for this species
     std::string name;     // the file stem, the listing's label
     std::string sprite;   // the species' sprite def path -- the page's plate is the same art
     bool printed = false; // the file authors a guide object: the book knows this one
@@ -51,7 +51,7 @@ enum class Tier
 
 Page load(const std::string& path);
 
-// The listing's label for a species id -- the creature file's stem. One derivation, shared by
+// The listing's label for a species id -- the pest file's stem. One derivation, shared by
 // every surface that names a species, so a label can never drift from its page.
 std::string nameOf(const std::string& species);
 
@@ -59,7 +59,7 @@ std::string nameOf(const std::string& species);
 // numbers change width is a register whose names do not line up.
 std::string number(int index);
 
-// Every creature file in dir, sorted by path so the listing never reshuffles. Species ids come
+// Every pest file in dir, sorted by path so the listing never reshuffles. Species ids come
 // out with forward slashes -- the exact string the swarm spawns by, so the record's lookups
 // can never miss on a separator.
 std::vector<Page> scan(const std::string& dir);

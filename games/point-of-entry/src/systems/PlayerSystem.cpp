@@ -40,12 +40,12 @@ float sIntentY = 0.0f;
 
 // ONE DRAWING, FLIPPED -- the whole game's sprite convention. A character is drawn once and
 // mirrored to face the other way; there is no back sprite and no up/down pose. It is what
-// makes a bestiary running from ants to demons affordable: every new creature is one
+// makes a field guide running from ants to demons affordable: every new pest is one
 // drawing, not four.
 //
 // EVERY CHARACTER IS DRAWN FACING RIGHT, which is the direction needing no correction anywhere
 // -- art facing left would need its sign inverted for that one sprite, and that is a rule
-// nobody remembers on the fortieth creature. Source drawn the wrong way is corrected in the
+// nobody remembers on the fortieth pest. Source drawn the wrong way is corrected in the
 // .aseprite file itself, never compensated for in code.
 //
 // Sub-pixel movement not yet applied, carried between ticks (see stepWhole).

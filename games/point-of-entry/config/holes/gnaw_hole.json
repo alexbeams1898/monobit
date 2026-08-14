@@ -1,24 +1,24 @@
 {
     "_comment": "A quarter-inch gnawed gap -- mouse territory, with ants riding the same opening.",
     "sprite": "assets/sprites/mouse_hole.json",
-    "creatures": [
+    "pests": [
         {
-            "creature": "config/creatures/mouse.json",
+            "pest": "config/pests/mouse.json",
             "weight": 6,
             "min_wave": 1
         },
         {
-            "creature": "config/creatures/ant.json",
+            "pest": "config/pests/ant.json",
             "weight": 4,
             "min_wave": 1
         },
         {
-            "creature": "config/creatures/cockroach.json",
+            "pest": "config/pests/cockroach.json",
             "weight": 4,
             "min_wave": 1,
             "min_depth": 4
         }
     ],
     "placement": "wall",
-    "opens": "config/floors/warren.json"
+    "opens": "config/rooms/warren.json"
 }

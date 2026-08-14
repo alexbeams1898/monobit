@@ -55,7 +55,7 @@ struct Tool
 };
 
 // THE TANK. What the wand runs on, and it does NOT refill by waiting -- only by working. Killing
-// vermin recovers charge, which keeps the player in the fight rather than sending him to a shop
+// pest recovers charge, which keeps the player in the fight rather than sending him to a shop
 // to buy ammunition, and quietly makes the fiction better: he is putting back what he takes out.
 struct ChargeTuning
 {

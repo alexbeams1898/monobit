@@ -4,10 +4,10 @@ class EntityManager;
 
 // The junk walking at you.
 //
-// Vermin have no attacks and no decisions: they follow the engine's flow field toward the
+// Pest have no attacks and no decisions: they follow the engine's flow field toward the
 // exterminator and hurt him by touching him. That is deliberate rather than cheap -- an enemy
 // with an attack animation, a windup and a state machine cannot exist two hundred at a time, and
-// two hundred at a time is the point. Variety comes from what a creature IS (speed, health,
+// two hundred at a time is the point. Variety comes from what a pest IS (speed, health,
 // how it moves) rather than from what it decides.
 namespace chase
 {

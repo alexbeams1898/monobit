@@ -1,0 +1,29 @@
+{
+    "_comment": "THE DEFAULT FLOOR TYPE -- what a hole in a house's foundation opens into. A floor type is the whole recipe for a kind of space: its shape, its look, which holes it can grow, and how far sideways it runs. Other types name this one as their base and override only what differs (RFC 7386 merge), so retuning the shared shape happens once. tile_size 32 against the 1280x720 internal render gives 40x22 tiles on screen -- the close, room-at-a-time framing this game wants -- while the buffer still upscales by a clean integer. Chunkiness comes from the TILE, not from starving the framebuffer. SIZE: a dug chamber is one fight, not a level -- about two screens across, so the swarm finds you rather than you hunting it through empty corridor. chamber_limit is a CEILING and not a goal: what actually decides how many rooms land is the box measured against the templates, since a room that overlaps one already down (plus a tile of padding) is dropped rather than shuffled. At this size a floor seats two about eighty per cent of the time and four almost never, so raising the limit does nothing -- widen the floor or shrink the templates if more rooms are wanted. chambers lists the template pools this type draws from, shared first. spaced_markers: placement rules for marker letters that are SPAWNERS -- they keep a minimum distance from the spawn (nobody should surface next to the way in) and from each other; a marker violating the rule is dropped, but a floor always keeps at least one (the farthest from the spawn), because a chamber with nothing coming into it is not a chamber. hole_types: what kinds of hole this floor can open -- one is rolled per spawner marker, deterministically from the floor's seed, so a layout is the same holes every time. marker_holes pins a letter to a kind: an authored room can say THIS spot is a gnawed gap; plain P still rolls. wall_depth is how many tiles of solid a wall needs behind its face before a hole may be gnawed through it -- one tile is a partition with the same room on its other side, and a hole through that leads nowhere, which is why they must not appear on the stubs of wall standing inside a room. TWO UNITS ARE COUNTED HERE AND THEY ARE EASY TO CONFUSE. A DEPTH IS A FLOOR of the world (B2); the ROOMS on it are B2-A, B2-B, B2-C, each its own space with its own holes, reached from one another sideways. rooms_per_floor is how many of those a floor may hold, counted across every way down that reaches it. chamber_limit is smaller and inward: the CHAMBERS one room is built from, templates stamped into its map and joined by corridors. A full floor grows no more holes in walls in the rooms opened on it -- they fall back to holes in the ground the same way one with no wall to arch into does -- so a run sideways expands outward from where he first came down and then stops, without anything ever refusing a hole that is already drawn.",
+    "chambers": ["config/chambers/common"],
+    "width": 34,
+    "height": 26,
+    "tile_size": 32,
+    "chamber_attempts": 40,
+    "chamber_limit": 4,
+    "corridor_half": 1,
+    "wall_depth": 2,
+    "rooms_per_floor": 3,
+    "tile_visuals": {
+        "0": { "r": 0.16, "g": 0.15, "b": 0.17 },
+        "1": { "r": 0.07, "g": 0.07, "b": 0.08 }
+    },
+    "spaced_markers": {
+        "types": "PM",
+        "min_from_spawn_tiles": 6,
+        "min_apart_tiles": 5,
+        "min_count": 2
+    },
+    "hole_types": [
+        { "hole": "config/holes/foundation_crack.json", "weight": 6 },
+        { "hole": "config/holes/gnaw_hole.json", "weight": 4 }
+    ],
+    "marker_holes": {
+        "M": "config/holes/gnaw_hole.json"
+    }
+}

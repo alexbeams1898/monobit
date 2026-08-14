@@ -40,7 +40,7 @@ struct ItemDef
     bool ok = false;
 };
 
-// One line of a creature's drop table, as its file declares it.
+// One line of a pest's drop table, as its file declares it.
 struct DropEntry
 {
     std::string item; // ItemDef path

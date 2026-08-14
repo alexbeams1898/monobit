@@ -1,5 +1,5 @@
 {
-    "_comment": "How bad a dig gets. base/per_depth are the assault curves; surge is the surfacing burst. WHO comes out is not decided here: each hole's seep file declares its own fauna (config/seeps/). sites is how close he must stand to a way down or up to be offered it. bestiary is the derivation table for every species -- hp/contact/speed/xp derive from a creature's sheet (resistance/defensiveness/dispersal) the way the player's numbers derive from his (config/stats.json), and smell is the per-individual roll, hotter with depth, that multiplies all of it.",
+    "_comment": "How bad a dig gets. base/per_depth are the assault curves; surge is the surfacing burst. WHO comes out is not decided here: each hole's own file declares its fauna (config/holes/). holes.reach is how close he must stand to a passage to be offered the way through. formulas table is the derivation table for every species -- hp/contact/speed/xp derive from a pest's sheet (resistance/defensiveness/dispersal) the way the player's numbers derive from his (config/stats.json), and smell is the per-individual roll, hotter with depth, that multiplies all of it.",
     "base": {
         "waves": 3,
         "per_wave": 5,
@@ -17,7 +17,7 @@
         "speed": 150.0,
         "duration": 0.35
     },
-    "bestiary": {
+    "formulas": {
         "hp": {
             "per_resistance": 2.0
         },
@@ -41,8 +41,7 @@
             "max_per_depth": 8
         }
     },
-    "sites": {
-        "reach": 18.0,
-        "leak_interval": 8.0
+    "holes": {
+        "reach": 18.0
     }
 }

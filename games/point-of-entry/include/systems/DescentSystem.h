@@ -8,7 +8,7 @@
 class Engine;
 class EntityManager;
 
-// THE DESCENT IS A TREE, and it persists. Every floor is a node: its space, a
+// THE DESCENT IS A TREE, and it persists. Every floor is a room: its space, a
 // depth, and which of its holes have been cleared. A floor's space comes from
 // an authored level or from a seed, and NOTHING else about it differs -- the
 // basement he starts in is the first floor of the descent, its hole pressed
@@ -32,7 +32,7 @@ namespace descent
 // direction in it, and nothing has to look up a parent to find its way back.
 struct Link
 {
-    int node = -1;
+    int room = -1;
     int hole = -1;
 };
 
@@ -46,7 +46,7 @@ struct Link
 struct Hole
 {
     Link to;          // the far end, -1 until it has been dug
-    std::string kind; // a seep file; kept because a floor across the passage rebuilds this
+    std::string kind; // a hole file; kept because a floor across the passage rebuilds this
                       // hole's program without building the floor it belongs to
     bool opened = false;
     bool cleared = false;
@@ -58,7 +58,7 @@ struct Hole
 // and its holes. Art and leaks rebuild from the space, so they are absent on purpose: this
 // struct IS the save's shape for the descent, and a field that does not persist must not be
 // able to appear in it.
-struct Floor
+struct Room
 {
     std::string area; // an authored level, or empty for generated space
     // THE FLOOR'S TAG, as it appears on every surface that names it: B<depth>-<room>, where the
@@ -67,7 +67,7 @@ struct Floor
     // floor is first dug and never recomputed: a tag that changed when a neighbour was dug is a
     // tag nobody can rely on, and the whole point of numbering a thing is that it is permanent.
     std::string label;
-    // WHAT KIND OF SPACE THIS IS (config/floors/*.json): its shape, its look, the holes it can
+    // WHAT KIND OF SPACE THIS IS (config/rooms/*.json): its shape, its look, the holes it can
     // grow. Decided by the hole that opened it -- a gnawed gap opens a warren -- and kept,
     // because the floor rebuilds from it on every visit and a retuned table must not turn a
     // room he has stood in into a different room.
@@ -84,24 +84,18 @@ struct Floor
 };
 
 // The whole tree, and where in it he stands (-1 = nowhere). What a save keeps.
-std::vector<Floor> snapshot();
+std::vector<Room> snapshot();
 int standing();
 
 // Put a remembered tree back, then walk into `standing` -- the floor rebuilds
 // from its space and its unfinished holes re-muster, which is what makes
 // resuming mid-dig the same act as arriving.
-void restore(const std::vector<Floor>& floors);
-bool stand(Engine& engine, EntityManager& em, int node);
+void restore(const std::vector<Room>& floors);
+bool stand(Engine& engine, EntityManager& em, int room);
 
-// How a way down behaves: how close he must stand to be offered it, and how
-// often an unfinished floor sends one up through it. From the dig's config, so
-// the reach of every hole in the game is one number in one file.
-struct SiteFeel
-{
-    float reach = 18.0f;
-    float leak_interval = 8.0f;
-};
-const SiteFeel& siteFeel();
+// HOW CLOSE HE STANDS to be offered the way through a passage. One number in one file, so the
+// reach of every hole in the game is the same reach.
+float holeReach();
 
 // Forget the whole dig (leaving the job for the title).
 void reset();
@@ -116,7 +110,7 @@ bool travel(Engine& engine, EntityManager& em, int hole);
 
 // Does this hole go DOWN a floor, or across at the same depth? Read from its kind's placement:
 // a hole in the ground is a way underneath, a hole in a wall is a run through a cavity.
-bool descends(int node, int hole);
+bool descends(int room, int hole);
 
 // Watch the current floor: a hole whose assault exhausts becomes a passage.
 void update(Engine& engine, EntityManager& em, float dt);
@@ -125,7 +119,7 @@ void update(Engine& engine, EntityManager& em, float dt);
 // something running -- a hole he broke open and did not finish -- and is quiet otherwise,
 // including when nothing has been dug there at all. Runs whether or not he is in the dig,
 // because the basement's hole is a passage like any other. Called by update.
-void refreshLeaks(EntityManager& em);
+void refreshPassages(EntityManager& em);
 
 // IS THIS DEPTH AN ACT BOUNDARY -- one floor that every branch DESCENDING into it leads to?
 // The descent branches within an act and converges at its end, which is what makes it a delta
@@ -136,8 +130,8 @@ bool convergesAt(int depth);
 
 // The tag of a floor, and of one of its points of entry (B2-A-01). Holes are numbered from one
 // in the order the floor lists them, because a number on a wall is not an index.
-std::string floorLabel(int node);
-std::string poeTag(int node, int hole);
+std::string roomLabel(int room);
+std::string poeTag(int room, int hole);
 
 // Where he is standing, and where a passage would put him -- the tag the floor beyond it will
 // carry, whether or not it has been dug yet.
@@ -186,6 +180,6 @@ int frontsOpen();
 // Does the floor he is standing in still have a hole that has not been spent?
 // False in the authored world, on a floor whose every hole is done, and on one he has not
 // broken open yet -- a floor nobody has disturbed is not work.
-bool floorHasWork();
+bool roomHasWork();
 
 } // namespace descent

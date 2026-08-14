@@ -45,9 +45,9 @@ void update(EntityManager& em, float dt)
     for (auto [entity, sprite, transform, prev] :
          reg.view<Sprite, Transform, PreviousTransform>().each())
     {
-        // Vermin do not walk, they vibrate -- and both write the same draw offset, so whichever
-        // ran last would win. Creatures own their own motion; this is the two-legged gait.
-        if (reg.all_of<Vermin>(entity))
+        // Pest do not walk, they vibrate -- and both write the same draw offset, so whichever
+        // ran last would win. Pests own their own motion; this is the two-legged gait.
+        if (reg.all_of<Pest>(entity))
             continue;
 
         const float moved = std::sqrt((transform.x - prev.x) * (transform.x - prev.x) +

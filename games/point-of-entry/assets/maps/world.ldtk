@@ -479,7 +479,7 @@
 				]
 			},
 			{
-				"identifier": "Seep",
+				"identifier": "Hole",
 				"uid": 20,
 				"tags": [],
 				"exportToToc": false,
@@ -10128,7 +10128,7 @@
 							"__worldY": 32
 						},
 						{
-							"__identifier": "Seep",
+							"__identifier": "Hole",
 							"__grid": [
 								4,
 								13

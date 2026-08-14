@@ -1,5 +1,5 @@
-#include "formats/AreaLoader.h"
 #include "ecs/EntityManager.h"
+#include "formats/AreaLoader.h"
 #include "systems/TravelSystem.h"
 
 #include <filesystem>

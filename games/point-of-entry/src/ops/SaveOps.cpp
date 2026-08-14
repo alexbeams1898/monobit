@@ -114,7 +114,7 @@ void persist(const EntityManager& em)
     life.record = record::all();
     life.descent = descent::snapshot();
     life.man = readMan(em);
-    life.where.node = descent::standing();
+    life.where.room = descent::standing();
     life.where.area = travel::currentArea();
     if (const entt::entity p = player::entity(); em.registry().valid(p))
     {
@@ -138,7 +138,7 @@ bool resume(Engine& engine, EntityManager& em)
 
     // Stand him where he stopped. A floor rebuilds from its space and musters
     // what it had not finished; a room that is not a floor is just travel.
-    const bool stood = life->where.node >= 0 && descent::stand(engine, em, life->where.node);
+    const bool stood = life->where.room >= 0 && descent::stand(engine, em, life->where.room);
     if (!stood && !life->where.area.empty() && !travel::enter(engine, em, life->where.area))
     {
         poe::log().error("save: '{}' is not a place any more", life->where.area);

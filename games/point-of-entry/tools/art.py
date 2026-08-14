@@ -28,7 +28,7 @@ normally left out of a repo, but the game loads these at runtime and the build d
 script, so ignoring them would mean a fresh clone has no art until someone installs a licensed
 copy of Aseprite. Re-export after editing a source; the watcher does it for you.
 
-DRAW EVERY CHARACTER FACING RIGHT. There is one drawing per creature and the game mirrors it
+DRAW EVERY CHARACTER FACING RIGHT. There is one drawing per pest and the game mirrors it
 to face left -- no back sprite, no up or down pose. Right is the direction that needs no
 correction anywhere in the code, so a sprite drawn facing left is a bug rather than a
 preference. One drawn the wrong way is fixed in Aseprite: Sprite > Flip Canvas Horizontal.

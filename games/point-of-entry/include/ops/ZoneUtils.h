@@ -21,7 +21,7 @@ void update(const EntityManager& em, float dt, bool cut);
 
 // ONE RULE: can anything still reach him? Something of the swarm still on its
 // feet, a hole this floor has not finished pressing, or a way down that is
-// leaking -- and WHERE he happens to be standing is not part of it. A dug
+// in_use -- and WHERE he happens to be standing is not part of it. A dug
 // floor with every hole spent and nothing left alive is as quiet as the bar.
 // The weapon fires while this is true and nowhere else, and the cursor is a
 // crosshair while this is true and nowhere else.

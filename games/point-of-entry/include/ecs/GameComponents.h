@@ -48,15 +48,15 @@ struct Dying
     float remaining = 0.0f;
 };
 
-// Time until this creature can hurt the player by touching him again. Per-creature, so a crowd
+// Time until this pest can hurt the player by touching him again. Per-pest, so a crowd
 // does not drain a bar the instant it closes.
 struct TouchCooldown
 {
     float remaining = 0.0f;
 };
 
-// How a creature walks WRONG. Insects do not move on smooth curves: they commit to a slightly
-// mistaken heading, hold it a moment, correct, and pause. Held per creature rather than rolled
+// How a pest walks WRONG. Insects do not move on smooth curves: they commit to a slightly
+// mistaken heading, hold it a moment, correct, and pause. Held per pest rather than rolled
 // per frame -- noise that changes every frame reads as a rendering fault, where an error that
 // persists for a fifth of a second reads as a thing making bad decisions.
 struct Skitter
@@ -64,7 +64,7 @@ struct Skitter
     float wrong_angle = 0.0f; // radians of heading error currently being committed to
     float until = 0.0f;       // time left holding this error
     float pause_until = 0.0f; // time left standing still
-    float phase = 0.0f;       // per-creature offset so a swarm never steps in unison
+    float phase = 0.0f;       // per-pest offset so a swarm never steps in unison
 };
 
 // How far a body has walked, for the code-driven gait. Distance rather than time, so the rock
@@ -95,62 +95,50 @@ struct RestSpot
     float radius = 40.0f;
 };
 
-// A hole the MAP places, naming its seep type. An authored room carrying one
+// A hole the MAP places, naming its hole type. An authored room carrying one
 // is a floor like any other: the hole presses its assault, goes spent, becomes
 // a way down, and leaks -- the same life a generated floor's holes have, which
 // is why the first one is in his own basement and not a special case.
-struct AuthoredSeep
+struct AuthoredHole
 {
-    std::string kind; // a seep file: what kind of hole, and what comes through
+    std::string kind; // a hole file: what kind of hole, and what comes through
 };
 
-// A SPENT HOLE, which is to say A PASSAGE. Standing on it offers the way through, and taking
-// it opens the floor on the other side -- the floor below through a hole in the ground, another
-// room at the same depth through a hole in a wall. It also CARRIES: an unfinished hole anywhere
-// beyond it is still pressing, and this is the mouth it reaches him through, one hole at a time
-// out of that hole's own finite program. The way he came in wears this too; it is a hole that
-// arrived already spent, and nothing about it is a special case.
-struct PassageSite
+// A HOLE, AS IT STANDS IN THE WORLD -- one component on one entity, whatever the hole is doing.
+// Its two faces, so opening it is a frame swap rather than a reload (CLOSED is the outline with
+// the cavity drawn out of it, so the ground shows through and a sealed hole matches whatever it
+// sits in; OPEN is the hole itself), and its MOUTH.
+//
+// THE MOUTH is never assumed from the transform: a wall-mounted hole's art sits in the wall and
+// the standable spot is the floor at its base. It is where pests come out AND where he stands to
+// be offered the way through -- one point, so the thing that arrives and the thing he steps on
+// can never disagree.
+//
+// A SPENT hole is a PASSAGE: standing on it offers the way through, and taking it opens the room
+// on the other side. Whether this one is spent is the room's record to say, not this component's
+// -- what lives here is only what drawing and standing need.
+struct PlacedHole
 {
-    // Stand ON it to be offered the way through -- the prompt is the square underfoot, never
-    // the neighbourhood. Filled from the dig's config at placement (descent::siteFeel).
-    float radius = 0.0f;
-    int hole = -1; // which of this floor's holes it is
-    // IN USE. Did he leave something RUNNING on the other side? A floor he never dug, or dug
-    // and never broke anything open on, sends nothing -- a sealed hole is sealed at every
-    // depth. What comes through is what he disturbed and walked away from, so this is a report
-    // on his own unfinished business. A passage carrying something is not a way anywhere.
-    // Derived every frame by descent::refreshLeaks.
-    bool leaking = false;
-    // THE MOUTH -- never assumed from the entity's transform: a wall-mounted hole's art sits in
-    // the wall, and what comes through a passage may never arrive somewhere other than where
-    // the passage is.
-    float spawn_x = 0.0f;
-    float spawn_y = 0.0f;
-};
-
-// A placed hole's art, tagged with which of the floor's holes it draws. When
-// the hole is spent this same entity becomes its dig site -- one sprite, one
-// spot, nothing stacked to flicker.
-// A hole's own art, and which of the floor's holes it is. It carries both of its faces so
-// opening one is a frame swap rather than a reload: CLOSED is the outline with the cavity
-// drawn out of it, so the floor shows through and a sealed hole matches whatever ground it
-// sits in; OPEN is the hole itself.
-struct SeepArt
-{
-    int hole = -1;
+    int hole = -1;    // which of the room's holes it is
     int closed_x = 0; // pixel offset of the closed frame on the sheet
     int open_x = 0;
+    float mouth_x = 0.0f;
+    float mouth_y = 0.0f;
+    float reach = 0.0f; // how close he stands to be offered it
+    // IN USE: something is coming through from the far side -- a hole he broke open over there
+    // and walked away from. A passage carrying something is not a way anywhere. Derived every
+    // frame from the tree, never latched.
+    bool in_use = false;
 };
 
-// What a creature pays when it dies. On the creature, not in a table here -- the config that
+// What a pest pays when it dies. On the pest, not in a table here -- the config that
 // spawns it says what it is worth.
 struct Worth
 {
     int xp = 0;
 };
 
-// Just surfaced: an outward burst that overrides the hunt for a moment. Each creature erupts
+// Just surfaced: an outward burst that overrides the hunt for a moment. Each pest erupts
 // from the hole in its own direction, so a spray held at the pit mouth meets a scattering ring
 // rather than a queue walking into the cone single-file.
 struct Surge
@@ -161,8 +149,8 @@ struct Surge
     float remaining = 0.0f;
 };
 
-// How a species MOVES WRONG, declared in its creature file. All zeros -- the default -- is a
-// plain straight walk: character is opt-in, and a creature that declares nothing gets nothing.
+// How a species MOVES WRONG, declared in its pest file. All zeros -- the default -- is a
+// plain straight walk: character is opt-in, and a pest that declares nothing gets nothing.
 // buzz is a fast tremor drawn over the glide (insect language); drift is a slow lateral float
 // on the approach so a crowd does not converge into one line.
 struct Motion
@@ -188,29 +176,29 @@ struct ItemDrop
     ItemInstance contents;
 };
 
-// The species' drop table, riding the creature so death does not need to know species exist.
+// The species' drop table, riding the pest so death does not need to know species exist.
 struct DropTable
 {
     std::vector<DropEntry> entries;
 };
 
-// Which hole this creature came out of, so each seep can gate its own next wave on ITS output
+// Which hole this pest came out of, so each hole can gate its own next wave on ITS output
 // being dead -- clearing gates progress, per hole, and two holes stagger honestly.
-struct SeepSource
+struct FromHole
 {
     int index = 0;
 };
 
-// Marks the vermin. Areas hurt these; the exterminator is not one. The numbers ride the
+// Marks the pest. Areas hurt these; the exterminator is not one. The numbers ride the
 // component because they differ per SPECIES, and the systems that read them must not know
-// species exist -- a creature is its config file, nowhere else.
-struct Vermin
+// species exist -- a pest is its config file, nowhere else.
+struct Pest
 {
     float contact_damage = 0.0f;
     float speed = 46.0f;
 };
 
-// What kind of creature this body is, named by its creature file path -- the path IS the
+// What kind of pest this body is, named by its pest file path -- the path IS the
 // species identity everywhere (the swarm loads by it, evolution points at it, the record
 // tallies by it), so one id names a species and no parallel enum can drift from the files.
 struct Species

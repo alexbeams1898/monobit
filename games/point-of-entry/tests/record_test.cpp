@@ -13,7 +13,7 @@
 
 namespace
 {
-constexpr const char* kAnt = "config/creatures/ant.json";
+constexpr const char* kAnt = "config/pests/ant.json";
 
 // The player must exist for the reap's payout hooks; a bare body with no tank or sheet is
 // enough for them to no-op safely.
@@ -25,13 +25,13 @@ void bindBarePlayer(EntityManager& em)
 }
 
 // A body already past the fatal blow, waiting only for its death flash to run out.
-entt::entity makeDyingVermin(EntityManager& em, const char* species)
+entt::entity makeDyingPest(EntityManager& em, const char* species)
 {
     auto& reg = em.registry();
     const entt::entity e = reg.create();
     reg.emplace<Transform>(e, Transform{});
     reg.emplace<Health>(e, Health{0, 5});
-    reg.emplace<Vermin>(e, Vermin{});
+    reg.emplace<Pest>(e, Pest{});
     reg.emplace<Species>(e, Species{species});
     reg.emplace<Dying>(e, Dying{0.01f});
     return e;
@@ -43,7 +43,7 @@ TEST_CASE("a reaped body lands on the record exactly once", "[record]")
     record::reset();
     EntityManager em;
     bindBarePlayer(em);
-    const entt::entity e = makeDyingVermin(em, kAnt);
+    const entt::entity e = makeDyingPest(em, kAnt);
 
     hit_area::update(em, 0.1f); // outlives the death flash: the body is reaped
     REQUIRE_FALSE(em.registry().valid(e));
@@ -59,8 +59,8 @@ TEST_CASE("deaths accumulate per species", "[record]")
     record::reset();
     EntityManager em;
     bindBarePlayer(em);
-    makeDyingVermin(em, kAnt);
-    makeDyingVermin(em, kAnt);
+    makeDyingPest(em, kAnt);
+    makeDyingPest(em, kAnt);
 
     hit_area::update(em, 0.1f);
     CHECK(record::kills(kAnt) == 2);
@@ -81,7 +81,7 @@ TEST_CASE("reset clears the record", "[record]")
 TEST_CASE("an unknown species reads zero", "[record]")
 {
     record::reset();
-    CHECK(record::kills("config/creatures/never-met.json") == 0);
+    CHECK(record::kills("config/pests/never-met.json") == 0);
     // Asking must not invent an entry -- the listing shows only what has actually died.
     CHECK(record::all().empty());
 }

@@ -8,14 +8,14 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-// The guide's promises: the listing is the creatures directory under the exact ids the record
+// The guide's promises: the listing is the pests directory under the exact ids the record
 // counts by; a page carries printed sections only when its file authors them; the kill
 // thresholds gate in order.
 
 namespace
 {
 
-std::filesystem::path writeCreatureFixture(bool withGuide)
+std::filesystem::path writePestFixture(bool withGuide)
 {
     const auto dir = std::filesystem::temp_directory_path() / "poe_guide_fixture";
     std::filesystem::create_directories(dir);
@@ -44,9 +44,9 @@ std::filesystem::path writeGatesFixture(int forEntry, int forStats)
 
 } // namespace
 
-TEST_CASE("scan lists the shipped creatures under their record ids", "[guide]")
+TEST_CASE("scan lists the shipped pests under their record ids", "[guide]")
 {
-    const auto pages = guide::scan("config/creatures");
+    const auto pages = guide::scan("config/pests");
     REQUIRE(pages.size() >= 2);
     CHECK(std::is_sorted(pages.begin(), pages.end(), [](const guide::Page& a, const guide::Page& b)
                          { return a.species < b.species; }));
@@ -56,36 +56,36 @@ TEST_CASE("scan lists the shipped creatures under their record ids", "[guide]")
     for (const auto& p : pages)
     {
         CHECK(p.species.find('\\') == std::string::npos);
-        if (p.species == "config/creatures/ant.json")
+        if (p.species == "config/pests/ant.json")
         {
             foundAnt = true;
             CHECK(p.name == "ant");
             CHECK(p.printed);
-            // The page's plate is the species' own art, straight off the creature file.
+            // The page's plate is the species' own art, straight off the pest file.
             CHECK(p.sprite == "assets/sprites/ant.json");
         }
     }
     CHECK(foundAnt);
 }
 
-TEST_CASE("a missing creatures directory reads as an empty book", "[guide]")
+TEST_CASE("a missing pests directory reads as an empty book", "[guide]")
 {
     CHECK(guide::scan("no/such/dir").empty());
 }
 
 TEST_CASE("a species' label is its file stem, from the id the record counts by", "[guide]")
 {
-    CHECK(guide::nameOf("config/creatures/ant.json") == "ant");
+    CHECK(guide::nameOf("config/pests/ant.json") == "ant");
     CHECK(guide::nameOf("mouse.json") == "mouse");
     // The label a scan produces and the label derived from the raw id must be the same
     // string -- the feed and the listing may never disagree on a name.
-    for (const auto& p : guide::scan("config/creatures"))
+    for (const auto& p : guide::scan("config/pests"))
         CHECK(p.name == guide::nameOf(p.species));
 }
 
 TEST_CASE("a page carries printed sections only when the file authors them", "[guide]")
 {
-    const guide::Page p = guide::load(writeCreatureFixture(true).generic_string());
+    const guide::Page p = guide::load(writePestFixture(true).generic_string());
     CHECK(p.printed);
     CHECK(p.sprite == "assets/sprites/fixture.json");
     CHECK(p.entry.description == "d");
@@ -95,7 +95,7 @@ TEST_CASE("a page carries printed sections only when the file authors them", "[g
     CHECK(p.defensiveness == 2);
     CHECK(p.dispersal == 4);
 
-    const guide::Page b = guide::load(writeCreatureFixture(false).generic_string());
+    const guide::Page b = guide::load(writePestFixture(false).generic_string());
     CHECK_FALSE(b.printed);
 }
 

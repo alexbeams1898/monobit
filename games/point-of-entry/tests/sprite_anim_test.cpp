@@ -5,7 +5,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-// A creature set up the way the swarm builds one: sprite, facing, and a tagged animation
+// A pest set up the way the swarm builds one: sprite, facing, and a tagged animation
 // attached from a def. The promise: the engine actually advances its frames, and mirrored
 // facing keeps working with the Animation component present.
 
@@ -49,7 +49,7 @@ TEST_CASE("an attached walk tag advances frames", "[sprite_anim]")
     CHECK(reg.get<Sprite>(e).src_x == first);
 }
 
-TEST_CASE("mirrored facing still flips an animated creature", "[sprite_anim]")
+TEST_CASE("mirrored facing still flips an animated pest", "[sprite_anim]")
 {
     EntityManager em;
     auto& reg = em.registry();

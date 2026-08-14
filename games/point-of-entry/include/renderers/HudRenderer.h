@@ -15,7 +15,7 @@ namespace hud
 void render(Engine& engine, EntityManager& em);
 
 // Things anchored to the WORLD rather than the screen -- enemy health, and anything else that
-// belongs over a creature. Separate because it needs the camera the world was drawn with.
+// belongs over a pest. Separate because it needs the camera the world was drawn with.
 void renderWorldOverlays(Engine& engine, EntityManager& em, float camX, float camY, int zoom);
 
 // Show the system pointer on menus, hide it while playing. Called every frame with the current

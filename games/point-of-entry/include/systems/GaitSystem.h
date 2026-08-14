@@ -6,8 +6,8 @@ class EntityManager;
 //
 // A character in this game is ONE drawing. It does not have a walk cycle; it has a body that
 // hops and rocks while it travels, and that motion is two sine waves rather than a row of frames.
-// Which is the whole reason to do it this way: every creature ever added gets the walk for free,
-// a bestiary of dozens costs one drawing each, and the height and speed of it are numbers rather
+// Which is the whole reason to do it this way: every pest ever added gets the walk for free,
+// a field guide of dozens costs one drawing each, and the height and speed of it are numbers rather
 // than art.
 //
 // THE MOTION IS A FIGURE-EIGHT, not a bob. Hopping straight up and down reads as a sprite being

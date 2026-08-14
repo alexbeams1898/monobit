@@ -32,7 +32,7 @@ int sZoom = 3;
 
 bool sShowHitAreas = false;
 
-// A creature path's file stem -- enough to name a species in a dev list.
+// A pest path's file stem -- enough to name a species in a dev list.
 std::string stemOf(const std::string& path)
 {
     const size_t slash = path.find_last_of("/\\");

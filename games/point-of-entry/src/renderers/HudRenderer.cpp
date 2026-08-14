@@ -214,7 +214,7 @@ void equipped(Engine& engine, const EntityManager& em)
                                 nameCol, /*alignRight=*/true);
 }
 
-// A sliver over each hurt creature. Shown only once something has been hit: a swarm of full bars
+// A sliver over each hurt pest. Shown only once something has been hit: a swarm of full bars
 // is visual noise over enemies that die in two hits anyway, where a bar on the WOUNDED ones tells
 // you which to finish.
 // DEBUG: the hit areas as they actually are -- the cone's edges, its full
@@ -268,7 +268,7 @@ void enemyBars(Engine& engine, const EntityManager& em, float camX, float camY, 
     constexpr float kH = 3.0f;
 
     const auto& reg = em.registry();
-    for (auto [entity, t, hp, vermin] : reg.view<Transform, Health, Vermin>().each())
+    for (auto [entity, t, hp, pest] : reg.view<Transform, Health, Pest>().each())
     {
         if (hp.max <= 0 || hp.current >= hp.max || reg.all_of<Dying>(entity))
             continue;

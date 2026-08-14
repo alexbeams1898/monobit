@@ -1,8 +1,8 @@
-#include "formats/FloorGen.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
 #include "formats/FloorTypes.h"
+#include "formats/RoomGen.h"
 #include "systems/WaveSystem.h"
 
 #include <nlohmann/json.hpp>
@@ -38,7 +38,7 @@ bool walkableAt(const TileMap& map, float x, float y)
 }
 
 // Flood-fill from the spawn: every walkable tile must be reachable, or part of the floor --
-// possibly the part holding a seep -- is sealed off and the swarm can never be cleared.
+// possibly the part holding a hole -- is sealed off and the swarm can never be cleared.
 int reachableFrom(const TileMap& map, float x, float y)
 {
     const int c0 = static_cast<int>(x) / map.tile_size;
@@ -86,10 +86,10 @@ int totalWalkable(const TileMap& map)
 
 // EVERY KIND OF SPACE, not just the first one: a type is a set of numbers, and a set of numbers
 // can seal a room off or seat a hole in a wall as easily as it can make a place feel different.
-TEST_CASE("every seed yields a floor that keeps its promises", "[floorgen]")
+TEST_CASE("every seed yields a floor that keeps its promises", "[roomgen]")
 {
     std::vector<std::string> types;
-    for (const auto& e : std::filesystem::directory_iterator("config/floors"))
+    for (const auto& e : std::filesystem::directory_iterator("config/rooms"))
         if (e.is_regular_file() && e.path().extension() == ".json")
             types.push_back(e.path().generic_string());
     REQUIRE(!types.empty());
@@ -98,14 +98,14 @@ TEST_CASE("every seed yields a floor that keeps its promises", "[floorgen]")
         for (unsigned seed = 1; seed <= 200; ++seed)
         {
             EntityManager em;
-            const floorgen::Floor floor = floorgen::generate(em, type, seed);
+            const roomgen::Layout floor = roomgen::generate(em, type, seed);
             INFO(type << " seed " << seed);
             REQUIRE(floor.ok);
 
             // The player materialises here; solid rock would strand him before the game begins.
             CHECK(walkableAt(em.tile_map, floor.spawn_x, floor.spawn_y));
 
-            // A seep in a wall spawns the swarm inside it, unkillable and unreachable -- and a
+            // A hole in a wall spawns the swarm inside it, unkillable and unreachable -- and a
             // hole that can never be spent is a passage that never frees, which strands him on
             // the floor as surely as a wall would.
             for (const auto& m : floor.markers)
@@ -114,7 +114,7 @@ TEST_CASE("every seed yields a floor that keeps its promises", "[floorgen]")
                 CHECK(walkableAt(em.tile_map, m.x, m.y));
             }
 
-            // Nothing sealed off: a stranded room with a seep in it is a wave that cannot end.
+            // Nothing sealed off: a stranded room with a hole in it is a wave that cannot end.
             CHECK(reachableFrom(em.tile_map, floor.spawn_x, floor.spawn_y) ==
                   totalWalkable(em.tile_map));
         }
@@ -125,7 +125,7 @@ TEST_CASE("every seed yields a floor that keeps its promises", "[floorgen]")
 TEST_CASE("dump one seed", "[.dump]")
 {
     EntityManager em;
-    const floorgen::Floor floor = floorgen::generate(em, "config/floors/cellar.json", 4);
+    const roomgen::Layout floor = roomgen::generate(em, "config/rooms/cellar.json", 4);
     const TileMap& map = em.tile_map;
     const int sc = static_cast<int>(floor.spawn_x) / map.tile_size;
     const int sr = static_cast<int>(floor.spawn_y) / map.tile_size;
@@ -144,11 +144,11 @@ TEST_CASE("dump one seed", "[.dump]")
     WARN(out);
 }
 
-TEST_CASE("spawner markers keep their distances", "[floorgen]")
+TEST_CASE("spawner markers keep their distances", "[roomgen]")
 {
     // The rule under test is the one in config -- read the real numbers rather than repeating
     // them here to drift.
-    const nlohmann::json j = formats::read("config/floors/cellar.json");
+    const nlohmann::json j = formats::read("config/rooms/cellar.json");
     REQUIRE(j.is_object());
     const auto& sm = j.at("spaced_markers");
     const std::string types = sm.at("types");
@@ -158,11 +158,11 @@ TEST_CASE("spawner markers keep their distances", "[floorgen]")
     for (unsigned seed = 1; seed <= 200; ++seed)
     {
         EntityManager em;
-        const floorgen::Floor floor = floorgen::generate(em, "config/floors/cellar.json", seed);
+        const roomgen::Layout floor = roomgen::generate(em, "config/rooms/cellar.json", seed);
         INFO("seed " << seed);
         REQUIRE(floor.ok);
 
-        std::vector<const floorgen::Marker*> spawners;
+        std::vector<const roomgen::Marker*> spawners;
         for (const auto& m : floor.markers)
             if (types.find(m.type) != std::string::npos)
                 spawners.push_back(&m);
@@ -190,11 +190,11 @@ TEST_CASE("spawner markers keep their distances", "[floorgen]")
 
 // EVERY FLOOR TYPE IS DATA, so a typo in one is a content bug the compiler cannot see. Sweeping
 // all of them rather than one means a kind of space added later cannot quietly ship broken.
-TEST_CASE("every floor type parses and keeps its promises", "[bestiary]")
+TEST_CASE("every floor type parses and keeps its promises", "[field guide]")
 {
-    std::vector<std::string> creaturePaths;
+    std::vector<std::string> pestPaths;
     int types = 0;
-    for (const auto& entry : std::filesystem::directory_iterator("config/floors"))
+    for (const auto& entry : std::filesystem::directory_iterator("config/rooms"))
     {
         if (!entry.is_regular_file() || entry.path().extension() != ".json")
             continue;
@@ -204,41 +204,41 @@ TEST_CASE("every floor type parses and keeps its promises", "[bestiary]")
         const nlohmann::json floorCfg = formats::read(typePath);
         REQUIRE(floorCfg.is_object());
         // Read through the base chain, so a type inheriting its mix still has to have one.
-        const auto kinds = floorCfg.value("seep_types", nlohmann::json::array());
+        const auto kinds = floorCfg.value("hole_types", nlohmann::json::array());
         REQUIRE(!kinds.empty());
         // A kind of space with nowhere to draw its rooms from generates nothing at all.
-        const auto pools = floorCfg.value("rooms", std::vector<std::string>{});
+        const auto pools = floorCfg.value("chambers", std::vector<std::string>{});
         REQUIRE(!pools.empty());
         for (const auto& dir : pools)
             CHECK(std::filesystem::is_directory(dir));
         // A network that never closes is a run sideways that never has to come back down, which
         // is a descent the player can decline to make.
-        CHECK(floorCfg.value("max_rooms", 0) > 0);
+        CHECK(floorCfg.value("rooms_per_floor", 0) > 0);
 
         for (const auto& kind : kinds)
         {
-            const std::string seepPath = kind.value("seep", std::string{});
-            INFO(seepPath);
+            const std::string holePath = kind.value("hole", std::string{});
+            INFO(holePath);
             CHECK(kind.value("weight", 0) > 0);
-            std::ifstream sf(seepPath);
+            std::ifstream sf(holePath);
             REQUIRE(sf.good());
             const nlohmann::json sj = nlohmann::json::parse(sf, nullptr, false);
             REQUIRE_FALSE(sj.is_discarded());
             // What a hole opens must be a kind of space that exists, or it opens the default.
             if (const std::string opens = sj.value("opens", std::string{}); !opens.empty())
                 CHECK(std::filesystem::exists(opens));
-            const auto fauna = sj.value("creatures", nlohmann::json::array());
-            CHECK(!fauna.empty()); // a hole nothing comes through is set dressing, not a seep
+            const auto fauna = sj.value("pests", nlohmann::json::array());
+            CHECK(!fauna.empty()); // a hole nothing comes through is set dressing, not a hole
             for (const auto& fe : fauna)
             {
                 CHECK(fe.value("weight", 0) > 0);
-                creaturePaths.push_back(fe.value("creature", std::string{}));
+                pestPaths.push_back(fe.value("pest", std::string{}));
             }
         }
     }
     CHECK(types > 0); // no types at all means the sweep passed by checking nothing
 
-    for (const auto& path : creaturePaths)
+    for (const auto& path : pestPaths)
     {
         INFO(path);
         std::ifstream f(path);
@@ -261,10 +261,10 @@ TEST_CASE("every floor type parses and keeps its promises", "[bestiary]")
 
 // A TYPE OVERRIDES ONLY WHAT DIFFERS, so the shape two kinds of space share is tuned once. What
 // it does not name it inherits; what it does name replaces outright.
-TEST_CASE("a floor type folds into its base", "[floorgen]")
+TEST_CASE("a floor type folds into its base", "[roomgen]")
 {
-    const nlohmann::json cellar = formats::read("config/floors/cellar.json");
-    const nlohmann::json warren = formats::read("config/floors/warren.json");
+    const nlohmann::json cellar = formats::read("config/rooms/cellar.json");
+    const nlohmann::json warren = formats::read("config/rooms/warren.json");
 
     CHECK(warren.value("tile_size", 0) == cellar.value("tile_size", 0)); // inherited
     CHECK(warren.value("width", 0) < cellar.value("width", 0));          // overridden: tighter
@@ -275,21 +275,21 @@ TEST_CASE("a floor type folds into its base", "[floorgen]")
           cellar.at("spaced_markers").at("min_apart_tiles"));
     // A named mix REPLACES rather than merging, so a different sort of place gets exactly the
     // holes it asked for.
-    CHECK(warren.at("seep_types").size() == cellar.at("seep_types").size());
-    CHECK(warren.at("seep_types") != cellar.at("seep_types"));
+    CHECK(warren.at("hole_types").size() == cellar.at("hole_types").size());
+    CHECK(warren.at("hole_types") != cellar.at("hole_types"));
 
     SECTION("a type that does not exist leaves every reader on its defaults")
     {
-        CHECK(formats::read("config/floors/nothing_here.json").empty());
+        CHECK(formats::read("config/rooms/nothing_here.json").empty());
     }
 }
 
 // A KIND OF SPACE HAS TO ACTUALLY GENERATE. A tighter type is where the guarantees collide:
 // smaller bounds and one-tile corridors leave less room to seat the spawners a floor must have,
 // and a type that silently fails to build is a hole that leads nowhere.
-TEST_CASE("every floor type generates across many seeds", "[floorgen]")
+TEST_CASE("every floor type generates across many seeds", "[roomgen]")
 {
-    for (const auto& entry : std::filesystem::directory_iterator("config/floors"))
+    for (const auto& entry : std::filesystem::directory_iterator("config/rooms"))
     {
         if (!entry.is_regular_file() || entry.path().extension() != ".json")
             continue;
@@ -303,7 +303,7 @@ TEST_CASE("every floor type generates across many seeds", "[floorgen]")
         {
             EntityManager em;
             INFO(typePath << " seed " << seed);
-            const floorgen::Floor floor = floorgen::generate(em, typePath, seed);
+            const roomgen::Layout floor = roomgen::generate(em, typePath, seed);
             REQUIRE(floor.ok);
             int spawners = 0;
             for (const auto& m : floor.markers)
@@ -314,10 +314,10 @@ TEST_CASE("every floor type generates across many seeds", "[floorgen]")
     }
 }
 
-TEST_CASE("what emerges can actually move", "[bestiary]")
+TEST_CASE("what emerges can actually move", "[field guide]")
 {
-    // A rewrite of the emergence code once dropped Velocity, leaving every creature a statue --
-    // the systems that move things view <Transform, Velocity, Vermin>, and an entity missing
+    // A rewrite of the emergence code once dropped Velocity, leaving every pest a statue --
+    // the systems that move things view <Transform, Velocity, Pest>, and an entity missing
     // any of them silently falls out of the world's attention. This pins the component recipe
     // by running the real machinery: begin an assault, tick until something surfaces, and
     // demand it carries everything the movement pipeline needs.
@@ -328,41 +328,41 @@ TEST_CASE("what emerges can actually move", "[bestiary]")
     em.tile_map.tiles.assign(100, TileMap::Tile{0, true});
 
     swarm::begin("config/swarm.json",
-                 {swarm::Seep{160.0f, 160.0f, "config/seeps/foundation_crack.json"}}, 0, {}, {},
+                 {swarm::Hole{160.0f, 160.0f, "config/holes/foundation_crack.json"}}, 0, {}, {},
                  {true});
-    for (int i = 0; i < 600 && em.registry().view<Vermin>().size() == 0; ++i)
+    for (int i = 0; i < 600 && em.registry().view<Pest>().size() == 0; ++i)
         swarm::update(em, 0.016f);
-    REQUIRE(em.registry().view<Vermin>().size() > 0);
-    for (const auto e : em.registry().view<Vermin>())
+    REQUIRE(em.registry().view<Pest>().size() > 0);
+    for (const auto e : em.registry().view<Pest>())
     {
         CHECK(em.registry().all_of<Velocity>(e));
         CHECK(em.registry().all_of<Transform>(e));
         CHECK(em.registry().all_of<Health>(e));
         CHECK(em.registry().all_of<Worth>(e));
-        CHECK(em.registry().all_of<SeepSource>(e));
+        CHECK(em.registry().all_of<FromHole>(e));
         CHECK(em.registry().all_of<Smell>(e));
     }
 }
 
-// The derivation contract: a body's numbers come out of its sheet through the bestiary
+// The derivation contract: a body's numbers come out of its sheet through the field guide
 // formulas and nowhere else. Fixture configs go to a temp dir with the smell range pinned
 // (min == max), so every roll is deterministic without reaching into the RNG.
 
 namespace
 {
 
-struct BestiaryFixture
+struct FormulasFixture
 {
     std::string swarm;
-    std::string creature;
+    std::string pest;
 };
 
 // Known constants and a known sheet, chosen for round hand-computed numbers. atSmell > 0
 // wires an evolved form (all-ones sheet, base hp 100) behind that threshold.
-BestiaryFixture writeBestiaryFixture(int smellMin, int smellMax, int atSmell)
+FormulasFixture writeFormulasFixture(int smellMin, int smellMax, int atSmell)
 {
     namespace fs = std::filesystem;
-    const fs::path dir = fs::temp_directory_path() / "poe_bestiary_fixture";
+    const fs::path dir = fs::temp_directory_path() / "poe_formulas_fixture";
     fs::create_directories(dir);
 
     const fs::path evolvedPath = dir / "evolved.json";
@@ -372,19 +372,19 @@ BestiaryFixture writeBestiaryFixture(int smellMin, int smellMax, int atSmell)
     };
     std::ofstream(evolvedPath) << evolved.dump(2);
 
-    const fs::path creaturePath = dir / "creature.json";
-    nlohmann::json creature = {
+    const fs::path pestPath = dir / "pest.json";
+    nlohmann::json pest = {
         {"sheet", {{"resistance", 2}, {"defensiveness", 3}, {"dispersal", 4}}},
         {"base", {{"hp", 10}, {"power", 10.0}, {"speed", 100.0}, {"xp", 8}}},
         {"growth", {{"resistance", 1}, {"defensiveness", 0}, {"dispersal", 2}}},
     };
     if (atSmell > 0)
-        creature["evolves"] = {{"into", evolvedPath.generic_string()}, {"at_smell", atSmell}};
-    std::ofstream(creaturePath) << creature.dump(2);
+        pest["evolves"] = {{"into", evolvedPath.generic_string()}, {"at_smell", atSmell}};
+    std::ofstream(pestPath) << pest.dump(2);
 
     const fs::path swarmPath = dir / "swarm.json";
     const nlohmann::json swarmCfg = {
-        {"bestiary",
+        {"formulas",
          {{"hp", {{"per_resistance", 2.0}}},
           {"contact",
            {{"per_point", 0.1}, {"defensiveness_weight", 1.0}, {"resistance_weight", 0.5}}},
@@ -397,7 +397,7 @@ BestiaryFixture writeBestiaryFixture(int smellMin, int smellMax, int atSmell)
             {"max_per_depth", 0}}}}},
     };
     std::ofstream(swarmPath) << swarmCfg.dump(2);
-    return {swarmPath.generic_string(), creaturePath.generic_string()};
+    return {swarmPath.generic_string(), pestPath.generic_string()};
 }
 
 void openRoom(EntityManager& em)
@@ -408,58 +408,58 @@ void openRoom(EntityManager& em)
     em.tile_map.tiles.assign(100, TileMap::Tile{0, true});
 }
 
-entt::entity theOneEmerged(EntityManager& em, const BestiaryFixture& fx, int depth)
+entt::entity theOneEmerged(EntityManager& em, const FormulasFixture& fx, int depth)
 {
     openRoom(em);
     swarm::begin(fx.swarm, {}, depth);
-    swarm::spawnOne(em, fx.creature, 160.0f, 160.0f);
-    REQUIRE(em.registry().view<Vermin>().size() == 1);
-    return em.registry().view<Vermin>().front();
+    swarm::spawnOne(em, fx.pest, 160.0f, 160.0f);
+    REQUIRE(em.registry().view<Pest>().size() == 1);
+    return em.registry().view<Pest>().front();
 }
 
 } // namespace
 
-TEST_CASE("derived numbers follow the bestiary formulas", "[bestiary]")
+TEST_CASE("derived numbers follow the field guide formulas", "[field guide]")
 {
-    const BestiaryFixture fx = writeBestiaryFixture(0, 0, 0);
+    const FormulasFixture fx = writeFormulasFixture(0, 0, 0);
     EntityManager em;
     const entt::entity e = theOneEmerged(em, fx, 0);
     // sheet {2,3,4}: hp = 10 + 2*2; contact = 10*(1 + 0.1*(3 + 2*0.5));
     // speed = 100*(1 + 0.1*(4 + 3*0.5)); xp = 8*(1 + 0.25*(9-3)).
     CHECK(em.registry().get<Health>(e).max == 14);
-    CHECK(em.registry().get<Vermin>(e).contact_damage == Catch::Approx(14.0f));
-    CHECK(em.registry().get<Vermin>(e).speed == Catch::Approx(155.0f));
+    CHECK(em.registry().get<Pest>(e).contact_damage == Catch::Approx(14.0f));
+    CHECK(em.registry().get<Pest>(e).speed == Catch::Approx(155.0f));
     CHECK(em.registry().get<Worth>(e).xp == 20);
     CHECK(em.registry().get<Smell>(e).amount == 0);
 }
 
-TEST_CASE("depth deepens a species along its growth spread", "[bestiary]")
+TEST_CASE("depth deepens a species along its growth spread", "[field guide]")
 {
-    const BestiaryFixture fx = writeBestiaryFixture(0, 0, 0);
+    const FormulasFixture fx = writeFormulasFixture(0, 0, 0);
     EntityManager em;
     const entt::entity e = theOneEmerged(em, fx, 2);
     // Two depths of growth {1,0,2} make the sheet {4,3,8}; everything re-derives from that.
     CHECK(em.registry().get<Health>(e).max == 18);
-    CHECK(em.registry().get<Vermin>(e).contact_damage == Catch::Approx(15.0f));
-    CHECK(em.registry().get<Vermin>(e).speed == Catch::Approx(195.0f));
+    CHECK(em.registry().get<Pest>(e).contact_damage == Catch::Approx(15.0f));
+    CHECK(em.registry().get<Pest>(e).speed == Catch::Approx(195.0f));
     CHECK(em.registry().get<Worth>(e).xp == 32);
 }
 
-TEST_CASE("smell multiplies everything derived", "[bestiary]")
+TEST_CASE("smell multiplies everything derived", "[field guide]")
 {
-    const BestiaryFixture fx = writeBestiaryFixture(50, 50, 0);
+    const FormulasFixture fx = writeFormulasFixture(50, 50, 0);
     EntityManager em;
     const entt::entity e = theOneEmerged(em, fx, 0);
     CHECK(em.registry().get<Smell>(e).amount == 50);
     CHECK(em.registry().get<Health>(e).max == 21);
-    CHECK(em.registry().get<Vermin>(e).contact_damage == Catch::Approx(21.0f));
-    CHECK(em.registry().get<Vermin>(e).speed == Catch::Approx(232.5f));
+    CHECK(em.registry().get<Pest>(e).contact_damage == Catch::Approx(21.0f));
+    CHECK(em.registry().get<Pest>(e).speed == Catch::Approx(232.5f));
     CHECK(em.registry().get<Worth>(e).xp == 30);
 }
 
-TEST_CASE("a hot enough roll surfaces the evolved form", "[bestiary]")
+TEST_CASE("a hot enough roll surfaces the evolved form", "[field guide]")
 {
-    const BestiaryFixture fx = writeBestiaryFixture(50, 50, 40);
+    const FormulasFixture fx = writeFormulasFixture(50, 50, 40);
     EntityManager em;
     const entt::entity e = theOneEmerged(em, fx, 0);
     // The evolved body's numbers, re-rolled smell included (pinned range rolls 50 again).
@@ -467,9 +467,9 @@ TEST_CASE("a hot enough roll surfaces the evolved form", "[bestiary]")
     CHECK(em.registry().get<Smell>(e).amount == 50);
 }
 
-TEST_CASE("a cool roll stays the base form", "[bestiary]")
+TEST_CASE("a cool roll stays the base form", "[field guide]")
 {
-    const BestiaryFixture fx = writeBestiaryFixture(30, 30, 40);
+    const FormulasFixture fx = writeFormulasFixture(30, 30, 40);
     EntityManager em;
     const entt::entity e = theOneEmerged(em, fx, 0);
     CHECK(em.registry().get<Smell>(e).amount == 30);

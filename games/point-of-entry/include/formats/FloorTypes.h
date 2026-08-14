@@ -4,7 +4,7 @@
 
 #include <string>
 
-// A FLOOR TYPE (config/floors/*.json): the whole recipe for a KIND of space -- its shape, its
+// A FLOOR TYPE (config/rooms/*.json): the whole recipe for a KIND of space -- its shape, its
 // look, the pools of room templates it draws on, which holes it can grow, and how far a run of
 // wall holes may carry before it stops growing them.
 //

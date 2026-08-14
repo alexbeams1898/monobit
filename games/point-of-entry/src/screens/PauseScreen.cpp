@@ -158,7 +158,7 @@ void ensureGuide()
 {
     if (sGuideLoaded)
         return;
-    sGuidePages = guide::scan("config/creatures");
+    sGuidePages = guide::scan("config/pests");
     sGuideArt.clear();
     sGuideArt.reserve(sGuidePages.size());
     for (const auto& page : sGuidePages)

@@ -1,10 +1,10 @@
 #include "ops/AreaBuildOps.h"
 
-#include "formats/AreaLoader.h"
-#include "formats/SpriteDefLoader.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
+#include "formats/AreaLoader.h"
+#include "formats/SpriteDefLoader.h"
 #include "ops/SpawnUtils.h"
 #include "systems/DescentSystem.h"
 
@@ -27,7 +27,7 @@ void registerAll()
     // The way down. Visible as whatever art the entity names (the hole,
     // eventually); a dark pit box until then.
     area::registerBuilder(
-        "seep",
+        "hole",
         [](EntityManager& em, const area::Object& o)
         {
             const entt::entity e = spawn::box(em, o.x, o.y, 32.0f, 0.10f, 0.08f, 0.10f);
@@ -42,12 +42,12 @@ void registerAll()
                 spr.src_h = def.frame_h;
                 em.registry().remove<SolidColor>(e);
             }
-            // The map names the KIND of hole; where seep files live is the
+            // The map names the KIND of hole; where hole files live is the
             // code's business. What becomes of it -- art, waves, the way down
             // it turns into -- belongs to the descent, the same as any hole.
             const auto kind = o.props.value("kind", std::string{});
-            em.registry().emplace<AuthoredSeep>(
-                e, AuthoredSeep{kind.empty() ? std::string{} : "config/seeps/" + kind + ".json"});
+            em.registry().emplace<AuthoredHole>(
+                e, AuthoredHole{kind.empty() ? std::string{} : "config/holes/" + kind + ".json"});
         });
 
     // A prop: sprite art when the file names some, a sized box when it does

@@ -26,12 +26,12 @@ bool resolve(const EntityManager& em)
         return true;
     // A hole this floor has not finished pressing -- the quiet between waves is
     // still the job.
-    if (descent::floorHasWork())
+    if (descent::roomHasWork())
         return true;
     // A passage with something coming THROUGH it -- the floors he left unfinished, reaching him
     // here. A quiet passage is furniture, and the weapon stays stowed beside it.
-    for (const auto [e, site] : em.registry().view<const PassageSite>().each())
-        if (site.leaking)
+    for (const auto [e, site] : em.registry().view<const PlacedHole>().each())
+        if (site.in_use)
             return true;
     return false;
 }

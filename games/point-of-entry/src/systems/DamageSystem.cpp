@@ -85,7 +85,7 @@ void applyDamage(entt::registry& reg, HitArea& area, const Transform& at)
     {
         if (target == area.owner || onCooldownFor(area, target))
             continue;
-        if (!reg.all_of<Vermin>(target))
+        if (!reg.all_of<Pest>(target))
             continue;
         // Already dying: a corpse is not a target. Without this a lingering cloud re-kills what
         // it has already killed every time a new area catches it, and anything that eventually
