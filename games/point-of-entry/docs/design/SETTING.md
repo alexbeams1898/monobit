@@ -265,6 +265,62 @@ output, if wanted).
   same tallies. Rank's verified kills, the guide, and achievements are ONE
   ledger wearing three surfaces -- never three counters.
 
+## Sound [settled in shape, 2026-08-17]
+
+Nothing of this is built: point of entry is silent today. The engine's
+AudioSystem (miniaudio -- one-shots, tracked looping voices, music, fades,
+pitch) is done and proven in wayworn-hush, and prison-escape's music is
+reusable as-is: its menu theme for the bar, its metalcore for the descent.
+Effects are free assets and **cartoonish** -- the register the comedy runs on,
+against horror it never acknowledges.
+
+**LOOPS BELONG TO SOURCES, ONE-SHOTS BELONG TO EVENTS -- and in a swarm, the
+individual is not a source.** This is the whole rule, and it is what stops
+forty pests each chirping into white noise. What a crowd sounds like is a mass
+phenomenon rather than the sum of its members; forty copies of one clip is
+mush, and it destroys the very thing the sound is there to carry.
+
+Four layers, each answering a different question:
+
+- **The bed, per hole.** Quiet, continuous, presence only: something is alive
+  down here. Bounded by holes in a room rather than pests on a floor, and it
+  says HOW BAD.
+- **The rumble, before every wave.** Cartoonish, a volcano about to go --
+  positional, so near a hole it says which way to face and across the room it
+  is only dread. It is a WARNING and not a startle, which means it must be
+  reliable: a signal that plays only sometimes is one nobody learns. Where a
+  fight is already loud it DUCKS what is under it rather than being withheld.
+- **The hole's own sound**, layered on the rumble: what is coming.
+- **The species voice**, per species PRESENT rather than per pest alive,
+  occasional, its rate scaled by how many are out. Two or three voices on a
+  floor, not forty -- and adding a pest costs exactly one clip.
+
+Then hits, kills, firing and the rest as plain one-shots.
+
+**The wave clock drives all of it, not the population.** A hole already knows
+whether it is emerging, how many are still queued, and how long its breath has
+left; the sound follows that rather than counting what is on screen. This
+telegraphs -- he hears a wave coming before he can see it, which is something
+he can act on -- and it gives a fight a rhythm rather than a level. It also
+falls out of the LAW OF DEPTH for free: `breath` shrinks with depth, so a deep
+hole gives less warning without anything being special-cased.
+
+**The quiet between waves is the setup, not a gap.** A burst needs silence to
+arrive out of. A fight with no quiet in it is noise at one volume.
+
+**It is the audio twin of the reek**, and should share its predicate rather
+than inventing a second one -- a hole that is working smokes and sounds, and
+the two can never disagree about whether it is working. Derived every frame,
+never latched.
+
+The payoff is thematic and it is the best part: **he can hear what is out
+there before he sees it**, and identifying by sign rather than sight is
+literally the trade. It turns the field guide's `signs` section from flavour
+into something the player uses.
+
+- OPEN: a cap on concurrent rumbles. Per-hole breaths run out of phase, which
+  reads well at two holes and is mush at five.
+
 ## How the descent works [settled in shape, 2026-08-12]
 
 > The words below are exact and the distinctions are load-bearing: a **floor**
