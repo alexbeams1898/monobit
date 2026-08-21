@@ -4,6 +4,7 @@
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
 #include "ops/NavUtils.h"
+#include "ops/SoundOps.h"
 #include "systems/SpriteAnimSystem.h"
 
 #include <cmath>
@@ -76,6 +77,17 @@ void update(EntityManager& em, float dt)
         // Quantize distance into held poses -- the walk advances in snaps, not a glide.
         const float posesPerPx = kPosesPerStep / kStrideLength;
         const float s = std::floor(gait.travelled * posesPerPx) / (kPosesPerStep);
+
+        // A FOOT LANDS on every whole step. Reported from here because this is where the walk
+        // IS: anything else would have to work the same number out again from speed and time,
+        // and the two would part company the first time he was slowed.
+        if (const int footfall = static_cast<int>(gait.travelled / kStrideLength);
+            footfall != gait.footfalls)
+        {
+            gait.footfalls = footfall;
+            if (gait.rest < 1.0f)
+                sound::play("footstep");
+        }
 
         // One hop per step, and the lean ALTERNATES by step parity -- left step, right step. Both
         // peak mid-step together: up-and-tilted is one pose, level at each footfall.

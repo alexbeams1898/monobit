@@ -7,6 +7,7 @@
 #include "ops/LogUtils.h"
 #include "ops/NavUtils.h"
 #include "systems/AimSystem.h"
+#include "systems/AudioSystem.h"
 #include "systems/DamageSystem.h"
 #include "systems/PlayerSystem.h"
 
@@ -25,6 +26,23 @@ namespace
 std::vector<Tool> sTools;
 std::vector<float> sCooldowns; // time left before each tool is ready, parallel to sTools
 int sSelected = 0;
+
+// THE HELD VOICE. A trigger that is down is ONE sound running, not a sound per frame -- started
+// once, kept, and faded on release.
+int sFiringVoice = -1;
+float sDryCooldown = 0.0f;
+constexpr float kDryEvery = 0.35f; // a held click on an empty tank would fire every frame
+
+// Silence the trigger, wherever the trigger stopped. Called on release AND on holster, because a
+// stream can end without a release at all: a door, a death, switching tools. A looping voice
+// that outlives its cause plays forever -- the same fault the holster comment warns about for
+// the stream's own state.
+void hushFiring()
+{
+    if (sFiringVoice >= 0)
+        AudioSystem::stopSfx(sFiringVoice, 25);
+    sFiringVoice = -1;
+}
 
 ChargeTuning sCharge;
 float sEmit = 0.0f; // droplet emission accumulator
@@ -162,6 +180,12 @@ bool load(const std::string& path)
         tool.charge = t.value("charge", 0.0f);
         tool.arc = t.value("arc", 0.0f);
         tool.linger = t.value("linger", 0.0f);
+        const auto& sfx = t.value("sfx", nlohmann::json::object());
+        tool.sfx_start = sfx.value("start", std::string{});
+        tool.sfx_loop = sfx.value("loop", std::string{});
+        tool.sfx_stop = sfx.value("stop", std::string{});
+        tool.sfx_dry = sfx.value("dry", std::string{});
+        tool.sfx_volume = sfx.value("volume", tool.sfx_volume);
         const auto& sc = t.value("scaling", nlohmann::json::object());
         tool.scale_chemical = sc.value("chemical", 0.0f);
         tool.scale_physical = sc.value("physical", 0.0f);
@@ -227,6 +251,7 @@ void holster(EntityManager& em)
     auto& reg = em.registry();
     for (const auto e : reg.view<StreamHead>())
         reg.destroy(e);
+    hushFiring();
 }
 
 namespace
@@ -331,6 +356,34 @@ void spawnDroplet(EntityManager& em, float x, float y, float dx, float dy, const
 // A held stream is ONE area that lives as long as the trigger does, following the aim. Spawning
 // a fresh one every frame would be simpler and wrong: each new area starts with an empty hit list,
 // so it would hurt everything in the cone every single frame regardless of the re-hit interval.
+// THE TRIGGER CAME UP, or the tank ran dry under it. Release DETACHES the burst rather than
+// cutting it: the front finishes its sweep to the rim and the area retires itself. A click is a
+// complete fire; chemical does not vanish mid-air on mouse-up.
+void releaseStream(entt::registry& reg, entt::entity stream, const Tool& tool, float charge)
+{
+    if (reg.valid(stream))
+    {
+        auto& area = reg.get<HitArea>(stream);
+        const float total = area.expand > 0.0f ? area.radius / area.expand : 0.0f;
+        area.remaining = std::max(0.05f, total - area.age);
+        reg.remove<StreamHead>(stream); // a detached burst is no longer the held stream
+    }
+    // The pull is stopped short but the release is not: a click should sound like a complete
+    // little burst, which is the start clip followed by the dribble.
+    const bool wasFiring = sFiringVoice >= 0;
+    hushFiring();
+    if (wasFiring && !tool.sfx_stop.empty())
+        AudioSystem::playSfx(tool.sfx_stop, tool.sfx_volume);
+    // THE COUGH: he pulled and the tank had nothing. Rate-limited, or a trigger held on empty
+    // is that click sixty times a second.
+    if (aim::firing() && !aim::guarding() && charge <= 0.0f && sDryCooldown <= 0.0f &&
+        !tool.sfx_dry.empty())
+    {
+        AudioSystem::playSfx(tool.sfx_dry, tool.sfx_volume);
+        sDryCooldown = kDryEvery;
+    }
+}
+
 void tickStream(EntityManager& em, const Tool& tool, entt::entity owner, float dt)
 {
     auto& reg = em.registry();
@@ -349,17 +402,17 @@ void tickStream(EntityManager& em, const Tool& tool, entt::entity owner, float d
     entt::entity stream = streamEntity(reg);
     if (!wants)
     {
-        // Release DETACHES the burst rather than cutting it: the front
-        // finishes its sweep to the rim and the area retires itself. A click
-        // is a complete fire; chemical does not vanish mid-air on mouse-up.
-        if (reg.valid(stream))
-        {
-            auto& area = reg.get<HitArea>(stream);
-            const float total = area.expand > 0.0f ? area.radius / area.expand : 0.0f;
-            area.remaining = std::max(0.05f, total - area.age);
-            reg.remove<StreamHead>(stream); // a detached burst is no longer the held stream
-        }
+        releaseStream(reg, stream, tool, charge->current);
         return;
+    }
+    if (sFiringVoice < 0 && !tool.sfx_loop.empty())
+    {
+        // The pull first, then the body under it. The body carries no attack of its own -- that
+        // is what makes it loop without swelling -- so the start clip is what gives it one.
+        if (!tool.sfx_start.empty())
+            AudioSystem::playSfx(tool.sfx_start, tool.sfx_volume);
+        sFiringVoice = AudioSystem::playSfxTracked(tool.sfx_loop, tool.sfx_volume, 1.0f,
+                                                   /*loop=*/true, /*fade_in_ms=*/0);
     }
 
     charge->current = std::max(0.0f, charge->current - tool.charge * dt);
@@ -462,6 +515,7 @@ void update(EntityManager& em, float dt)
     // Ticked here rather than inside the swing, so it runs down while he is backing away as
     // well as while he is standing his ground.
     sFistCooldown = std::max(0.0f, sFistCooldown - dt);
+    sDryCooldown = std::max(0.0f, sDryCooldown - dt);
 
     const entt::entity owner = player::entity();
     auto& reg = em.registry();

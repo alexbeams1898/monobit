@@ -1,0 +1,18 @@
+{
+    "_comment": "THE SOUND BANK: every sound that belongs to the GAME rather than to a particular thing in it. A name here is a promise -- one sound means one thing everywhere it plays, which is what makes a menu feel like one menu and a floor feel like one place. Souls does this: there is a single confirm, a single back, and you learn them once. A sound that belongs to a THING lives with that thing instead (a tool's spray is in config/tools.json, a pest's voice will be in its own file), because adding the thing should bring its sound with it and not need an entry here. variations are rotated at random so a repeated sound does not machine-gun; volume scales the whole entry, and every file is peak-normalised to -1 dBFS so this is the only place loudness is decided.",
+    "sounds": {
+        "footstep": {
+            "volume": 0.35,
+            "variations": [
+                "assets/audio/footstep_walk_1.ogg",
+                "assets/audio/footstep_walk_2.ogg",
+                "assets/audio/footstep_walk_3.ogg",
+                "assets/audio/footstep_walk_4.ogg",
+                "assets/audio/footstep_walk_5.ogg",
+                "assets/audio/footstep_walk_6.ogg",
+                "assets/audio/footstep_walk_7.ogg",
+                "assets/audio/footstep_walk_8.ogg"
+            ]
+        }
+    }
+}

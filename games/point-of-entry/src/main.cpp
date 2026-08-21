@@ -1,8 +1,5 @@
-#include "formats/AreaLoader.h"
 #include "Engine.h"
-#include "formats/RoomGen.h"
 #include "FontManager.h"
-#include "formats/SpriteDefLoader.h"
 #include "UIRenderer.h"
 #include "ecs/AppState.h"
 #include "ecs/BalanceConfig.h"
@@ -10,6 +7,9 @@
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
 #include "ecs/ItemConfig.h"
+#include "formats/AreaLoader.h"
+#include "formats/RoomGen.h"
+#include "formats/SpriteDefLoader.h"
 #include "gl/PixelRenderTarget.h"
 #include "ops/AreaBuildOps.h"
 #include "ops/CaptureUtils.h"
@@ -17,6 +17,7 @@
 #include "ops/NavUtils.h"
 #include "ops/RecordOps.h"
 #include "ops/SaveOps.h"
+#include "ops/SoundOps.h"
 #include "ops/SpawnUtils.h"
 #include "ops/ZoneUtils.h"
 #include "renderers/DebugPanelRenderer.h"
@@ -154,6 +155,7 @@ void loadConfigs()
     thermos::load("config/stats.json");
     items::load("config/items");
     tools::load("config/tools.json");
+    sound::load("config/audio.json");
 }
 
 // The way down underfoot, if any. Measured from the site's MOUTH (mouth_x/y)

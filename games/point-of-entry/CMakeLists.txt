@@ -40,6 +40,7 @@ add_library(poe-systems STATIC
     src/formats/AreaLoader.cpp
     src/ops/SpawnUtils.cpp
     src/formats/FloorTypes.cpp
+    src/ops/SoundOps.cpp
     src/ops/ZoneUtils.cpp
     src/ops/AreaBuildOps.cpp
     src/systems/TravelSystem.cpp

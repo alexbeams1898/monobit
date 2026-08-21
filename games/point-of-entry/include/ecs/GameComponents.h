@@ -72,6 +72,11 @@ struct Skitter
 struct Gait
 {
     float travelled = 0.0f;
+    // WHICH FOOTFALL HE IS ON. The hop is |sin| of the step phase, so it is level -- a foot
+    // down -- at every whole step. Counting them here means the sound lands on the footfall the
+    // player can SEE rather than on a clock of its own, which would drift out of step with the
+    // walk the moment his speed changed.
+    int footfalls = 0;
     float rest = 0.0f; // 0 walking, 1 fully settled -- eases the hop out instead of freezing it
     // BRACED: 0 loose, 1 rigid. The goofy walk is a body that does not expect to be hit; a man
     // holding a guard up plants his feet and stops swinging. Written by whoever knows the body

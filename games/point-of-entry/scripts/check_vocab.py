@@ -59,12 +59,18 @@ def retired_words(problems: list[str]) -> None:
 
 
 def asked_keys() -> set[str]:
+    """Every config key the code could be asking for.
+
+    Not just `.value("key")`: a key can be a NAME the code looks up at a call site --
+    sound::play("footstep") -- rather than a field it reads off a document. So any bare
+    string literal in the source counts. That is looser, but it still catches what this
+    check exists for: a key renamed in code and not in the file leaves the OLD spelling
+    nowhere in the source at all.
+    """
     asked: set[str] = set()
     for p in SRC:
         text = p.read_text(encoding="utf-8")
-        for op in (r"\.", r"->"):
-            for fn in ("value", "contains", "find", "at"):
-                asked |= set(re.findall(op + fn + r'\(\s*"([A-Za-z_]\w*)"', text))
+        asked |= set(re.findall(r'"([A-Za-z_]\w*)"', text))
     return asked
 
 

@@ -321,6 +321,33 @@ into something the player uses.
 - OPEN: a cap on concurrent rumbles. Per-hole breaths run out of phase, which
   reads well at two holes and is mush at five.
 
+### What still needs a sound
+
+Loose, not a plan -- a list to cross off. Two homes, by the rule above: a sound
+that belongs to the GAME goes in the bank (config/audio.json) where one name
+means one thing everywhere; a sound that belongs to a THING rides that thing's
+own file, so adding the thing brings its sound with it.
+
+**The bank**
+
+- UI: cursor, confirm, back, tab, page turn, denied
+- Him: footstep *(done)*, hurt, death, resting at the staging area
+- Progress: level up, points paid, a new field guide entry, rank up
+- World: doorway, going down, coming back up
+
+**With the thing**
+
+- A tool (`config/tools.json`): start, loop, stop, dry *(done -- the wand)*;
+  impact still open
+- A pest (`config/pests/*.json`): surfacing, its ambient voice, hurt, death,
+  reaching him
+- A hole (`config/holes/*.json`): the bed, the rumble before a wave, breaking
+  it open, spending it
+- A kind of room (`config/rooms/*.json`): its room tone, and what plays in it
+
+**Music.** Reused from prison-escape: its menu theme for the bar, its metalcore
+for the descent. The title and whatever the nucleus gets are open.
+
 ## How the descent works [settled in shape, 2026-08-12]
 
 > The words below are exact and the distinctions are load-bearing: a **floor**

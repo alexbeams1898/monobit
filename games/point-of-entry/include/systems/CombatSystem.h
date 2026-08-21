@@ -47,6 +47,15 @@ struct Tool
     float charge = 0.0f;   // spent per use (or per second, streaming) -- the TANK's limit
     float arc = 0.0f;      // cone half-angle in degrees; 0 = the area is a full circle
     float linger = 0.0f;   // how long the area persists; 0 = a single instant
+    // WHAT IT SOUNDS LIKE. A held trigger is THREE clips, not one: the pull, a body that
+    // repeats, and the dribble after release. One clip cannot do it -- looped whole, its own
+    // ramp-up and dying-away replay every pass and you hear it swell and fade; and a single
+    // click cuts it to a fragment instead of a complete little burst.
+    std::string sfx_start;
+    std::string sfx_loop;
+    std::string sfx_stop;
+    std::string sfx_dry; // the cough when he pulls on an empty tank
+    float sfx_volume = 1.0f;
     // Per-stat scaling grades: how much this tool rewards each discipline. Blended with the
     // holder's sheet by damageOf -- the same wand is a different weapon in different hands.
     float scale_chemical = 0.0f;
