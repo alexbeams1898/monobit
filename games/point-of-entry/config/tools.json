@@ -35,7 +35,7 @@
                 "loop": "assets/audio/wand_spray_loop.ogg",
                 "stop": "assets/audio/wand_spray_stop.ogg",
                 "dry": "assets/audio/wand_dry.ogg",
-                "volume": 0.45
+                "volume": 0.22
             }
         }
     ]

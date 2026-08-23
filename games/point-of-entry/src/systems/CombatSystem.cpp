@@ -30,8 +30,16 @@ int sSelected = 0;
 // THE HELD VOICE. A trigger that is down is ONE sound running, not a sound per frame -- started
 // once, kept, and faded on release.
 int sFiringVoice = -1;
+// WAS THE TRIGGER DOWN LAST FRAME. The pull and the dribble belong to the TRIGGER, not to
+// whether the wand can answer it: stamina never regenerates while firing, so holding past empty
+// flickers "can fire" on and off every recovery delay, and hanging the clips on that machine-
+// guns them -- dozens of one-shots a second, which buries every other sound in the game.
+bool sTriggerHeld = false;
 float sDryCooldown = 0.0f;
 constexpr float kDryEvery = 0.35f; // a held click on an empty tank would fire every frame
+// How much spray -- in seconds of it -- he must have the breath for before the stream will pick
+// back up. Enough to be a spray rather than a twitch.
+constexpr float kResumeSeconds = 0.4f;
 
 // Silence the trigger, wherever the trigger stopped. Called on release AND on holster, because a
 // stream can end without a release at all: a door, a death, switching tools. A looping voice
@@ -42,6 +50,13 @@ void hushFiring()
     if (sFiringVoice >= 0)
         AudioSystem::stopSfx(sFiringVoice, 25);
     sFiringVoice = -1;
+}
+
+// Holstering ends the pull as well as the sound: a stream cut by a door or a death has had no
+// release, and remembering the trigger as down would swallow the next real one.
+void forgetTrigger()
+{
+    sTriggerHeld = false;
 }
 
 ChargeTuning sCharge;
@@ -252,6 +267,7 @@ void holster(EntityManager& em)
     for (const auto e : reg.view<StreamHead>())
         reg.destroy(e);
     hushFiring();
+    forgetTrigger();
 }
 
 namespace
@@ -359,7 +375,8 @@ void spawnDroplet(EntityManager& em, float x, float y, float dx, float dy, const
 // THE TRIGGER CAME UP, or the tank ran dry under it. Release DETACHES the burst rather than
 // cutting it: the front finishes its sweep to the rim and the area retires itself. A click is a
 // complete fire; chemical does not vanish mid-air on mouse-up.
-void releaseStream(entt::registry& reg, entt::entity stream, const Tool& tool, float charge)
+void releaseStream(entt::registry& reg, entt::entity stream, const Tool& tool, float charge,
+                   bool triggerHeld)
 {
     if (reg.valid(stream))
     {
@@ -368,11 +385,12 @@ void releaseStream(entt::registry& reg, entt::entity stream, const Tool& tool, f
         area.remaining = std::max(0.05f, total - area.age);
         reg.remove<StreamHead>(stream); // a detached burst is no longer the held stream
     }
-    // The pull is stopped short but the release is not: a click should sound like a complete
-    // little burst, which is the start clip followed by the dribble.
+    // The body stops either way -- nothing is coming out. The DRIBBLE only plays if he actually
+    // let go: running dry under a held trigger is not a release, and sounding one would be the
+    // wand finishing a spray it never stopped making.
     const bool wasFiring = sFiringVoice >= 0;
     hushFiring();
-    if (wasFiring && !tool.sfx_stop.empty())
+    if (wasFiring && !triggerHeld && !tool.sfx_stop.empty())
         AudioSystem::playSfx(tool.sfx_stop, tool.sfx_volume);
     // THE COUGH: he pulled and the tank had nothing. Rate-limited, or a trigger held on empty
     // is that click sixty times a second.
@@ -394,22 +412,37 @@ void tickStream(EntityManager& em, const Tool& tool, entt::entity owner, float d
         poe::log().error("combat: stream owner is missing charge, stamina or stats -- not firing");
         return;
     }
+    entt::entity stream = streamEntity(reg);
     // Both meters gate a held stream, and they say different things: an empty tank means he has
     // not killed enough, an empty body means he has been leaning on the trigger too long.
-    const bool wants =
-        aim::firing() && !aim::guarding() && charge->current > 0.0f && sta->current > 0.0f;
-
-    entt::entity stream = streamEntity(reg);
+    //
+    // TWO DIFFERENT FACTS also: whether he is PULLING, and whether the wand can answer. The
+    // spray follows the second; the pull and the dribble follow the first.
+    const bool triggerHeld = aim::firing() && !aim::guarding();
+    // A SLIVER OF STAMINA IS NOT A SPRAY. The cost is per SECOND, so "more than zero" buys a
+    // millisecond of it -- and the recovery delay resets on every spend, so a trigger held past
+    // empty regenerates one frame's worth, spends it, and does that forever: the spray stutters
+    // and the sound stutters with it. STARTING again therefore asks for enough to be worth
+    // starting, while continuing only asks for something left. He has to ease off, which is what
+    // running out of breath ought to mean.
+    const bool bodyWilling =
+        sta->current > (reg.valid(stream) ? 0.0f : tool.stamina * kResumeSeconds);
+    const bool wants = triggerHeld && charge->current > 0.0f && bodyWilling;
     if (!wants)
     {
-        releaseStream(reg, stream, tool, charge->current);
+        releaseStream(reg, stream, tool, charge->current, triggerHeld);
+        sTriggerHeld = triggerHeld;
         return;
     }
+    const bool freshPull = !sTriggerHeld;
+    sTriggerHeld = triggerHeld;
     if (sFiringVoice < 0 && !tool.sfx_loop.empty())
     {
         // The pull first, then the body under it. The body carries no attack of its own -- that
         // is what makes it loop without swelling -- so the start clip is what gives it one.
-        if (!tool.sfx_start.empty())
+        // Only a fresh pull gets the attack. Picking the spray back up after the body caught
+        // its breath is the same spray continuing, not a new one.
+        if (freshPull && !tool.sfx_start.empty())
             AudioSystem::playSfx(tool.sfx_start, tool.sfx_volume);
         sFiringVoice = AudioSystem::playSfxTracked(tool.sfx_loop, tool.sfx_volume, 1.0f,
                                                    /*loop=*/true, /*fade_in_ms=*/0);

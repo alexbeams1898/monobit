@@ -37,7 +37,12 @@ bool load(const std::string& path)
         poe::log().warn("sound: no usable bank at '{}' -- the game runs silent", path);
         return false;
     }
-    for (const auto& [name, body] : j.value("sounds", nlohmann::json::object()).items())
+    // HELD BY NAME. `items()` is a call ON the object, so the temporary a `value()` returns is
+    // NOT lifetime-extended by the loop -- only a range expression that IS the temporary gets
+    // that. Iterating it reads a destroyed object, which surfaces as a null somewhere further in
+    // and throws whenever the freed memory happens to look wrong.
+    const nlohmann::json bank = j.value("sounds", nlohmann::json::object());
+    for (const auto& [name, body] : bank.items())
     {
         Entry entry;
         entry.volume = body.value("volume", entry.volume);

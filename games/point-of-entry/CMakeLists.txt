@@ -88,6 +88,7 @@ endif()
 
 # Tests -- link the same poe-systems the game does, so what is tested is what ships.
 add_executable(poe-tests
+    tests/sound_test.cpp
     tests/nav_test.cpp
     tests/roomgen_test.cpp
     tests/sprite_anim_test.cpp
