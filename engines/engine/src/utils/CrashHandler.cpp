@@ -119,7 +119,7 @@ std::string stackTrace(int skip_frames)
         sSymbols = SymInitialize(process, nullptr, FALSE) != FALSE;
     }
     const USHORT captured =
-        CaptureStackBackTrace(static_cast<DWORD>(skip_frames + 1), kMaxFrames, frames, nullptr);
+        CaptureStackBackTrace(static_cast<DWORD>(skip_frames) + 1, kMaxFrames, frames, nullptr);
 
     // A symbol record carries its name inline past the end of the struct, so it
     // is allocated with room rather than declared.
