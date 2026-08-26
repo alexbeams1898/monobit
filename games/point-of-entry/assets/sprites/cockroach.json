@@ -1,0 +1,21 @@
+{
+    "sheet": "assets/sprites/cockroach.png",
+    "frame_w": 11,
+    "frame_h": 9,
+    "frames": 3,
+    "durations": [
+        100,
+        100,
+        100
+    ],
+    "anims": {
+        "idle": {
+            "from": 0,
+            "to": 0
+        },
+        "walk": {
+            "from": 1,
+            "to": 2
+        }
+    }
+}

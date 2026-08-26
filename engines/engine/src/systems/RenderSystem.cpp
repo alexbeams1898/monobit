@@ -281,10 +281,13 @@ static TintResult resolveTint(EntityManager& em, entt::entity entity)
     }
     if (reg.all_of<SolidColor>(entity))
     {
+        // SolidColor is the sprite's own colour -- the base a tint MODULATES, exactly as a
+        // texture is. Overwriting the tint with it instead would make an untextured entity the
+        // one thing in the game that cannot flash, go red, or be dimmed.
         const auto& sc = reg.get<SolidColor>(entity);
-        r.tr = sc.r;
-        r.tg = sc.g;
-        r.tb = sc.b;
+        r.tr *= sc.r;
+        r.tg *= sc.g;
+        r.tb *= sc.b;
         r.is_solid = true;
     }
     return r;
@@ -375,8 +378,8 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
     float glowScale = 0.0f, glowAlpha = 0.0f;
     resolveGlow(em, entity, glowScale, glowAlpha);
 
-    out = {drawX - static_cast<float>(sprite.src_w) * scale * 0.5f,
-           drawY - static_cast<float>(sprite.src_h) * scale * 0.5f - yOffset,
+    out = {drawX + sprite.draw_offset_x - static_cast<float>(sprite.src_w) * scale * 0.5f,
+           drawY + sprite.draw_offset_y - static_cast<float>(sprite.src_h) * scale * 0.5f - yOffset,
            sortY,
            sprite.src_x,
            sprite.src_y,
@@ -401,6 +404,51 @@ static bool buildSpriteDrawEntry(EntityManager& em, TextureManager& tm, entt::en
            sprite.geo_mirror_x};
     resolveOutline(em, entity, out); // outline_a stays 0 (no rim) unless an Outline is present
     return true;
+}
+
+// A LIT EDGE HUGGING THE SHAPE: the sprite's texture drawn into a quad enlarged by the rim
+// width, in outline mode, so the shader emits colour only just OUTSIDE the opaque silhouette.
+// Drawn BEFORE the sprite so the sprite covers its own rim.
+//
+// Its own function because it is a whole second draw with its own uniforms and its own UV
+// arithmetic; reading the entity loop should not mean reading all of it.
+static void drawRimOutline(const DrawEntry& e)
+{
+    const float sw = static_cast<float>(e.src_w) * e.draw_scale;
+    const float sh = static_cast<float>(e.src_h) * e.draw_scale;
+    const float padX = e.outline_w * e.draw_scale; // rim room, in world px
+    const float padY = e.outline_w * e.draw_scale;
+    float outModel[16];
+    engine::gl::buildModel(outModel, e.x - padX, e.y - padY, sw + 2.0f * padX, sh + 2.0f * padY);
+    glUniformMatrix4fv(sLocModel, 1, GL_FALSE, outModel);
+    glBindTexture(GL_TEXTURE_2D, e.tex_id);
+    // One source texel in full-texture UV (always positive; independent of any
+    // src-rect flip). The enlarged quad maps a src rect grown by outline_w texels
+    // on every side, so its extra border samples the transparent margin AROUND the
+    // sprite -- exactly where the rim is emitted.
+    const float uStep = 1.0f / static_cast<float>(e.tex_w);
+    const float vStep = 1.0f / static_cast<float>(e.tex_h);
+    const SrcRectUV uv =
+        buildSrcRect({e.src_x, e.src_y, e.src_w, e.src_h, e.tex_w, e.tex_h, e.flip_x, e.flip_y});
+    // Grow the (possibly flipped) rect outward: expand along each axis's sign so
+    // the sampled region always covers src +/- outline_w texels.
+    const float sgnU = uv.w < 0.0f ? -1.0f : 1.0f;
+    const float sgnV = uv.h < 0.0f ? -1.0f : 1.0f;
+    glUniform4f(sLocSrcRect, uv.x - sgnU * uStep * e.outline_w, uv.y - sgnV * vStep * e.outline_w,
+                uv.w + sgnU * 2.0f * uStep * e.outline_w, uv.h + sgnV * 2.0f * vStep * e.outline_w);
+    // The sprite's OWN rect, normalized to positive extents (flip-independent):
+    // the shader rejects rim taps outside it, so a neighbour packed against this
+    // sprite on the atlas can never contribute a sliver. Inset a half texel so a
+    // filtered tap sitting exactly on the boundary can't straddle it either.
+    const float clipX = std::min(uv.x, uv.x + uv.w) + uStep * 0.5f;
+    const float clipY = std::min(uv.y, uv.y + uv.h) + vStep * 0.5f;
+    glUniform4f(sLocClipRect, clipX, clipY, std::abs(uv.w) - uStep, std::abs(uv.h) - vStep);
+    glUniform2f(sLocTexelStep, uStep, vStep);
+    glUniform1f(sLocOutlineW, e.outline_w);
+    glUniform4f(sLocOutline, e.outline_r, e.outline_g, e.outline_b, e.outline_a);
+    glUniform4f(sLocTint, 1.0f, 1.0f, 1.0f, 1.0f);
+    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+    glUniform4f(sLocOutline, 0.0f, 0.0f, 0.0f, 0.0f); // back to normal mode
 }
 
 void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, float camY, float zoom)
@@ -452,52 +500,9 @@ void RenderSystem::render(EntityManager& em, TextureManager& tm, float camX, flo
         {
             glUniform4f(sLocOutline, 0.0f, 0.0f, 0.0f, 0.0f); // normal mode unless the rim below
 
-            // Rim outline pass: draw the sprite's texture into a quad enlarged by the rim
-            // width, in outline mode -- the shader emits color only just OUTSIDE the opaque
-            // silhouette, so a lit edge hugs the shape. Before the sprite so the sprite draws
-            // on top of its own rim. Textured sprites only (a solid-color fill has no shape).
+            // Rim outline. Textured sprites only -- a solid-colour fill has no shape to hug.
             if (e.outline_a > 0.0f && !e.solid_color && e.tex_w > 0 && e.tex_h > 0)
-            {
-                const float sw = static_cast<float>(e.src_w) * e.draw_scale;
-                const float sh = static_cast<float>(e.src_h) * e.draw_scale;
-                const float padX = e.outline_w * e.draw_scale; // rim room, in world px
-                const float padY = e.outline_w * e.draw_scale;
-                float outModel[16];
-                engine::gl::buildModel(outModel, e.x - padX, e.y - padY, sw + 2.0f * padX,
-                                       sh + 2.0f * padY);
-                glUniformMatrix4fv(sLocModel, 1, GL_FALSE, outModel);
-                glBindTexture(GL_TEXTURE_2D, e.tex_id);
-                // One source texel in full-texture UV (always positive; independent of any
-                // src-rect flip). The enlarged quad maps a src rect grown by outline_w texels
-                // on every side, so its extra border samples the transparent margin AROUND the
-                // sprite -- exactly where the rim is emitted.
-                const float uStep = 1.0f / static_cast<float>(e.tex_w);
-                const float vStep = 1.0f / static_cast<float>(e.tex_h);
-                const SrcRectUV uv = buildSrcRect(
-                    {e.src_x, e.src_y, e.src_w, e.src_h, e.tex_w, e.tex_h, e.flip_x, e.flip_y});
-                // Grow the (possibly flipped) rect outward: expand along each axis's sign so
-                // the sampled region always covers src +/- outline_w texels.
-                const float sgnU = uv.w < 0.0f ? -1.0f : 1.0f;
-                const float sgnV = uv.h < 0.0f ? -1.0f : 1.0f;
-                glUniform4f(sLocSrcRect, uv.x - sgnU * uStep * e.outline_w,
-                            uv.y - sgnV * vStep * e.outline_w,
-                            uv.w + sgnU * 2.0f * uStep * e.outline_w,
-                            uv.h + sgnV * 2.0f * vStep * e.outline_w);
-                // The sprite's OWN rect, normalized to positive extents (flip-independent):
-                // the shader rejects rim taps outside it, so a neighbour packed against this
-                // sprite on the atlas can never contribute a sliver. Inset a half texel so a
-                // filtered tap sitting exactly on the boundary can't straddle it either.
-                const float clipX = std::min(uv.x, uv.x + uv.w) + uStep * 0.5f;
-                const float clipY = std::min(uv.y, uv.y + uv.h) + vStep * 0.5f;
-                glUniform4f(sLocClipRect, clipX, clipY, std::abs(uv.w) - uStep,
-                            std::abs(uv.h) - vStep);
-                glUniform2f(sLocTexelStep, uStep, vStep);
-                glUniform1f(sLocOutlineW, e.outline_w);
-                glUniform4f(sLocOutline, e.outline_r, e.outline_g, e.outline_b, e.outline_a);
-                glUniform4f(sLocTint, 1.0f, 1.0f, 1.0f, 1.0f);
-                glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-                glUniform4f(sLocOutline, 0.0f, 0.0f, 0.0f, 0.0f); // back to normal mode
-            }
+                drawRimOutline(e);
 
             // Draw glow halo behind the entity (larger, semi-transparent).
             if (e.glow_scale > 0.0f)

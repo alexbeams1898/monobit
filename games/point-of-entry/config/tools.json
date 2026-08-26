@@ -1,0 +1,42 @@
+{
+    "_comment": "The kit. Every number here is tuning, not code -- adding a tool is an entry in this list, which is what lets the kit grow without touching the game. reach: stream (held, a cone that sweeps with the cursor), adjacent (one puff beside him), thrown (travels). arc is the cone half-angle in degrees; 0 is a full circle. For a stream, stamina and charge are per SECOND held; otherwise per use. scaling carries per-stat grades the damage formula blends with the player's sheet (see config/stats.json scaling.per_point) -- the wand is a chemical-scaling tool. sfx is THREE clips for a held trigger: start (the pull), loop (the body, which must be cut from the STEADY middle of a recording -- a clip carrying its own ramp-up and dying-away swells and fades on every pass), and stop (the dribble). A single click then plays start + stop, which is a complete little burst rather than a fragment. Cut them with scripts/slice_held_sfx.py. sfx.dry is the cough on an empty tank; volume scales the lot. Body tuning (stamina max, recovery) lives in config/stats.json, derived from stats.",
+    "charge": {
+        "max": 100.0,
+        "per_kill": 4.0
+    },
+    "spray": {
+        "_comment": "How a held stream LOOKS -- droplet emission, flight and dispersal. Presentation only: damage rides the cone. speed_base/speed_var are fractions of the cone radius per second, and the damaging front's sweep derives from their sum, so the kill always rides the tip of the visible wave. spread_inside is the fraction of the damaging arc droplets fan across (kept under 1 so nothing drawn overstates reach).",
+        "droplets_per_second": 90.0,
+        "speed_base": 1.5,
+        "speed_var": 0.9,
+        "spread_inside": 0.82,
+        "lifetime_base": 0.85,
+        "lifetime_var": 0.3,
+        "grow_to": 2.6,
+        "drag": 2.2
+    },
+    "tools": [
+        {
+            "name": "Wand",
+            "reach": "stream",
+            "radius": 58.0,
+            "offset": 10.0,
+            "arc": 30.0,
+            "damage": 2.5,
+            "cooldown": 0.12,
+            "stamina": 14.0,
+            "charge": 11.0,
+            "linger": 0.0,
+            "scaling": {
+                "chemical": 1.0
+            },
+            "sfx": {
+                "start": "assets/audio/wand_spray_start.ogg",
+                "loop": "assets/audio/wand_spray_loop.ogg",
+                "stop": "assets/audio/wand_spray_stop.ogg",
+                "dry": "assets/audio/wand_dry.ogg",
+                "volume": 0.22
+            }
+        }
+    ]
+}

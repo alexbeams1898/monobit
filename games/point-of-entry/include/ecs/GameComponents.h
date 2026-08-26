@@ -1,0 +1,301 @@
+#pragma once
+
+#include "ecs/ItemConfig.h"
+
+#include <string>
+#include <vector>
+
+#include <entt/entt.hpp>
+
+// Every component this game adds to the engine's. One header, like the reference: a
+// component is a noun the whole game may need, and nouns scattered across system headers
+// are how two systems end up defining the same idea twice.
+//
+// The things a fight is made of. Game-side rather than engine-side: how a body takes damage and
+// how effort is spent are this game's rules, and another game on this engine would want its own.
+
+// Health is the ENGINE's (ecs/Components.h) and integer-valued -- a body's hit points are not
+// this game's invention, and whole numbers keep damage legible.
+
+// Effort. Spending resets recovery_timer; regen begins only once that has run down, so
+// firing continuously never recovers and the decision is when to stop rather than how fast the
+// number refills.
+struct Stamina
+{
+    float current = 0.0f;
+    float max_stamina = 0.0f;
+    float recovery_timer = 0.0f;
+};
+
+// The tank on his back. Unlike stamina this does not come back on its own -- see ChargeTuning.
+struct Charge
+{
+    float current = 0.0f;
+    float max_charge = 0.0f;
+};
+
+// Just been hit. Drives a brief white flash; removed when it runs out.
+struct HitFlash
+{
+    float remaining = 0.0f;
+};
+
+// Dying, but not yet gone. Death is a moment rather than an instant: destroying a thing on the
+// frame its health runs out means the killing blow is the ONE hit that never flashes, which
+// reads as the last hit being the weakest. Held here until the death flash has played.
+struct Dying
+{
+    float remaining = 0.0f;
+};
+
+// Time until this pest can hurt the player by touching him again. Per-pest, so a crowd
+// does not drain a bar the instant it closes.
+struct TouchCooldown
+{
+    float remaining = 0.0f;
+};
+
+// How a pest walks WRONG. Insects do not move on smooth curves: they commit to a slightly
+// mistaken heading, hold it a moment, correct, and pause. Held per pest rather than rolled
+// per frame -- noise that changes every frame reads as a rendering fault, where an error that
+// persists for a fifth of a second reads as a thing making bad decisions.
+struct Skitter
+{
+    float wrong_angle = 0.0f; // radians of heading error currently being committed to
+    float until = 0.0f;       // time left holding this error
+    float pause_until = 0.0f; // time left standing still
+    float phase = 0.0f;       // per-pest offset so a swarm never steps in unison
+};
+
+// How far a body has walked, for the code-driven gait. Distance rather than time, so the rock
+// belongs to the movement instead of running on its own clock.
+struct Gait
+{
+    float travelled = 0.0f;
+    // WHICH FOOTFALL HE IS ON. The hop is |sin| of the step phase, so it is level -- a foot
+    // down -- at every whole step. Counting them here means the sound lands on the footfall the
+    // player can SEE rather than on a clock of its own, which would drift out of step with the
+    // walk the moment his speed changed.
+    int footfalls = 0;
+    float rest = 0.0f; // 0 walking, 1 fully settled -- eases the hop out instead of freezing it
+    // BRACED: 0 loose, 1 rigid. The goofy walk is a body that does not expect to be hit; a man
+    // holding a guard up plants his feet and stops swinging. Written by whoever knows the body
+    // is braced, so the gait itself stays a thing that only turns distance into motion.
+    float braced = 0.0f;
+};
+
+// What killing has paid, CARRIED. Not a bar that fills toward anything -- a pocketed sum that
+// buys stat points at a rest spot, at a price that climbs with the level already bought. The
+// price curve needs no ledger of its own: level derives from the sheet, so the sheet IS the
+// receipt for everything ever spent.
+struct Earnings
+{
+    int banked = 0;
+};
+
+// Somewhere he can put the tank down. Standing inside the radius and resting heals him and is
+// the only place the sheet sells points -- the walk back with a full pocket is the tension.
+struct RestSpot
+{
+    float radius = 40.0f;
+};
+
+// A hole the MAP places, naming its hole type. An authored room carrying one
+// is a floor like any other: the hole presses its assault, goes spent, becomes
+// a way down, and leaks -- the same life a generated floor's holes have, which
+// is why the first one is in his own basement and not a special case.
+struct AuthoredHole
+{
+    std::string kind; // a hole file: what kind of hole, and what comes through
+};
+
+// A HOLE, AS IT STANDS IN THE WORLD -- one component on one entity, whatever the hole is doing.
+// Its two faces, so opening it is a frame swap rather than a reload (CLOSED is the outline with
+// the cavity drawn out of it, so the ground shows through and a sealed hole matches whatever it
+// sits in; OPEN is the hole itself), and its MOUTH.
+//
+// THE MOUTH is never assumed from the transform: a wall-mounted hole's art sits in the wall and
+// the standable spot is the floor at its base. It is where pests come out AND where he stands to
+// be offered the way through -- one point, so the thing that arrives and the thing he steps on
+// can never disagree.
+//
+// A SPENT hole is a PASSAGE: standing on it offers the way through, and taking it opens the room
+// on the other side. Whether this one is spent is the room's record to say, not this component's
+// -- what lives here is only what drawing and standing need.
+struct PlacedHole
+{
+    int hole = -1;    // which of the room's holes it is
+    int closed_x = 0; // pixel offset of the closed frame on the sheet
+    int open_x = 0;
+    float mouth_x = 0.0f;
+    float mouth_y = 0.0f;
+    float reach = 0.0f; // how close he stands to be offered it
+    // IN USE: something is coming through from the far side -- a hole he broke open over there
+    // and walked away from. A passage carrying something is not a way anywhere. Derived every
+    // frame from the tree, never latched.
+    bool in_use = false;
+    // DRAWN FROM THE OTHER SIDE. East and west are one drawing, so a hole in the left wall is
+    // the right wall's art mirrored -- one thing to draw and nothing that can drift.
+    bool mirrored = false;
+    // TURNED TO FACE ITS WALL, in radians. Only where the art has nothing drawn for this side:
+    // a hole drawn for one wall, turned, is a cheap approximation of being drawn for another,
+    // and it costs nothing to find out whether it reads. Art that HAS been drawn for a side is
+    // never turned -- it is already at the angle it is meant to be seen from.
+    float turn = 0.0f;
+};
+
+// What a pest pays when it dies. On the pest, not in a table here -- the config that
+// spawns it says what it is worth.
+struct Worth
+{
+    int xp = 0;
+};
+
+// Just surfaced: an outward burst that overrides the hunt for a moment. Each pest erupts
+// from the hole in its own direction, so a spray held at the pit mouth meets a scattering ring
+// rather than a queue walking into the cone single-file.
+struct Surge
+{
+    float dx = 0.0f;
+    float dy = 0.0f;
+    float speed = 150.0f; // set from config at emergence -- the component carries its tuning
+    float remaining = 0.0f;
+};
+
+// How a species MOVES WRONG, declared in its pest file. All zeros -- the default -- is a
+// plain straight walk: character is opt-in, and a pest that declares nothing gets nothing.
+// buzz is a fast tremor drawn over the glide (insect language); drift is a slow lateral float
+// on the approach so a crowd does not converge into one line.
+struct Motion
+{
+    float buzz_hz = 0.0f;
+    float buzz_amount = 0.0f; // world px, perpendicular to travel, draw-only
+    float drift_hz = 0.0f;
+    float drift_amount = 0.0f;
+};
+
+// What he is carrying. Instances stack by (item, quality) -- a fine flake and a crude flake
+// are different goods and stay different stacks.
+struct Satchel
+{
+    std::vector<ItemInstance> items;
+};
+
+// A thing lying where something died. Collected by WALKING ONTO it -- no magnet: currency is
+// automatic because it is abstract, but goods are picked up by a man bending down, and the
+// difference is the difference between income and work.
+struct ItemDrop
+{
+    ItemInstance contents;
+};
+
+// The species' drop table, riding the pest so death does not need to know species exist.
+struct DropTable
+{
+    std::vector<DropEntry> entries;
+};
+
+// Which hole this pest came out of, so each hole can gate its own next wave on ITS output
+// being dead -- clearing gates progress, per hole, and two holes stagger honestly.
+struct FromHole
+{
+    int index = 0;
+};
+
+// Marks the pest. Areas hurt these; the exterminator is not one. The numbers ride the
+// component because they differ per SPECIES, and the systems that read them must not know
+// species exist -- a pest is its config file, nowhere else.
+struct Pest
+{
+    float contact_damage = 0.0f;
+    float speed = 46.0f;
+};
+
+// What kind of pest this body is, named by its pest file path -- the path IS the
+// species identity everywhere (the swarm loads by it, evolution points at it, the record
+// tallies by it), so one id names a species and no parallel enum can drift from the files.
+struct Species
+{
+    std::string path;
+};
+
+// How strongly this individual smells of what is below, rolled once at emergence from a range
+// that runs hotter with depth. The roll multiplied every derived stat and decided whether the
+// evolved form surfaced; it stays on the body so anything later can read how hot this one ran.
+struct Smell
+{
+    int amount = 0;
+};
+
+// The exterminator's sheet: five stats, everything else derived.
+//
+// Three are DISCIPLINES that weapons scale off (a tool's config carries per-stat scaling
+// grades), one is the body, one finds things. There is deliberately no authored health, no
+// authored stamina, and no authored defense anywhere in the game -- all of it derives from
+// these five through the formulas in config/stats.json, so a number can never disagree with
+// the stats that should explain it.
+//
+// LEVEL IS DERIVED TOO: it is the number of points spent above baseline, nothing more. There
+// is no second progression number to keep in sync with the first.
+struct Stats
+{
+    int chemical = 1;   // spray and tank tools
+    int physical = 1;   // struck, trapped and heat tools; feeds a little health
+    int biological = 1; // organism tools
+    int endurance = 1;  // the body: health and stamina
+    int inspection = 1; // drops, money, what gets noticed
+};
+
+// Tags the live held-stream area -- on the entity, not in a system handle, so nothing dangles.
+struct StreamHead
+{
+};
+
+// One entry in an area's already-hurt ledger: who, and when it may be hurt again.
+struct HitMark
+{
+    entt::entity target = entt::null;
+    float next_at = 0.0f;
+};
+
+// An area that hurts what is inside it.
+//
+// Every attack in the game is one of these, whether it appeared beside the player or travelled
+// there. It hits EVERYTHING it overlaps, once each -- the already-hit list is the difference
+// between this and a melee swing that stops at the first target, and it is what lets one
+// trigger pull clear a crowd.
+//
+// One-shot areas live a single tick; lingering ones (a cloud, a puddle) persist and keep
+// catching things that walk in, which is why the list is a set of who has been hit rather than
+// a flag saying whether anything was.
+struct HitArea
+{
+    float radius = 0.0f;
+    // Cone half-angle in degrees, measured off dir. 0 means the whole circle -- a puff rather
+    // than a sweep. A cone is what a swept wand actually covers, and it is the shape that makes
+    // facing matter.
+    float arc = 0.0f;
+    // How fast the area's reach sweeps outward from its origin, px/s. Zero means the full
+    // radius applies the instant it exists. A sprayed cone is chemical TRAVELLING -- if the far
+    // edge kills before anything visibly arrives there, the picture and the rule disagree about
+    // time, and the rule feels like a cheat even when it is generous.
+    float expand = 0.0f;
+    // A LINGERING area re-hits what stands in it on this interval rather than once, or a held
+    // stream would tickle each ant a single time and then do nothing while pointed at it.
+    float rehit = 0.0f;
+    float damage = 0.0f;
+    float remaining = 0.0f; // seconds left alive; expires at or below zero
+    entt::entity owner = entt::null;
+
+    // Travel, for a thrown area. Zero speed is one that simply sits where it appeared.
+    float dir_x = 0.0f;
+    float dir_y = 0.0f;
+    float speed = 0.0f;
+    float range_left = 0.0f;
+
+    // Everything already hurt by this area, and when each may be hurt again. Small by
+    // construction -- an area lives for a moment and touches what is in reach, not the whole
+    // floor.
+    std::vector<HitMark> hit;
+    float age = 0.0f;
+};

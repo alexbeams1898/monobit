@@ -13,6 +13,9 @@ struct DirMapping
 
 // Map a CardinalDir to (column_index, flip_x) based on direction_count.
 // direction_count=1 -> always column 0 (static / omnidirectional).
+// direction_count=2 -> one column, mirrored: East as drawn, West flipped. For sheets holding a
+//                      single drawing per character rather than a row per direction; North and
+//                      South keep whichever side was last faced, since there is no pose for them.
 // direction_count=4 -> S=0, W=1, E=2, N=3, flip always false.
 DirMapping dirToColumnIndex(CardinalDir dir, int direction_count);
 

@@ -1,0 +1,6 @@
+{
+    "_comment": "Placeholder material so the pipeline has something real to drop. Name and flavour are content, freely editable -- the file path is the identity, so renaming the FILE means updating drop tables that point at it.",
+    "name": "Chitin flake",
+    "rarity": "common",
+    "value": 2
+}

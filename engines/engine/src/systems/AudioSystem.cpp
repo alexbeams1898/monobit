@@ -239,9 +239,13 @@ void AudioSystem::stopSfx(int voice_index, int fade_ms)
 
     if (fade_ms > 0)
     {
-        // Fade to silence, then stop.
+        // Fade to silence, then stop. The stop time is an ABSOLUTE point on the engine's global
+        // clock, not a delay from now -- passing the duration alone schedules a stop for
+        // `fade_ms` after the engine booted, which is already long past, so the sound never
+        // fades and the voice sits active until cleanup happens to notice it.
+        const ma_uint64 now = ma_engine_get_time_in_milliseconds(&sEngine);
         ma_sound_set_fade_in_milliseconds(&v.sound, -1.0f, 0.0f, static_cast<ma_uint64>(fade_ms));
-        ma_sound_set_stop_time_in_milliseconds(&v.sound, static_cast<ma_uint64>(fade_ms));
+        ma_sound_set_stop_time_in_milliseconds(&v.sound, now + static_cast<ma_uint64>(fade_ms));
     }
     else
     {

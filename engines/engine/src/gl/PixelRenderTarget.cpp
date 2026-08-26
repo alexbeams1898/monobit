@@ -3,6 +3,7 @@
 #include "gl/ShaderUtils.h"
 
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 
 #include <glad/glad.h>
@@ -92,10 +93,14 @@ void initBlitResources()
     glGenBuffers(1, &sVbo);
     glBindVertexArray(sVao);
     glBindBuffer(GL_ARRAY_BUFFER, sVbo);
-    glBufferData(GL_ARRAY_BUFFER, 6 * 4 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(6 * 4) * sizeof(float), nullptr,
+                 GL_DYNAMIC_DRAW);
+    // The attribute's offset is passed as a pointer for historical reasons: it is a byte offset
+    // into the bound buffer, never an address to dereference.
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), nullptr);
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
+                          reinterpret_cast<void*>(2 * sizeof(float)));
     glEnableVertexAttribArray(1);
     glBindVertexArray(0);
 }
@@ -115,8 +120,8 @@ BlitRect computeBlitRect(int internalW, int internalH, int windowW, int windowH)
     const float sy = static_cast<float>(windowH) / static_cast<float>(internalH);
     const float scale = std::min(sx, sy);
     rect.scale = std::max(1, static_cast<int>(scale)); // informational (diagnostics)
-    rect.width = static_cast<int>(static_cast<float>(internalW) * scale + 0.5f);
-    rect.height = static_cast<int>(static_cast<float>(internalH) * scale + 0.5f);
+    rect.width = static_cast<int>(std::lround(static_cast<float>(internalW) * scale));
+    rect.height = static_cast<int>(std::lround(static_cast<float>(internalH) * scale));
     rect.x = (windowW - rect.width) / 2; // centered; remainder (aspect only) letterboxes
     rect.y = (windowH - rect.height) / 2;
     return rect;

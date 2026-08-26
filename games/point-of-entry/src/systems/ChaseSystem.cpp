@@ -1,0 +1,269 @@
+#include "systems/ChaseSystem.h"
+
+#include "ecs/BalanceConfig.h"
+#include "ecs/Components.h"
+#include "ecs/EntityManager.h"
+#include "ecs/FeelConfig.h"
+#include "ecs/GameComponents.h"
+#include "ops/NavUtils.h"
+#include "ops/SoundOps.h"
+#include "systems/AimSystem.h"
+#include "systems/CombatSystem.h"
+#include "systems/PlayerSystem.h"
+#include "systems/TintSystem.h"
+
+#include <cmath>
+#include <unordered_map>
+#include <vector>
+
+#include <entt/entt.hpp>
+
+namespace chase
+{
+namespace
+{
+
+// Contact hurts once every this many seconds. Pest have no attack: touching you IS the attack,
+// which is what lets hundreds of them exist without hundreds of attack animations.
+
+// Movement character is the SPECIES' business (see Motion in GameComponents): a tremor makes an
+// insect, a plain glide makes a mammal, and this system applies whatever the pest declared
+// without knowing which is which. The tremor is a DRAW OFFSET, never movement -- the body
+// buzzes while the pest travels straight, so it cannot shiver through a wall.
+
+// Bodies shove each other out of overlap AFTER moving. Nothing
+// ever deflects a pest's heading (steering forces make a swarm swerve and fidget); each one
+// walks dead-straight at the player, and the crowd spreads only because two bodies cannot share
+// a spot. That is what makes a swarm press onto you as a tide instead of milling around you.
+void shoveApart(EntityManager& em)
+{
+    auto& reg = em.registry();
+    // A uniform grid so neighbour pairs are found in the same or adjacent cells only -- the
+    // swarm is meant to reach the hundreds, and an all-pairs scan is the one thing here that
+    // could not afford that.
+    constexpr float kCell = 8.0f;
+    const float kSpace = feel::current().contact.spacing;
+    static std::unordered_map<uint64_t, std::vector<entt::entity>> grid;
+    grid.clear();
+    const auto key = [](float x, float y)
+    {
+        const auto cx = static_cast<uint32_t>(static_cast<int>(x / kCell) + 32768);
+        const auto cy = static_cast<uint32_t>(static_cast<int>(y / kCell) + 32768);
+        return (static_cast<uint64_t>(cx) << 32) | cy;
+    };
+    for (auto [entity, t, pest] : reg.view<Transform, Pest>().each())
+        if (!reg.all_of<Dying>(entity))
+            grid[key(t.x, t.y)].push_back(entity);
+
+    for (auto [entity, t, pest] : reg.view<Transform, Pest>().each())
+    {
+        if (reg.all_of<Dying>(entity))
+            continue;
+        for (int gy = -1; gy <= 1; ++gy)
+            for (int gx = -1; gx <= 1; ++gx)
+            {
+                const auto it = grid.find(key(t.x + static_cast<float>(gx) * kCell,
+                                              t.y + static_cast<float>(gy) * kCell));
+                if (it == grid.end())
+                    continue;
+                for (const auto other : it->second)
+                {
+                    if (other <= entity) // each pair once, and never self
+                        continue;
+                    auto& ot = reg.get<Transform>(other);
+                    const float dx = t.x - ot.x;
+                    const float dy = t.y - ot.y;
+                    const float d2 = dx * dx + dy * dy;
+                    if (d2 >= kSpace * kSpace)
+                        continue;
+                    const float d = std::sqrt(std::max(d2, 0.01f));
+                    // Half the overlap each, through the wall check so a shove cannot push a
+                    // body into the masonry.
+                    const float push = (kSpace - d) * 0.5f;
+                    const float nx = dx / d;
+                    const float ny = dy / d;
+                    world::stepBlocked(em, t.x, nx * push, true, t.y, 3.0f, 3.0f);
+                    world::stepBlocked(em, t.y, ny * push, false, t.x, 3.0f, 3.0f);
+                    world::stepBlocked(em, ot.x, -nx * push, true, ot.y, 3.0f, 3.0f);
+                    world::stepBlocked(em, ot.y, -ny * push, false, ot.x, 3.0f, 3.0f);
+                }
+            }
+    }
+}
+
+void integrate(EntityManager& em, float dt)
+{
+    const entt::entity playerEnt = player::entity();
+    auto& reg = em.registry();
+    if (!reg.valid(playerEnt))
+        return;
+    const auto& pt = reg.get<Transform>(playerEnt);
+
+    // HE GRUNTS ONCE, however many of them reach him. Contact is resolved per pest -- it has to
+    // be, since each carries its own cooldown -- but being hurt is one thing that happened to
+    // one man, and a crowd landing together would otherwise stack a voice on itself.
+    bool hurt = false;
+    bool killed = false;
+
+    for (auto [entity, t, vel, pest] : reg.view<Transform, Velocity, Pest>().each())
+    {
+        // One axis at a time, against the same walls the player obeys. The flow field routes
+        // AROUND walls but only suggests a direction -- a pest off the field, or one that
+        // separation is pushing sideways, would otherwise walk straight through a wall.
+        world::stepBlocked(em, t.x, vel.dx * dt, /*horizontal=*/true, t.y, 3.0f, 3.0f);
+        world::stepBlocked(em, t.y, vel.dy * dt, /*horizontal=*/false, t.x, 3.0f, 3.0f);
+
+        // Touching him costs him. On a timer per pest rather than per frame, or standing in
+        // a crowd would drain a full bar in the time it takes to notice.
+        auto& touch = reg.get_or_emplace<TouchCooldown>(entity, TouchCooldown{0.0f});
+        touch.remaining -= dt;
+        const float tdx = pt.x - t.x;
+        const float tdy = pt.y - t.y;
+        if (touch.remaining <= 0.0f &&
+            tdx * tdx + tdy * tdy < feel::current().contact.radius * feel::current().contact.radius)
+        {
+            touch.remaining = feel::current().contact.interval;
+            if (auto* hp = reg.try_get<Health>(playerEnt))
+            {
+                // Defense is derived from the sheet and shaves contact flat; the floor of 1
+                // keeps a crowd dangerous no matter how broad his shoulders get.
+                const int def =
+                    reg.all_of<Stats>(playerEnt) ? stats::defense(reg.get<Stats>(playerEnt)) : 0;
+                const int raw = static_cast<int>(reg.get<Pest>(entity).contact_damage);
+                // The guard stands between the hit and the bar -- see absorbWithGuard.
+                const int taken =
+                    tools::absorbWithGuard(em, std::max(1, raw - def), aim::guarding());
+                hp->current -= taken;
+                hurt = hurt || taken > 0;
+                killed = killed || hp->current <= 0;
+            }
+        }
+    }
+
+    if (hurt)
+    {
+        // TWO LAYERS. The impact is the blow landing and belongs to any body; the grunt is the
+        // man it landed on. Held apart because only the second of them is his -- a pest struck
+        // by the wand wants the same impact and none of the voice.
+        sound::play("hit");
+        // Not for the hit that kills him: the death beat has its own voice, and both at once is
+        // one man too many out of one throat.
+        if (!killed)
+            sound::play("hurt");
+        // He flashes like anything else that gets struck; the tint pass decides what that looks
+        // like. Fatal or not, since the death beat runs its own fade over the top.
+        reg.emplace_or_replace<HitFlash>(playerEnt, HitFlash{tint::flashSeconds(killed)});
+    }
+
+    shoveApart(em);
+}
+
+} // namespace
+
+// STILL COMING OUT. A burst owns the velocity until it expires, and only then does the pest
+// start hunting -- so this answers one question for the tick above: is it still surfacing? Walls
+// still apply either way; integrate() moves everything.
+bool surfacing(entt::registry& reg, entt::entity pest, Velocity& vel, float dt)
+{
+    auto* surge = reg.try_get<Surge>(pest);
+    if (surge == nullptr)
+        return false;
+    surge->remaining -= dt;
+    if (surge->remaining <= 0.0f)
+    {
+        reg.remove<Surge>(pest);
+        return false;
+    }
+    vel.dx = surge->dx * surge->speed;
+    vel.dy = surge->dy * surge->speed;
+    if (auto* facing = reg.try_get<FacingDirection>(pest); facing != nullptr && surge->dx != 0.0f)
+    {
+        facing->dx = surge->dx < 0.0f ? -1.0f : 1.0f;
+        facing->render_dx = facing->dx;
+    }
+    return true;
+}
+
+void update(EntityManager& em, float dt)
+{
+    const entt::entity playerEnt = player::entity();
+    auto& reg = em.registry();
+    if (!reg.valid(playerEnt))
+        return;
+    const auto& pt = reg.get<Transform>(playerEnt);
+    const auto& ff = em.flow_field;
+
+    for (auto [entity, t, vel, pest] : reg.view<Transform, Velocity, Pest>().each())
+    {
+        if (reg.all_of<Dying>(entity))
+        {
+            vel.dx = 0.0f;
+            vel.dy = 0.0f;
+            continue;
+        }
+
+        if (surfacing(reg, entity, vel, dt))
+            continue;
+
+        // The flow field is a BFS from the player rebuilt only when he changes cell, so following
+        // it is a table read -- which is what makes a thousand of these affordable. It also
+        // routes around walls, so nothing here needs to know what a wall is.
+        const int col = static_cast<int>(t.x / FlowField::CELL_SIZE);
+        const int row = static_cast<int>(t.y / FlowField::CELL_SIZE);
+        float dx = 0.0f;
+        float dy = 0.0f;
+        if (col >= 0 && col < FlowField::COLS && row >= 0 && row < FlowField::ROWS)
+        {
+            dx = ff.cells[row][col].dx;
+            dy = ff.cells[row][col].dy;
+        }
+        // Off the field, or standing in an unreachable cell: walk straight at him. Better a
+        // pest that bumps a wall than one that stands still looking broken.
+        if (dx == 0.0f && dy == 0.0f)
+        {
+            dx = pt.x - t.x;
+            dy = pt.y - t.y;
+            const float len = std::sqrt(dx * dx + dy * dy);
+            if (len > 0.0f)
+            {
+                dx /= len;
+                dy /= len;
+            }
+        }
+
+        auto& sk = reg.get_or_emplace<Skitter>(entity, Skitter{});
+        if (sk.phase == 0.0f)
+            sk.phase = static_cast<float>(entt::to_integral(entity) % 997) * 0.618f;
+        sk.until += dt; // doubles as this pest's own clock
+
+        const auto& motion = reg.get_or_emplace<Motion>(entity, Motion{});
+        const float drift = std::sin((sk.until + sk.phase) * motion.drift_hz) * motion.drift_amount;
+        const float gx = dx - dy * drift;
+        const float gy = dy + dx * drift;
+
+        // Speed is the species' own (see Pest) -- generally slower than the exterminator in a
+        // straight line, so positioning beats reflexes; a faster species narrows that margin.
+        vel.dx = gx * pest.speed;
+        vel.dy = gy * pest.speed;
+
+        // Face the way it is actually heading; a pest gliding left while drawn facing right
+        // is the moonwalk bug at swarm scale. Vertical-only travel keeps the last side.
+        if (auto* facing = reg.try_get<FacingDirection>(entity); facing != nullptr && gx != 0.0f)
+        {
+            facing->dx = gx < 0.0f ? -1.0f : 1.0f;
+            facing->render_dx = facing->dx;
+        }
+
+        // The tremor, if this species declared one; zero amount writes a clean zero offset, so
+        // a plain walker is exactly plain rather than carrying a stale buzz from anything.
+        const float buzz =
+            std::sin((sk.until + sk.phase) * motion.buzz_hz * 6.2831853f) * motion.buzz_amount;
+        auto& spr = reg.get<Sprite>(entity);
+        spr.draw_offset_x = -dy * buzz;
+        spr.draw_offset_y = dx * buzz;
+    }
+
+    integrate(em, dt);
+}
+
+} // namespace chase

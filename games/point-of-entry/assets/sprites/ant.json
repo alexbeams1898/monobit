@@ -1,0 +1,16 @@
+{
+    "sheet": "assets/sprites/ant.png",
+    "frame_w": 7,
+    "frame_h": 4,
+    "frames": 2,
+    "durations": [
+        100,
+        100
+    ],
+    "anims": {
+        "walk": {
+            "from": 0,
+            "to": 1
+        }
+    }
+}

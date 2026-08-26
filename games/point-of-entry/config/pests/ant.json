@@ -1,0 +1,43 @@
+{
+    "_comment": "A pest is a FILE. Everything the waves need to field one lives here -- adding a species to the formulas table is writing one of these plus a drawing, never touching code. sheet is the species' three stats; hp/contact/speed/xp derive from them through swarm.json's formulas table block, scaled off base. growth is which stats gain points per level of depth -- each species deepens along its own character. movement declares the species' gait; a file that omits the block walks plainly. guide is the species' printed field-guide page, the trade's six sections; a file without the block is a species the book does not know, and an empty string is a section not yet written.",
+    "sprite": "assets/sprites/ant.json",
+    "sheet": {
+        "resistance": 1,
+        "defensiveness": 2,
+        "dispersal": 2
+    },
+    "base": {
+        "hp": 5,
+        "power": 3.4,
+        "speed": 38.0,
+        "xp": 2
+    },
+    "growth": {
+        "resistance": 0,
+        "defensiveness": 0,
+        "dispersal": 1
+    },
+    "scale": 0.75,
+    "movement": {
+        "buzz_hz": 21.0,
+        "buzz_amount": 0.35,
+        "drift_hz": 1.7,
+        "drift_amount": 0.16
+    },
+    "drops": [
+        {
+            "item": "config/items/materials/chitin_flake.json",
+            "min": 1,
+            "max": 1,
+            "chance": 0.02
+        }
+    ],
+    "guide": {
+        "description": "",
+        "similar": "",
+        "biology": "",
+        "habits": "",
+        "signs": "",
+        "control": ""
+    }
+}

@@ -7,6 +7,14 @@
 namespace worldclock
 {
 
+// The face a day is read on. Named once because half this file takes a day apart into hours
+// and minutes, and a bare 24 or 60 in any of those lines is a number nobody can grep for.
+constexpr long kHoursPerDay = 24;
+constexpr long kMinutesPerHour = 60;
+constexpr long kMinutesPerDay = kHoursPerDay * kMinutesPerHour;
+constexpr double kDayMinutes = static_cast<double>(kMinutesPerDay);
+constexpr double kDayHours = static_cast<double>(kHoursPerDay);
+
 void load(WorldClock& clock, const std::string& path)
 {
     const auto loaded = config::load(path);
@@ -35,7 +43,7 @@ void advanceMinutes(WorldClock& clock, double minutes)
 {
     if (minutes <= 0.0)
         return;
-    clock.seconds += minutes * (clock.seconds_per_day / (24.0 * 60.0));
+    clock.seconds += minutes * (clock.seconds_per_day / kDayMinutes);
 }
 
 int dayAt(const WorldClock& clock, double seconds)
@@ -59,16 +67,16 @@ std::string clockOfDay(double frac)
 {
     // Rounded to the nearest whole minute -- truncation would read a float-exact
     // 10:47 as 10:46 (46.999... minutes cut down).
-    const long total = std::lround(frac * 24.0 * 60.0) % (24 * 60);
-    const int h = static_cast<int>(total / 60);
-    const int m = static_cast<int>(total % 60);
+    const long total = std::lround(frac * kDayMinutes) % kMinutesPerDay;
+    const int h = static_cast<int>(total / kMinutesPerHour);
+    const int m = static_cast<int>(total % kMinutesPerHour);
     const std::string mm = (m < 10 ? "0" : "") + std::to_string(m);
     return std::to_string(h) + ":" + mm;
 }
 
 std::string partOfDay(double frac)
 {
-    const double h = frac * 24.0;
+    const double h = frac * kDayHours;
     if (h < 5.0)
         return "tonight";
     if (h < 12.0)
@@ -124,11 +132,11 @@ double parseClockTime(const std::string& hhmm)
     {
         return -1.0;
     }
-    if (h == 24 && m == 0)
+    if (h == kHoursPerDay && m == 0)
         return 1.0; // "24:00" -- end of day, so an all-day window is authorable
-    if (h < 0 || h > 23 || m < 0 || m > 59)
+    if (h < 0 || h >= kHoursPerDay || m < 0 || m >= kMinutesPerHour)
         return -1.0;
-    return (h + m / 60.0) / 24.0;
+    return (h + m / static_cast<double>(kMinutesPerHour)) / kDayHours;
 }
 
 bool inWindow(double frac, double from, double to)

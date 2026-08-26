@@ -7,8 +7,9 @@
 #include <string>
 
 // Forward declaration — avoids pulling SDL2 headers into every file that includes Engine.h.
-// Only Engine.cpp needs to know the internals of SDL_Window.
+// Only Engine.cpp needs the internals of these.
 struct SDL_Window;
+union SDL_Event;
 
 class Engine
 {
@@ -195,6 +196,10 @@ class Engine
 
   private:
     void processEvents();
+    // The window is now some size: read it, resize the UI, tell the game. One definition, so a
+    // resize and a display change cannot disagree about what "the window changed" means.
+    void syncDrawableSize();
+    void handleWindowEvent(const SDL_Event& event);
     void update(double dt);
     void render();
 

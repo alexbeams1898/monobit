@@ -6,6 +6,7 @@
 #include "systems/AudioSystem.h"
 #include "utils/DebugDraw.h"
 
+#include <chrono>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -139,7 +140,9 @@ bool Engine::init(const char* title, int width, int height)
     // Dear ImGui — initialised here so games can register an ImGui callback
     // and start drawing tuning panels. The engine owns NewFrame / Render /
     // event forwarding; the game just calls ImGui::Begin/widgets/End from
-    // its setRenderImGui callback. No-op cost when no callback is set.
+    // its setRenderImGui callback. The per-frame PASS is skipped entirely when no callback
+    // is registered (see Engine::render), so a game that never asks for ImGui pays only this
+    // one-time init.
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGui::GetIO().IniFilename = nullptr; // don't write imgui.ini next to the exe
@@ -159,18 +162,31 @@ bool Engine::init(const char* title, int width, int height)
     ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
     ImGui_ImplOpenGL3_Init("#version 330 core");
 
+    // The GAME owns the cursor, not ImGui. Its SDL backend otherwise calls SDL_ShowCursor every
+    // NewFrame -- which runs before the game's UI pass -- so a game hiding the pointer to draw
+    // its own reticle would have it restored underneath, one frame later, forever.
+    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
+
     return true;
 }
 
 void Engine::run()
 {
     running = true;
-    double previousTime = static_cast<double>(SDL_GetTicks64()) / 1000.0;
+    // HIGH-RESOLUTION timing, not SDL_GetTicks64(). Ticks has 1 ms resolution, so a real
+    // 16.667 ms frame is reported as either 16 or 17 -- a 4% error, every frame, always in
+    // whole milliseconds. That error accumulates in the fixed-timestep accumulator until it
+    // slips: measured over 117 frames, 16 of them ran ZERO ticks and 16 ran TWO, so about a
+    // quarter of frames either repeated a position or jumped double. It reads as a periodic
+    // hitch roughly every seventh frame while every position, camera and pixel value in the
+    // game is exactly correct.
+    const double counterFreq = static_cast<double>(SDL_GetPerformanceFrequency());
+    double previousTime = static_cast<double>(SDL_GetPerformanceCounter()) / counterFreq;
     double accumulator = 0.0;
 
     while (running)
     {
-        const double currentTime = static_cast<double>(SDL_GetTicks64()) / 1000.0;
+        const double currentTime = static_cast<double>(SDL_GetPerformanceCounter()) / counterFreq;
         double frameTime = currentTime - previousTime;
         previousTime = currentTime;
 
@@ -216,7 +232,7 @@ void Engine::run()
             if (timing_reset_pending)
             {
                 timing_reset_pending = false;
-                previousTime = static_cast<double>(SDL_GetTicks64()) / 1000.0;
+                previousTime = static_cast<double>(SDL_GetPerformanceCounter()) / counterFreq;
                 accumulator = 0.0;
                 last_frame_time = 1.0 / 60.0;
                 break;
@@ -238,6 +254,46 @@ void Engine::run()
     }
 }
 
+void Engine::syncDrawableSize()
+{
+    // Drawable size, not the event's logical size -- the logical size is DPI-scaled and smaller
+    // than the actual framebuffer on HiDPI displays. See init() for context.
+    SDL_GL_GetDrawableSize(window, &window_w, &window_h);
+    UIRenderer::resize(window_w, window_h);
+    if (on_resize)
+        on_resize(*this, window_w, window_h);
+}
+
+void Engine::handleWindowEvent(const SDL_Event& event)
+{
+    // SIZE_CHANGED fires for ALL size changes including programmatic fullscreen toggles;
+    // RESIZED only fires for user-driven resizes. Without SIZE_CHANGED the per-frame glViewport
+    // stays pinned to the original windowed dims and the scene renders into a subregion of the
+    // fullscreen framebuffer, which the compositor stretches to fill -- visible as a blur.
+    if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
+    {
+        syncDrawableSize();
+        return;
+    }
+    // A desktop-fullscreen window activated on a DIFFERENT display (unplugging an external
+    // monitor, switching to the laptop panel) keeps the OLD display's resolution -- SDL does not
+    // re-fit it, and often no SIZE_CHANGED follows. Toggling the fullscreen flag makes SDL re-fit
+    // to the new display's desktop mode.
+    if (event.window.event != SDL_WINDOWEVENT_DISPLAY_CHANGED ||
+        window_mode != WindowMode::BorderlessFullscreen)
+        return;
+    const int display = event.window.data1;
+    SDL_DisplayMode mode;
+    if (SDL_GetDesktopDisplayMode(display, &mode) != 0)
+        return;
+    SDL_SetWindowFullscreen(window, 0);
+    SDL_SetWindowDisplayMode(window, &mode);
+    SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
+    syncDrawableSize();
+    std::fprintf(stderr, "[engine] display changed -> %d (%dx%d), refit to %dx%d\n", display,
+                 mode.w, mode.h, window_w, window_h);
+}
+
 void Engine::processEvents()
 {
     SDL_Event event;
@@ -254,50 +310,8 @@ void Engine::processEvents()
 
         if (event.type == SDL_QUIT)
             running = false;
-        // SIZE_CHANGED fires for ALL size changes including programmatic
-        // fullscreen toggles; RESIZED only fires for user-driven resizes
-        // (drag window edge). Handling SIZE_CHANGED is the SDL2 idiom
-        // for fullscreen sync. Without it the per-frame glViewport stays
-        // pinned to the original windowed dims and the scene gets
-        // rendered into a subregion of the fullscreen framebuffer, which
-        // the desktop compositor stretches to fill — visible as a blur.
-        if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
-        {
-            // Use drawable size, not the event's logical size — the
-            // logical size is DPI-scaled and smaller than the actual
-            // framebuffer on HiDPI displays. See init() for context.
-            SDL_GL_GetDrawableSize(window, &window_w, &window_h);
-            UIRenderer::resize(window_w, window_h);
-            if (on_resize)
-                on_resize(*this, window_w, window_h);
-        }
-        // A desktop-fullscreen window dragged to / activated on a DIFFERENT display
-        // (e.g. unplugging an external monitor, switching to the laptop panel) keeps
-        // the OLD display's resolution — SDL does not re-fit it, and often no
-        // SIZE_CHANGED follows. Re-fit it to the new display's desktop mode by
-        // re-applying the fullscreen-desktop flag; the resulting resize is picked up
-        // by SIZE_CHANGED above (or we sync here if the size is already current).
-        else if (event.type == SDL_WINDOWEVENT &&
-                 event.window.event == SDL_WINDOWEVENT_DISPLAY_CHANGED &&
-                 window_mode == WindowMode::BorderlessFullscreen)
-        {
-            const int display = event.window.data1;
-            SDL_DisplayMode mode;
-            if (SDL_GetDesktopDisplayMode(display, &mode) == 0)
-            {
-                // Toggle fullscreen off/on so SDL re-fits the window to `display`'s
-                // current desktop resolution rather than keeping the prior one.
-                SDL_SetWindowFullscreen(window, 0);
-                SDL_SetWindowDisplayMode(window, &mode);
-                SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
-                SDL_GL_GetDrawableSize(window, &window_w, &window_h);
-                UIRenderer::resize(window_w, window_h);
-                if (on_resize)
-                    on_resize(*this, window_w, window_h);
-                std::fprintf(stderr, "[engine] display changed -> %d (%dx%d), refit to %dx%d\n",
-                             display, mode.w, mode.h, window_w, window_h);
-            }
-        }
+        if (event.type == SDL_WINDOWEVENT)
+            handleWindowEvent(event);
 
         // Buffer one-shot input events so they survive across fixed-step ticks.
         // Without this, a brief key tap between two ticks is lost because
@@ -474,11 +488,8 @@ void Engine::render()
                     camera.prev_offset_x + (camera.offset_x - camera.prev_offset_x) * a;
                 const float offY =
                     camera.prev_offset_y + (camera.offset_y - camera.prev_offset_y) * a;
-                // Round the offset so it lands on integer pixels. Without this,
-                // the sprite (rounded) and camera (rounded) have independent
-                // rounding errors that don't cancel, causing 1-2px oscillation.
-                camX = baseX + std::round(offX);
-                camY = baseY + std::round(offY);
+                camX = baseX + offX;
+                camY = baseY + offY;
             }
             else
             {
@@ -488,6 +499,20 @@ void Engine::render()
             break;
         }
     }
+
+    // ONE pixel snap, here, before anyone sees the camera.
+    //
+    // Every world renderer rounds what it draws to a whole pixel, and each of them used to
+    // round the CAMERA independently as well. Two roundings of two slightly different numbers
+    // do not cancel: a half-pixel disagreement between the camera and a sprite is a whole
+    // SCREEN pixel at 2x zoom, and because the interpolated camera drifts across the rounding
+    // boundary at whatever rate the frame times happen to jitter, things pop against each
+    // other at irregular intervals. It reads as lag when nothing is actually late.
+    //
+    // Snapping once means every renderer receives an already-integer camera and its own
+    // rounding is measured from the same origin, so the errors cancel by construction.
+    camX = std::round(camX);
+    camY = std::round(camY);
 
     if (render_world)
     {
@@ -508,10 +533,14 @@ void Engine::render()
     }
 
     // ImGui pass — drawn after the game's UI so panels float on top.
-    // NewFrame must precede any ImGui::Begin in the callback; Render
-    // emits the actual draw lists. The frame is started even if no
-    // callback is set, so future frame-state queries (DeltaTime,
-    // viewport size) stay valid.
+    //
+    // SKIPPED ENTIRELY when the game registered no ImGui callback. A game that never asks
+    // for ImGui should not pay for it, and more importantly should not have it silently
+    // sitting in its frame: with no callback the pass still built and submitted an empty
+    // draw list every frame, and because that was the LAST GL work before the swap it was
+    // where the driver parked its vsync wait. A profile of such a game reads as though
+    // ImGui costs 16 ms a frame, which sends you hunting a phantom.
+    if (render_imgui)
     {
         ZoneScopedN("render-imgui");
         {
@@ -522,8 +551,7 @@ void Engine::render()
         }
         {
             ZoneScopedN("imgui-callback");
-            if (render_imgui)
-                render_imgui(*this, entity_manager);
+            render_imgui(*this, entity_manager);
         }
         {
             ZoneScopedN("imgui-render");
@@ -547,34 +575,72 @@ void Engine::swapBuffers()
         SDL_GL_SwapWindow(window);
 }
 
+namespace
+{
+// TEARDOWN IS WHERE A STALL IS INVISIBLE. The window is already hidden and the process is on its
+// way out, so a slow stage reads to the player as the program hanging on quit -- and there is no
+// frame left to show anything. Silent when every stage is prompt, so a healthy quit says nothing
+// and a slow one names what held it.
+void reportIfSlow(const char* stage, std::chrono::steady_clock::time_point began)
+{
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - began)
+                        .count();
+    if (ms >= 50)
+        std::fprintf(stderr, "[engine] shutdown: %s took %lld ms\n", stage,
+                     static_cast<long long>(ms));
+}
+} // namespace
+
 void Engine::shutdown()
 {
+    // Hide the window before any teardown: audio/GL/window destruction takes
+    // long enough to read as a hang with a fullscreen window still up. Hidden
+    // first, the desktop is back instantly and the cleanup runs unseen.
+    if (window)
+        SDL_HideWindow(window);
+
     // ImGui first — its OpenGL3 backend frees GPU resources, so it must
     // run while the GL context is still alive. Subsequent shutdowns can
     // safely no-op when called twice (e.g. dtor after explicit shutdown).
+    auto began = std::chrono::steady_clock::now();
     if (ImGui::GetCurrentContext() != nullptr)
     {
         ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplSDL2_Shutdown();
         ImGui::DestroyContext();
     }
+    reportIfSlow("imgui", began);
 
+    began = std::chrono::steady_clock::now();
     AudioSystem::shutdown();
+    reportIfSlow("audio", began);
+
+    began = std::chrono::steady_clock::now();
     UIRenderer::shutdown();
     FontManager::shutdown();
     sprite_compositor.clear();
     texture_manager.clear();
+    reportIfSlow("assets", began);
 
+    began = std::chrono::steady_clock::now();
     if (gl_context)
     {
         SDL_GL_DeleteContext(gl_context);
         gl_context = nullptr;
     }
+    reportIfSlow("gl context", began);
+
+    began = std::chrono::steady_clock::now();
     if (window)
     {
         SDL_DestroyWindow(window);
         window = nullptr;
     }
+    reportIfSlow("window", began);
+
+    began = std::chrono::steady_clock::now();
     SDL_Quit();
+    reportIfSlow("sdl", began);
     running = false;
 }

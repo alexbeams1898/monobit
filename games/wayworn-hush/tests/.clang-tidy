@@ -1,0 +1,10 @@
+# Tests-specific overrides on top of the root .clang-tidy. A TEST_CASE body
+# legitimately accumulates many REQUIRE() calls and SECTIONs, and scores high
+# on cognitive complexity and function length for doing so; the alternative --
+# splitting every assertion into its own TEST_CASE -- would mean a flood of
+# tiny names that obscure the thing being tested. Same override the other
+# games' tests carry.
+InheritParentConfig: true
+Checks: >
+  -readability-function-cognitive-complexity,
+  -readability-function-size,

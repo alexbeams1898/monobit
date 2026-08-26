@@ -49,10 +49,13 @@ out vec4 fragColor;
 
 void main()
 {
-    if (uUseTexture != 0)
+    // A tile says which it is: alpha 0 means sample the atlas, anything else is a flat colour.
+    // Per FRAGMENT rather than per draw, so a map with a tileset can still hold tiles that have
+    // no cell in it yet.
+    if (uUseTexture != 0 && vColor.a == 0.0)
         fragColor = texture(uTileset, vUV);
     else
-        fragColor = vColor;
+        fragColor = vec4(vColor.rgb, 1.0);
 }
 )glsl";
 
@@ -89,8 +92,18 @@ static float sTileSize = 0.0f;
 
 // Emit one tile's quad (6 verts x 8 floats) into `verts`. Shared by the ground
 // and overhang bakes so both layers rasterize identically.
+// The atlas a bake is drawing from: whether there is one at all and how big it is. Grouped
+// because the three only ever travel together, and a quad emitter taking nine loose arguments is
+// one a caller can get subtly wrong without the compiler noticing.
+struct AtlasFacts
+{
+    bool loaded = false;
+    int w = 0;
+    int h = 0;
+};
+
 static void emitTileQuad(std::vector<float>& verts, const TileConfig& config, int tileId, int col,
-                         int row, float ts, bool hasTileset, int atlasW, int atlasH)
+                         int row, float ts, const AtlasFacts& atlas)
 {
     // A tile id with NO registered visual is EMPTY SPACE: emit a degenerate (zero-area)
     // quad so the dense mesh keeps its cell indexing (render() culls by index math) while
@@ -105,11 +118,14 @@ static void emitTileQuad(std::vector<float>& verts, const TileConfig& config, in
     }
     const auto& vis = vit->second;
     float tr = 1.0f, tg = 1.0f, tb = 1.0f;
+    // The alpha channel is the switch: 0 says "sample the atlas", 1 says "I am this colour".
+    float ta = 1.0f;
     float u0 = 0.0f, v0 = 0.0f, u1 = 1.0f, v1 = 1.0f;
-    if (hasTileset)
+    if (atlas.loaded && vis.has_cell)
     {
-        const float tw = static_cast<float>(atlasW);
-        const float th = static_cast<float>(atlasH);
+        ta = 0.0f;
+        const float tw = static_cast<float>(atlas.w);
+        const float th = static_cast<float>(atlas.h);
         const float tileF = static_cast<float>(config.atlas_tile_size);
         const float c = static_cast<float>(vis.uv_col);
         const float r = static_cast<float>(vis.uv_row);
@@ -129,7 +145,7 @@ static void emitTileQuad(std::vector<float>& verts, const TileConfig& config, in
     const float x1 = x0 + ts;
     const float y1 = y0 + ts;
     const auto push = [&](float x, float y, float u, float v)
-    { verts.insert(verts.end(), {x, y, u, v, tr, tg, tb, 1.0f}); };
+    { verts.insert(verts.end(), {x, y, u, v, tr, tg, tb, ta}); };
     push(x0, y0, u0, v0);
     push(x1, y0, u1, v0);
     push(x1, y1, u1, v1); // tri 1
@@ -208,6 +224,7 @@ void TileMapRenderer::upload(const TileMap& map, const TileConfig& config, Textu
         tm.getDimensions(config.tileset_path, atlasW, atlasH);
         sHasTileset = (atlasW > 0 && atlasH > 0);
     }
+    const AtlasFacts atlas{sHasTileset, atlasW, atlasH};
 
     // Build interleaved vertex data.
     // Each tile = 2 triangles = 6 vertices x 8 floats.
@@ -221,8 +238,7 @@ void TileMapRenderer::upload(const TileMap& map, const TileConfig& config, Textu
     verts.reserve(tile_count * 48); // 6 verts * 8 floats
     for (int row = 0; row < map.height; ++row)
         for (int col = 0; col < map.width; ++col)
-            emitTileQuad(verts, config, map.at(col, row).tile_id, col, row, ts, sHasTileset, atlasW,
-                         atlasH);
+            emitTileQuad(verts, config, map.at(col, row).tile_id, col, row, ts, atlas);
 
     sMapWidth = map.width;
     sMapHeight = map.height;
@@ -251,7 +267,7 @@ void TileMapRenderer::upload(const TileMap& map, const TileConfig& config, Textu
         {
             const int col = static_cast<int>(d.cell % static_cast<std::size_t>(map.width));
             const int row = static_cast<int>(d.cell / static_cast<std::size_t>(map.width));
-            emitTileQuad(sv, config, d.tile.tile_id, col, row, ts, sHasTileset, atlasW, atlasH);
+            emitTileQuad(sv, config, d.tile.tile_id, col, row, ts, atlas);
         }
         sDecVertexCount = uploadSparse(sv, sDecVbo);
     }
@@ -266,7 +282,7 @@ void TileMapRenderer::upload(const TileMap& map, const TileConfig& config, Textu
                 {
                     const int id = map.overhang[map.cellIndex(col, row)].tile_id;
                     if (id != 0)
-                        emitTileQuad(sv, config, id, col, row, ts, sHasTileset, atlasW, atlasH);
+                        emitTileQuad(sv, config, id, col, row, ts, atlas);
                 }
         sOverVertexCount = uploadSparse(sv, sOverVbo);
     }

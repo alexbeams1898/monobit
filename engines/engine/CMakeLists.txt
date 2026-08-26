@@ -32,6 +32,7 @@ target_sources(engine PRIVATE
     src/systems/CameraPanSystem.cpp
     src/utils/DirectionUtils.cpp
     src/utils/SaveFile.cpp
+    src/utils/CrashHandler.cpp
     src/gl/ShaderUtils.cpp
     src/gl/PixelRenderTarget.cpp
 )
@@ -57,9 +58,11 @@ target_link_libraries(engine
         Jolt
 )
 
-# miniaudio on Windows requires these system libs (WASAPI/WinMM/COM).
+# miniaudio on Windows requires these system libs (WASAPI/WinMM/COM); dbghelp is
+# what turns a crashed stack into named frames (see utils/CrashHandler.h) and is
+# named here rather than inherited from a profiler that may be switched off.
 if(WIN32)
-    target_link_libraries(engine PUBLIC winmm ole32)
+    target_link_libraries(engine PUBLIC winmm ole32 dbghelp)
 endif()
 
 target_compile_features(engine PUBLIC cxx_std_17)
@@ -78,6 +81,9 @@ add_executable(engine-tests
     tests/collision_test.cpp
     tests/tilemap_test.cpp
     tests/animation_test.cpp
+    tests/direction_mirror_test.cpp
+    tests/crash_handler_test.cpp
+    tests/solid_color_tint_test.cpp
     tests/inventory_ops_test.cpp
     tests/crafting_ops_test.cpp
     tests/evolution_ops_test.cpp

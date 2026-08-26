@@ -1,0 +1,15 @@
+{
+    "sheet": "assets/sprites/player.png",
+    "frame_w": 20,
+    "frame_h": 40,
+    "frames": 1,
+    "durations": [
+        100
+    ],
+    "anims": {
+        "idle": {
+            "from": 0,
+            "to": 0
+        }
+    }
+}

@@ -1,0 +1,165 @@
+#include "renderers/DebugPanelRenderer.h"
+
+#include "Engine.h"
+#include "ecs/BalanceConfig.h"
+#include "ecs/Components.h"
+#include "ecs/EntityManager.h"
+#include "formats/AreaLoader.h"
+#include "ops/LogUtils.h"
+#include "ops/RecordOps.h"
+#include "systems/CombatSystem.h"
+#include "systems/PlayerSystem.h"
+#include "systems/TravelSystem.h"
+
+#include <imgui.h>
+
+#include <string>
+
+namespace debug_panel
+{
+namespace
+{
+bool sVisible = false;
+
+// 120 px/s is exactly 2 px/tick at 60 Hz. Whole pixels per tick matter: the camera rounds to
+// an internal pixel every frame, so a speed that does not divide evenly makes the world scroll
+// in uneven steps, which reads as lag while nothing is actually late.
+float sWalkSpeed = 120.0f;
+
+// 3x: a 40px character lands around 120 screen pixels -- close enough that he reads as the
+// person you are. At 2x he reads as a distant figure being watched instead.
+int sZoom = 3;
+
+bool sShowHitAreas = false;
+
+// A pest path's file stem -- enough to name a species in a dev list.
+std::string stemOf(const std::string& path)
+{
+    const size_t slash = path.find_last_of("/\\");
+    const size_t start = slash == std::string::npos ? 0 : slash + 1;
+    const size_t dot = path.find('.', start);
+    return path.substr(start, dot == std::string::npos ? std::string::npos : dot - start);
+}
+} // namespace
+
+bool showHitAreas()
+{
+    return sShowHitAreas;
+}
+
+void toggle()
+{
+    sVisible = !sVisible;
+}
+
+float walkSpeed()
+{
+    return sWalkSpeed;
+}
+
+bool visible()
+{
+    return sVisible;
+}
+
+int zoom()
+{
+    return sZoom;
+}
+
+// THE SHEET, live: the five stats and what they derive to, with every slider re-deriving on the
+// spot so the curve can be read by dragging rather than by arithmetic. Its own function because
+// a panel is a list of sections and reading one should not mean scrolling past the others.
+void sheetSection(EntityManager& em)
+{
+    const entt::entity pl = player::entity();
+    if (!em.registry().valid(pl) || !em.registry().all_of<Stats>(pl))
+        return;
+    auto& sheet = em.registry().get<Stats>(pl);
+    ImGui::Separator();
+    ImGui::TextUnformatted("Sheet");
+    bool changed = false;
+    changed |= ImGui::SliderInt("chemical", &sheet.chemical, 1, 20);
+    changed |= ImGui::SliderInt("physical", &sheet.physical, 1, 20);
+    changed |= ImGui::SliderInt("biological", &sheet.biological, 1, 20);
+    changed |= ImGui::SliderInt("endurance", &sheet.endurance, 1, 20);
+    changed |= ImGui::SliderInt("inspection", &sheet.inspection, 1, 20);
+    if (changed)
+        stats::applyDerivations(em, pl);
+    ImGui::TextDisabled("level %d   hp %d   stam %.0f   def %d", stats::level(sheet),
+                        stats::maxHealth(sheet), stats::maxStamina(sheet), stats::defense(sheet));
+    if (tools::all().empty())
+        return;
+    const auto& held = tools::all()[static_cast<size_t>(tools::selected())];
+    ImGui::TextDisabled("%s dmg %.1f", held.name.c_str(), tools::damageOf(held, sheet));
+}
+
+void render(Engine& engine, EntityManager& em)
+{
+    if (!sVisible)
+        return;
+
+    ImGui::SetNextWindowSize(ImVec2(340.0f, 0.0f), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Point of Entry -- dev (F1)"))
+    {
+        ImGui::Text("%.1f fps  (%.2f ms)", 1.0 / engine.frameDt(), engine.frameDt() * 1000.0);
+        ImGui::Separator();
+
+        ImGui::TextUnformatted("Movement");
+        // Stepped in whole pixels-per-tick, because anything between them scrolls unevenly.
+        int perTick = static_cast<int>(std::lround(sWalkSpeed / 60.0f));
+        if (ImGui::SliderInt("px per tick", &perTick, 1, 6))
+            sWalkSpeed = static_cast<float>(perTick) * 60.0f;
+        ImGui::TextDisabled("%.0f px/s -- a 32px tile every %.2fs", static_cast<double>(sWalkSpeed),
+                            32.0 / static_cast<double>(sWalkSpeed));
+
+        ImGui::Separator();
+        ImGui::TextUnformatted("View");
+        // Integer only -- see zoom() in the header for why.
+        if (ImGui::SliderInt("zoom", &sZoom, 1, 6))
+            poe::log().info("view: zoom {}x", sZoom);
+        ImGui::TextDisabled("internal %d x %d", engine.windowWidth() / sZoom,
+                            engine.windowHeight() / sZoom);
+        ImGui::Checkbox("show hit areas", &sShowHitAreas);
+
+        ImGui::Separator();
+        ImGui::TextUnformatted("World");
+        ImGui::TextDisabled("%d drawn things",
+                            static_cast<int>(em.registry().view<Sprite>().size()));
+        ImGui::TextDisabled("map %d x %d @ %dpx", em.tile_map.width, em.tile_map.height,
+                            em.tile_map.tile_size);
+
+        // THE SHEET. Sliders rather than a readout, because whether a stat point is worth
+        // feeling is a thing you judge by cranking it mid-swarm -- and every derived number
+        // sits beside it so the formulas are never a mystery while tuning them.
+        sheetSection(em);
+
+        // AUTHORED PLACES. Verifying a level means standing in it: click a
+        // level to enter at its start, a door to land on its doormat -- the
+        // exact state walking through its counterpart would produce.
+        if (em.registry().valid(player::entity()))
+        {
+            ImGui::Separator();
+            ImGui::TextUnformatted("Levels");
+            for (const auto& lvl : area::levels("assets/maps/world.ldtk"))
+                if (ImGui::Selectable((lvl + "##level").c_str()))
+                    travel::enter(engine, em, lvl);
+            ImGui::TextUnformatted("Warps");
+            for (const auto& id : travel::warpIds())
+                if (ImGui::Selectable((id + "##warp").c_str()))
+                    travel::jumpToWarp(engine, em, id);
+        }
+
+        // THE RECORD, raw -- dev visibility until the field guide gives it a page.
+        ImGui::Separator();
+        ImGui::TextUnformatted("Record");
+        for (const auto& [species, n] : record::all())
+            ImGui::TextDisabled("%s: %d", stemOf(species).c_str(), n);
+
+        ImGui::Separator();
+        ImGui::TextDisabled("F12 writes frame.png beside the exe");
+    }
+    ImGui::End();
+}
+
+} // namespace debug_panel

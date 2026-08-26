@@ -132,10 +132,14 @@ jobs:
   clang-tidy:
     name: Lint (clang-tidy)
     runs-on: ubuntu-latest
-    # No `needs: build`. clang-tidy reads compile_commands.json (written
-    # at CMake CONFIGURE) and the headers in build/_deps/ (fetched at
-    # CONFIGURE). Both are populated by `cmake -S . -B build` alone --
-    # no compilation needed. Runs in parallel with the build job.
+    # No `needs: build`. clang-tidy reads compile_commands.json, written at
+    # CMake CONFIGURE, so the project does not need compiling -- but it DOES
+    # need every header the sources include, and not all of them are fetched.
+    # glad GENERATES glad.h at BUILD time, so configure alone leaves
+    # `#include <glad/glad.h>` unresolvable and every file that reaches it
+    # fails with clang-diagnostic-error before one check has run. Building
+    # that one target is the difference between this job reading the code and
+    # this job failing on its own setup.
     steps:
       - uses: actions/checkout@v4
         with:
@@ -173,6 +177,11 @@ jobs:
             -DCMAKE_C_COMPILER=clang \
             -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Generate headers
+        # glad's header does not exist until its target is built. Nothing else
+        # here needs compiling.
+        run: cmake --build build --target glad
 
       - name: Find files to lint
         id: lint-files
@@ -281,6 +290,12 @@ jobs:
             cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
           fi
 
+      - name: Generate sources
+        # cppcheck reads compile_commands.json, which names glad.c -- a file
+        # glad's target GENERATES at build time. Without it the whole project
+        # fails to load and nothing is analysed at all.
+        run: cmake --build build --target glad
+
       - name: cppcheck
         run: |
           cppcheck --project=build/compile_commands.json \
@@ -319,7 +334,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install lizard
-        run: pip install lizard
+        # PINNED. Unpinned, a new release changes what counts as a parameter or
+        # a branch and the branch starts failing with no code having changed --
+        # and local, on whatever version happens to be installed, disagrees with
+        # CI about whether the tree is clean. The version is the contract.
+        run: pip install lizard==1.24.0
 
       - name: Run lizard
         run: |

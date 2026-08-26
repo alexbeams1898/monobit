@@ -1,0 +1,77 @@
+{
+    "_comment": "The derivation formulas -- see include/Stats.h. Nothing in the game authors health, stamina or defense directly; they all come out of these curves and the five stats. player is the starting sheet.",
+    "player": {
+        "chemical": 2,
+        "physical": 1,
+        "biological": 1,
+        "endurance": 2,
+        "inspection": 1
+    },
+    "health": {
+        "base": 80.0,
+        "endurance_scale": 12.0,
+        "physical_scale": 4.0
+    },
+    "stamina": {
+        "base": 90.0,
+        "endurance_scale": 8.0,
+        "recovery_delay": 0.8,
+        "recovery_rate": 45.0
+    },
+    "block": {
+        "stamina_per_damage": 2.0,
+        "broken_factor": 0.6,
+        "walk_factor": 0.85
+    },
+    "defense": {
+        "level_scale": 0.4,
+        "physical_scale": 0.8,
+        "endurance_scale": 0.5
+    },
+    "scaling": {
+        "per_point": 0.08
+    },
+    "reward": {
+        "xp_base": 40,
+        "xp_growth": 1.35
+    },
+    "loot": {
+        "quality_thresholds": [
+            20.0,
+            38.0,
+            48.0
+        ],
+        "inspection_chance_scale": 0.06,
+        "inspection_quality_scale": 1.5
+    },
+    "guide": {
+        "kills_for_entry": 1,
+        "kills_for_stats": 10
+    },
+    "thermos": {
+        "sips": 4,
+        "fills": [
+            "config/fills/coffee.json",
+            "config/fills/soup.json"
+        ]
+    },
+    "fronts": {
+        "bonus_per_extra": 0.35
+    },
+    "fists": {
+        "base": 2.0,
+        "per_physical": 0.8,
+        "reach": 26.0,
+        "arc": 70.0,
+        "cooldown": 0.42,
+        "stamina": 4.0
+    },
+    "feedback": {
+        "_comment": "HOW BEING HURT LOOKS. flash/death_flash are how long a struck body stays lit, in seconds; a kill holds longer and stays on screen for it. wound_from is the fraction of health below which he starts to show it -- a body that reddens from the first scratch is always saying the same thing and so says nothing. wound_depth is how far green and blue are pulled out at nothing-left, and wound_red pushes red above full so a wounded man reads as lit rather than dimmed.",
+        "flash": 0.12,
+        "death_flash": 0.22,
+        "wound_from": 0.6,
+        "wound_depth": 0.85,
+        "wound_red": 1.2
+    }
+}

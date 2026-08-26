@@ -42,7 +42,9 @@ std::string path(const std::string& org, const std::string& app,
 std::optional<nlohmann::json> readJson(const std::string& file_path);
 
 // Write `doc` to `file_path`, creating the parent directory if needed. Returns
-// false (and logs) if the directory or file can't be written.
+// false (and logs) if the directory or file can't be written. ATOMIC: the
+// document lands beside the target and is moved onto it, so an interrupted
+// write can never leave a half-written save where progress used to be.
 bool writeJson(const nlohmann::json& doc, const std::string& file_path);
 
 } // namespace engine::save
