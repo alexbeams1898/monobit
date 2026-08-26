@@ -276,6 +276,10 @@ bool save(const File& file, const std::string& path)
     return engine::save::writeJson(encode(file), resolved);
 }
 
+// The mutability is in the RETURN TYPE, not the body -- the caller writes through the pointer
+// this hands back, so the file it points into cannot be const. Static analysis reads only the
+// body, sees nothing written, and asks for a const it could not compile.
+// cppcheck-suppress constParameterReference
 Data* find(File& file, const std::string& id)
 {
     if (id.empty())
