@@ -6,6 +6,7 @@
 #include "systems/AudioSystem.h"
 #include "utils/DebugDraw.h"
 
+#include <chrono>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -574,6 +575,23 @@ void Engine::swapBuffers()
         SDL_GL_SwapWindow(window);
 }
 
+namespace
+{
+// TEARDOWN IS WHERE A STALL IS INVISIBLE. The window is already hidden and the process is on its
+// way out, so a slow stage reads to the player as the program hanging on quit -- and there is no
+// frame left to show anything. Silent when every stage is prompt, so a healthy quit says nothing
+// and a slow one names what held it.
+void reportIfSlow(const char* stage, std::chrono::steady_clock::time_point began)
+{
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - began)
+                        .count();
+    if (ms >= 50)
+        std::fprintf(stderr, "[engine] shutdown: %s took %lld ms\n", stage,
+                     static_cast<long long>(ms));
+}
+} // namespace
+
 void Engine::shutdown()
 {
     // Hide the window before any teardown: audio/GL/window destruction takes
@@ -585,29 +603,44 @@ void Engine::shutdown()
     // ImGui first — its OpenGL3 backend frees GPU resources, so it must
     // run while the GL context is still alive. Subsequent shutdowns can
     // safely no-op when called twice (e.g. dtor after explicit shutdown).
+    auto began = std::chrono::steady_clock::now();
     if (ImGui::GetCurrentContext() != nullptr)
     {
         ImGui_ImplOpenGL3_Shutdown();
         ImGui_ImplSDL2_Shutdown();
         ImGui::DestroyContext();
     }
+    reportIfSlow("imgui", began);
 
+    began = std::chrono::steady_clock::now();
     AudioSystem::shutdown();
+    reportIfSlow("audio", began);
+
+    began = std::chrono::steady_clock::now();
     UIRenderer::shutdown();
     FontManager::shutdown();
     sprite_compositor.clear();
     texture_manager.clear();
+    reportIfSlow("assets", began);
 
+    began = std::chrono::steady_clock::now();
     if (gl_context)
     {
         SDL_GL_DeleteContext(gl_context);
         gl_context = nullptr;
     }
+    reportIfSlow("gl context", began);
+
+    began = std::chrono::steady_clock::now();
     if (window)
     {
         SDL_DestroyWindow(window);
         window = nullptr;
     }
+    reportIfSlow("window", began);
+
+    began = std::chrono::steady_clock::now();
     SDL_Quit();
+    reportIfSlow("sdl", began);
     running = false;
 }

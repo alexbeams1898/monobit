@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ops/NavUtils.h"
+
 #include <string>
 #include <vector>
 
@@ -48,6 +50,17 @@ struct Hole
     Link to;          // the far end, -1 until it has been dug
     std::string kind; // a hole file; kept because a floor across the passage rebuilds this
                       // hole's program without building the floor it belongs to
+    // WHICH WALL IT IS CUT INTO. Meaningless for a hole in the ground, which faces up at him.
+    //
+    // A room's OWN holes derive this every build -- it is a fact about a map that comes back
+    // identical from its seed, and a derived fact that is stored is one that goes on answering
+    // by whatever rule was in force the day it was written down.
+    //
+    // What is stored is the WAY IN, which is the one hole whose side is not a fact about this
+    // room at all: it is the reverse of the hole he came through, in a room that is not built
+    // while he stands here. North on every hole dug before sides existed, which is what they
+    // all were.
+    world::Side side = world::Side::North;
     bool opened = false;
     bool cleared = false;
     int killed = 0; // how much of its program he has taken, so it resumes rather than restarts
@@ -80,6 +93,16 @@ struct Room
     // silently. Rewritten on every arrival: at an act boundary several holes lead into one
     // floor, so the way back is whichever way he actually came.
     int way_in = -1;
+    // CUT INTO A SLAB standing inside the room above, rather than through that room's edge --
+    // and how big that slab was, in tiles. Zero for a room reached the ordinary way, the same
+    // way an empty `area` means generated space.
+    //
+    // Two things follow from it and neither can be worked out later, because the room that knew
+    // it is torn down the moment he steps through. It grows NO holes in walls: a slab has the
+    // same room on both sides, so a passage through one would come out where it went in. And it
+    // takes its shape from the slab, so what he walks into looks like the thing he walked into.
+    int slab_cols = 0;
+    int slab_rows = 0;
     std::vector<Hole> holes;
 };
 

@@ -2,6 +2,8 @@
 
 #include <filesystem>
 #include <fstream>
+#include <set>
+#include <string>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -64,4 +66,35 @@ TEST_CASE("a bank that is missing or broken leaves the game silent, not dead", "
         sound::play("tap");
         std::filesystem::remove(path);
     }
+}
+
+// DRAWING WITHOUT REPLACEMENT is the rule that keeps a repeated sound incidental. Rolled
+// independently, eight footsteps repeat one back-to-back about every eighth step, and a repeat
+// is exactly what the ear picks out of a sequence meant not to be noticed.
+TEST_CASE("a sound never follows itself, and every variation gets used", "[sound]")
+{
+    REQUIRE(sound::load("config/audio.json"));
+
+    std::string previous;
+    std::set<std::string> seen;
+    for (int i = 0; i < 200; ++i)
+    {
+        const std::string chosen = sound::play("footstep");
+        REQUIRE_FALSE(chosen.empty());
+        CHECK(chosen != previous);
+        previous = chosen;
+        seen.insert(chosen);
+    }
+    // Every file in the entry is reached -- a bag that quietly drew from half the pool would
+    // pass the no-repeat check and still sound like two footsteps.
+    CHECK(seen.size() == 8);
+}
+
+TEST_CASE("an entry of one plays that one, every time", "[sound]")
+{
+    REQUIRE(sound::load("config/audio.json"));
+    // The no-repeat rule cannot apply to a pool of one, and must not deadlock or fall silent
+    // trying: his death has a single recording, and pitch is what varies it.
+    for (int i = 0; i < 5; ++i)
+        CHECK(sound::play("death") == "assets/audio/death.ogg");
 }

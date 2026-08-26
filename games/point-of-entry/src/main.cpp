@@ -46,12 +46,14 @@
 #include "systems/SpriteAnimSystem.h"
 #include "systems/ThermosSystem.h"
 #include "systems/TileMapRenderer.h"
+#include "systems/TintSystem.h"
 #include "systems/TravelSystem.h"
 #include "systems/WaveSystem.h"
 #include "utils/CrashHandler.h"
 
 #include <nlohmann/json.hpp>
 
+#include <chrono>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -146,12 +148,16 @@ void ensurePlayer(EntityManager& em, float x, float y)
     em.registry().emplace<Charge>(playerEnt,
                                   Charge{tools::chargeTuning().max, tools::chargeTuning().max});
     em.registry().emplace<Camera>(playerEnt, Camera{x, y});
+    // He is the one thing in the game with legs, so he is the one thing with a gait -- and
+    // with it, footsteps.
+    em.registry().emplace<Gait>(playerEnt, Gait{});
     player::bind(playerEnt);
 }
 
 void loadConfigs()
 {
     stats::load("config/stats.json");
+    tint::load("config/stats.json");
     thermos::load("config/stats.json");
     items::load("config/items");
     tools::load("config/tools.json");
@@ -186,8 +192,6 @@ entt::entity passageUnderfoot(EntityManager& em)
 void deathReturn(Engine& engine, EntityManager& em)
 {
     auto& reg = em.registry();
-    floaters::clear();
-    notify::clear();
 
     // The descent is untouched -- death writes nothing on the world. He just
     // stops standing in it.
@@ -208,6 +212,59 @@ void deathReturn(Engine& engine, EntityManager& em)
         charge->current = charge->max_charge;
     thermos::rest(em); // he wakes as if he had taken his break -- flask full
     poe::log().info("death: he wakes at home");
+}
+
+// EVERYTHING HE WAS IN THE MIDDLE OF, ENDED. The world can be taken away from him mid-act --
+// he dies, a door draws its curtain, he opens the pause screen -- and each of those stops the
+// tick outright. A stopped tick does not finish what is in flight, it PRESERVES it: a flash
+// holds at full brightness, a tint freezes on the body, a held stream goes on hissing behind
+// the black. So the moment the world stops being his, the things happening in it are ended
+// rather than paused.
+//
+// Each module takes its own away; this only knows the roll call.
+void standDown(EntityManager& em)
+{
+    tools::holster(em); // the stream, its head, and the trigger it was held with
+    hit_area::forget(em);
+    tint::forget(em);
+    floaters::clear();
+    notify::clear();
+}
+
+// THE WORLD IS HIS only while nothing has taken it: no black over it, no curtain, no screen he
+// has stepped into. Asked rather than listed at each transition -- there are several ways to
+// lose it, and a stand-down called at each is a list that one day misses one.
+bool worldIsHis()
+{
+    return sDeathBeat == DeathBeat::None && !travel::active() && !sApp.staging;
+}
+
+// WHEN HE ASKED TO GO. The teardown after the loop is only half the story of a slow quit --
+// whatever the last frame does before the loop notices is the other half, and a save is written
+// there.
+std::chrono::steady_clock::time_point sQuitAsked{};
+void askedToQuit()
+{
+    sQuitAsked = std::chrono::steady_clock::now();
+}
+long long sinceQuitAsked()
+{
+    return sQuitAsked.time_since_epoch().count() == 0
+               ? -1
+               : std::chrono::duration_cast<std::chrono::milliseconds>(
+                     std::chrono::steady_clock::now() - sQuitAsked)
+                     .count();
+}
+
+// Ends what is in flight on the tick he loses the world, and only on that tick -- a stand-down
+// run every frame would silence a stream he is still holding.
+void noticeTheWorldLeavingHim(EntityManager& em, bool nowPlaying)
+{
+    static bool sHad = false;
+    const bool has = nowPlaying && worldIsHis();
+    if (sHad && !has)
+        standDown(em);
+    sHad = has;
 }
 
 // The world only ticks while it is being PLAYED: not behind the title, and not behind the
@@ -284,6 +341,8 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     if (nowPlaying && !sWasPlaying)
         aim::requireFreshPress();
     sWasPlaying = nowPlaying;
+
+    noticeTheWorldLeavingHim(em, nowPlaying);
 
     if (!nowPlaying)
         return;
@@ -377,12 +436,17 @@ void gameUpdate(Engine& engine, EntityManager& em, double dt)
     // After everything that moves, since the gait is driven by how far things actually went.
     walk_bob::update(em, static_cast<float>(dt));
 
-    // Last, after every system that could have hurt him this tick.
+    // Last of all, so every colour is decided from what the tick actually left behind rather
+    // than from what anything meant to happen.
+    tint::update(em);
+
+    // After every system that could have hurt him this tick.
     if (const auto* hp = em.registry().try_get<Health>(player::entity());
         hp != nullptr && hp->current <= 0 && sDeathBeat == DeathBeat::None)
     {
         sDeathBeat = DeathBeat::FadeOut;
         sDeathTimer = 0.0f;
+        sound::play("death");
     }
 }
 
@@ -408,6 +472,10 @@ void gameRenderWorld(Engine& engine, EntityManager& em, float camX, float camY, 
     if (sApp.world_built)
     {
         TileMapRenderer::render(camX, camY, internalW(engine), internalH(engine), 1.0f);
+        // BETWEEN THE GROUND AND THE BODIES ON IT. The ground layer is what a thing stands on;
+        // decoration is what is drawn onto it -- the fronts of walls, and whatever is stamped on
+        // a floor later -- and he walks in front of all of it.
+        TileMapRenderer::renderDecoration(camX, camY, internalW(engine), internalH(engine), 1.0f);
         RenderSystem::render(em, engine.textureManager(), camX, camY, 1.0f);
     }
     engine::gl::pixelTargetEnd(engine.windowWidth(), engine.windowHeight());
@@ -465,6 +533,7 @@ void enactTitle(Engine& engine, title_screen::Action a)
         settings_screen::reset();
         break;
     case title_screen::Action::Quit:
+        askedToQuit();
         engine.requestQuit();
         break;
     case title_screen::Action::None:
@@ -497,6 +566,7 @@ void enactPause(Engine& engine, pause_screen::Action a)
         title_screen::reset();
         break;
     case pause_screen::Action::Quit:
+        askedToQuit();
         engine.requestQuit();
         break;
     case pause_screen::Action::None:
@@ -682,12 +752,21 @@ int main(int argc, char* argv[])
     engine.setRenderImGui(&debug_panel::render);
     engine.run();
 
-    // Bracketed because quitting has hung before and a hang with no output is a bug nobody can
-    // place. If the log stops between these, the teardown is where it went.
-    poe::log().info("quit: loop ended, tearing down");
+    // TIMED, because quitting has hung before and a hang with no output is a bug nobody can
+    // place. The window is already gone by then, so the only account of it is this line -- and
+    // "it felt slow" is not one. The engine's own teardown is taken here rather than left to the
+    // destructor so it falls inside the measurement.
+    poe::log().info("quit: loop ended {} ms after it was asked for", sinceQuitAsked());
+    const auto began = std::chrono::steady_clock::now();
     engine::gl::pixelTargetShutdown();
     TileMapRenderer::shutdown();
     RenderSystem::shutdown();
-    poe::log().info("quit: clean");
+    const auto mine = std::chrono::steady_clock::now();
+    engine.shutdown();
+    const auto done = std::chrono::steady_clock::now();
+    const auto ms = [](auto a, auto b)
+    { return std::chrono::duration_cast<std::chrono::milliseconds>(b - a).count(); };
+    poe::log().info("quit: clean -- renderers {} ms, engine {} ms", ms(began, mine),
+                    ms(mine, done));
     return 0;
 }

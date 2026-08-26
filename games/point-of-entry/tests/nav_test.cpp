@@ -154,24 +154,24 @@ TEST_CASE("an arch only takes a wall with body behind it", "[nav]")
 
     SECTION("the boundary is a wall, and its bottom edge comes back")
     {
-        const float face = world::wallFaceAbove(em, mid(3), mid(3), 4, 2);
+        const float face = world::wallFace(em, mid(3), mid(3), world::Side::North, 4, 2);
         REQUIRE(face >= 0.0f);
         CHECK(face == 64.0f); // the bottom edge of row 1
     }
 
     SECTION("the divider is not, however close it is")
     {
-        CHECK(world::wallFaceAbove(em, mid(3), mid(5), 4, 2) < 0.0f);
+        CHECK(world::wallFace(em, mid(3), mid(5), world::Side::North, 4, 2) < 0.0f);
     }
 
     SECTION("asking for no body at all takes the divider, which is the old behaviour")
     {
-        CHECK(world::wallFaceAbove(em, mid(3), mid(5), 4, 1) >= 0.0f);
+        CHECK(world::wallFace(em, mid(3), mid(5), world::Side::North, 4, 1) >= 0.0f);
     }
 
     SECTION("open floor above is no wall at any depth")
     {
-        CHECK(world::wallFaceAbove(em, mid(3), mid(7), 1, 2) < 0.0f);
+        CHECK(world::wallFace(em, mid(3), mid(7), world::Side::North, 1, 2) < 0.0f);
     }
 }
 
@@ -199,8 +199,9 @@ TEST_CASE("a spot for an arch is found at a wall, not merely on floor", "[nav]")
     {
         float x = mid(5);
         float y = mid(8);
-        REQUIRE(world::archSpotNear(em, x, y, 1.0f, 1.0f, /*reach=*/4, /*depth=*/2));
-        CHECK(world::wallFaceAbove(em, x, y, 4, 2) >= 0.0f);
+        REQUIRE(world::archSpotNear(em, x, y, 1.0f, 1.0f, world::Side::North, /*reach=*/4,
+                                    /*depth=*/2));
+        CHECK(world::wallFace(em, x, y, world::Side::North, 4, 2) >= 0.0f);
         CHECK(world::boxFree(em, x, y, 1.0f, 1.0f));
     }
 
@@ -208,7 +209,7 @@ TEST_CASE("a spot for an arch is found at a wall, not merely on floor", "[nav]")
     {
         float x = mid(5);
         float y = mid(2);
-        REQUIRE(world::archSpotNear(em, x, y, 1.0f, 1.0f, 4, 2));
+        REQUIRE(world::archSpotNear(em, x, y, 1.0f, 1.0f, world::Side::North, 4, 2));
         CHECK(x == mid(5));
         CHECK(y == mid(2));
     }
@@ -223,6 +224,67 @@ TEST_CASE("a spot for an arch is found at a wall, not merely on floor", "[nav]")
         float x = mid(3);
         float y = mid(3);
         // Off the map is solid but has nothing behind it, so no face qualifies at this depth.
-        CHECK_FALSE(world::archSpotNear(open, x, y, 1.0f, 1.0f, /*reach=*/1, /*depth=*/3));
+        CHECK_FALSE(world::archSpotNear(open, x, y, 1.0f, 1.0f, world::Side::North, /*reach=*/1,
+                                        /*depth=*/3));
     }
+}
+
+// WHAT IS ON THE OTHER SIDE is the question, and thickness was only ever a guess at it. A room
+// is stamped from several chambers with corridors cut between them, so a divider standing in the
+// middle of one is routinely thicker than a boundary test looks for -- and a hole cut into one
+// comes out where it went in.
+TEST_CASE("a slab standing in a room is told from the room's own edge", "[nav]")
+{
+    const EntityManager em = walledRoom();
+
+    SECTION("the pillar is a slab, and its footprint is its own")
+    {
+        // Standing just below the pillar at (5,5), looking up into it.
+        const world::Slab slab = world::slabBeyond(em, mid(5), mid(6), world::Side::North, 4, 64);
+        CHECK(slab.cols == 1);
+        CHECK(slab.rows == 1);
+    }
+
+    SECTION("the room's own wall is not a slab, however much rock is behind it")
+    {
+        // Standing on the top row of floor, looking up into the north wall -- which runs to the
+        // edge of the map and so has nothing of this room behind it.
+        CHECK(world::slabBeyond(em, mid(5), mid(1), world::Side::North, 4, 64).cols == 0);
+    }
+
+    SECTION("nothing overhead at all is not a slab")
+    {
+        CHECK(world::slabBeyond(em, mid(5), mid(4), world::Side::North, 1, 64).cols == 0);
+    }
+
+    SECTION("past the cap it is architecture, and gets the edge's answer")
+    {
+        CHECK(world::slabBeyond(em, mid(5), mid(6), world::Side::North, 4, 0).cols == 0);
+    }
+}
+
+TEST_CASE("a slab's footprint is the whole connected block", "[nav]")
+{
+    EntityManager em;
+    em.tile_map.tile_size = 32;
+    em.tile_map.width = 12;
+    em.tile_map.height = 12;
+    em.tile_map.tiles.assign(144, TileMap::Tile{0, true});
+    const auto at = [&](int c, int r) -> TileMap::Tile&
+    { return em.tile_map.tiles[static_cast<std::size_t>(r * 12 + c)]; };
+    for (int i = 0; i < 12; ++i)
+    {
+        at(i, 0).walkable = false;
+        at(i, 11).walkable = false;
+        at(0, i).walkable = false;
+        at(11, i).walkable = false;
+    }
+    // A free-standing block three wide and two deep, clear of every wall.
+    for (int c = 4; c <= 6; ++c)
+        for (int r = 5; r <= 6; ++r)
+            at(c, r).walkable = false;
+
+    const world::Slab slab = world::slabBeyond(em, mid(5), mid(7), world::Side::North, 4, 64);
+    CHECK(slab.cols == 3);
+    CHECK(slab.rows == 2);
 }

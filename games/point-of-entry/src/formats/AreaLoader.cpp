@@ -79,22 +79,44 @@ struct Tileset
     bool ok = false;
 };
 
+// The tileset definition named `identifier`, or the first where that is empty.
+const nlohmann::json* tilesetDef(const nlohmann::json& j, const std::string& identifier)
+{
+    const auto defs = j.find("defs");
+    if (defs == j.end())
+        return nullptr;
+    const auto sets = defs->find("tilesets");
+    if (sets == defs->end() || !sets->is_array() || sets->empty())
+        return nullptr;
+    if (identifier.empty())
+        return &sets->front();
+    for (const auto& def : *sets)
+        if (def.value("identifier", std::string{}) == identifier)
+            return &def;
+    return nullptr;
+}
+
+// Where the atlas actually sits: the project stores it relative to itself, and the runtime runs
+// from the game root.
+std::string atlasPath(const nlohmann::json& def, const std::string& ldtkPath)
+{
+    const std::filesystem::path rel = def.value("relPath", std::string{});
+    return (std::filesystem::path(ldtkPath).parent_path() / rel)
+        .lexically_normal()
+        .generic_string();
+}
+
 Tileset parseTileset(const nlohmann::json& j, const std::string& ldtkPath)
 {
     Tileset ts;
-    const auto defs = j.find("defs");
-    if (defs == j.end())
+    const nlohmann::json* found = tilesetDef(j, {});
+    if (found == nullptr)
         return ts;
-    const auto sets = defs->find("tilesets");
-    if (sets == defs->end() || !sets->is_array() || sets->empty())
-        return ts;
-    const auto& def = sets->front();
+    const auto& def = *found;
     // The .ldtk stores the image path relative to the project file; resolve
     // against where the project actually sits, normalized to the game root
     // the runtime runs from.
-    const std::filesystem::path rel = def.value("relPath", std::string{});
-    ts.path =
-        (std::filesystem::path(ldtkPath).parent_path() / rel).lexically_normal().generic_string();
+    ts.path = atlasPath(def, ldtkPath);
     ts.cols = std::max(1, def.value("__cWid", 1));
     for (const auto& tag : def.value("enumTags", nlohmann::json::array()))
         if (tag.value("enumValueId", std::string{}) == "Solid")
@@ -304,6 +326,36 @@ bool build(EntityManager& em, const Data& d)
         it->second(em, o);
     }
     return true;
+}
+
+Tiles tileset(const std::string& ldtkPath, const std::string& identifier)
+{
+    Tiles out;
+    const nlohmann::json j = parseFile(ldtkPath);
+    if (j.is_null() || j.is_discarded())
+        return out;
+    const nlohmann::json* found = tilesetDef(j, identifier);
+    if (found == nullptr)
+    {
+        poe::log().error("area: '{}' has no tileset called '{}'", ldtkPath, identifier);
+        return out;
+    }
+    out.atlas = atlasPath(*found, ldtkPath);
+    out.grid = std::max(1, found->value("tileGridSize", 16));
+    out.cols = std::max(1, found->value("__cWid", 1));
+    // Every tag, not just Solid: a cell says what it IS this way, and what a caller needs to
+    // know about a cell is a question this file has no business answering.
+    for (const auto& tag : found->value("enumTags", nlohmann::json::array()))
+    {
+        const std::string value = tag.value("enumValueId", std::string{});
+        if (value.empty())
+            continue;
+        for (const auto& id : tag.value("tileIds", nlohmann::json::array()))
+            if (id.is_number_integer())
+                out.tagged[value].push_back(id.get<int>());
+    }
+    out.ok = true;
+    return out;
 }
 
 } // namespace area

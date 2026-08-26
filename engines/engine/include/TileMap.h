@@ -34,7 +34,16 @@ struct TileConfig
     {
         int uv_col = 0;
         int uv_row = 0;
-        float r = 0.2f, g = 0.2f, b = 0.2f; // flat color when no tileset
+        float r = 0.2f, g = 0.2f, b = 0.2f; // flat color: no tileset, or no cell in it
+        // WHETHER uv_col/uv_row MEAN ANYTHING. A map may use a tileset for most of what it draws
+        // and still hold ids with no cell in it -- generated space picks its tiles by NAME, and
+        // a name nothing has been drawn for has to fall back rather than quietly sample cell
+        // (0,0), which is a real tile and reads as a deliberate choice nobody made.
+        //
+        // LAST, and true by default, so every existing aggregate init keeps its meaning: a
+        // loader that lists uv and colours and stops there is saying "I have a cell", which is
+        // what those loaders have always meant.
+        bool has_cell = true;
     };
     std::unordered_map<int, TileVisual> tile_visuals;
 };

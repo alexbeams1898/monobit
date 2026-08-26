@@ -1,6 +1,7 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
+#include "formats/AreaLoader.h"
 #include "formats/FloorTypes.h"
 #include "formats/RoomGen.h"
 #include "systems/WaveSystem.h"
@@ -9,7 +10,10 @@
 
 #include <filesystem>
 #include <fstream>
+#include <map>
+#include <optional>
 #include <queue>
+#include <set>
 #include <vector>
 
 #include <catch2/catch_approx.hpp>
@@ -474,4 +478,219 @@ TEST_CASE("a cool roll stays the base form", "[field guide]")
     const entt::entity e = theOneEmerged(em, fx, 0);
     CHECK(em.registry().get<Smell>(e).amount == 30);
     CHECK(em.registry().get<Health>(e).max == 18); // lround(14 * 1.3) -- the base body, warmed
+}
+
+// A POCKET TAKES THE SHAPE OF THE SLAB IT WAS CUT INTO, which is the whole reason it reads as a
+// space inside a room rather than another room: a wide flat block opens a wide flat space.
+TEST_CASE("a floor generated to an extent is the shape of what it copies", "[roomgen]")
+{
+    EntityManager em;
+    const nlohmann::json type = formats::read("config/rooms/cellar.json");
+    const int ownW = type.value("width", 0);
+    const int ownH = type.value("height", 0);
+    REQUIRE(ownW > 0);
+
+    SECTION("no extent leaves the type's own size alone")
+    {
+        REQUIRE(roomgen::generate(em, "config/rooms/cellar.json", 1234u).ok);
+        CHECK(em.tile_map.width == ownW);
+        CHECK(em.tile_map.height == ownH);
+    }
+
+    SECTION("a wide flat slab opens a wide flat space")
+    {
+        REQUIRE(roomgen::generate(em, "config/rooms/cellar.json", 1234u, roomgen::Extent{8, 2}).ok);
+        CHECK(em.tile_map.width > em.tile_map.height);
+        CHECK(em.tile_map.width <= ownW);
+        CHECK(em.tile_map.height <= ownH);
+    }
+
+    SECTION("a slab too small to stand in still opens somewhere he can stand")
+    {
+        REQUIRE(roomgen::generate(em, "config/rooms/cellar.json", 1234u, roomgen::Extent{1, 1}).ok);
+        // Measured in tiles of WALL; a room has to be walked around in -- and, more than that,
+        // something has to be stampable into it or the floor comes back unbuildable.
+        CHECK(em.tile_map.width >= 17);
+        CHECK(em.tile_map.height >= 10);
+    }
+
+    SECTION("a slab bigger than the room it sits in never comes out bigger")
+    {
+        REQUIRE(
+            roomgen::generate(em, "config/rooms/cellar.json", 1234u, roomgen::Extent{999, 999}).ok);
+        CHECK(em.tile_map.width == ownW);
+        CHECK(em.tile_map.height == ownH);
+    }
+}
+
+// WHERE HOLES WILL LAND, run by name (`poe-tests "[.probe]"`) rather than as an assertion: the
+// answer is a consequence of how the chamber templates are drawn, so it is a thing to consult
+// when drawing them rather than a rule to hold them to.
+//
+// Two numbers, because they answer the two questions a template raises. WHICH WALL a marker is
+// nearest -- a template that is wide and short puts nearly every one against its north wall.
+// And how many markers have a wall WORTH GNAWING, since a wall with floor a few tiles behind it
+// is a divider rather than a way out and is refused; if wall holes ever feel too rare, this is
+// where the rarity is.
+TEST_CASE("probe: where holes will land", "[.probe]")
+{
+    int nearest[4] = {0, 0, 0, 0};
+    int worth = 0;
+    int slab = 0;
+    int refused = 0;
+    for (unsigned seed = 1; seed <= 200; ++seed)
+    {
+        EntityManager em;
+        const roomgen::Layout floor = roomgen::generate(em, "config/rooms/cellar.json", seed);
+        if (!floor.ok)
+            continue;
+        for (const auto& m : floor.markers)
+        {
+            std::optional<int> pick;
+            float away = 0.0f;
+            bool anyWall = false;
+            bool anySlab = false;
+            int i = 0;
+            for (const world::Side side :
+                 {world::Side::North, world::Side::South, world::Side::East, world::Side::West})
+            {
+                const float face = world::wallFace(em, m.x, m.y, side, 4, 2);
+                if (face >= 0.0f)
+                {
+                    anyWall = true;
+                    if (world::slabBeyond(em, m.x, m.y, side, 4, 64).cols > 0)
+                        anySlab = true;
+                    const auto step = world::stepOf(side);
+                    const float d = std::abs((step.dc != 0 ? m.x : m.y) - face);
+                    if (!pick || d < away)
+                    {
+                        pick = i;
+                        away = d;
+                    }
+                }
+                ++i;
+            }
+            if (pick)
+                ++nearest[*pick];
+            if (anySlab)
+                ++slab;
+            else if (anyWall)
+                ++worth;
+            else
+                ++refused;
+        }
+    }
+    WARN("nearest wall  N=" << nearest[0] << " S=" << nearest[1] << " E=" << nearest[2]
+                            << " W=" << nearest[3]);
+    WARN("leads somewhere: " << worth << "  a slab (a pocket): " << slab
+                             << "  no wall at all: " << refused);
+}
+
+// A CELL SAYS WHAT IT IS BY ITS TAG, so nothing about a tile is written down twice. This pins
+// the half that can silently rot: a tag renamed in the tileset editor, or a sheet rearranged,
+// must move the art the generator draws with and must not need a config edited to match.
+TEST_CASE("a room type takes its cells from the tileset's tags", "[roomgen]")
+{
+    // WHICHEVER TILESET THE TYPE NAMES. Reading it here rather than naming one keeps the test
+    // following the game instead of repeating it -- pointing a room type at different art must
+    // not be a thing that breaks tests.
+    const std::string named =
+        formats::read("config/rooms/cellar.json").value("tileset", std::string{});
+    REQUIRE_FALSE(named.empty());
+    const area::Tiles set = area::tileset("assets/maps/world.ldtk", named);
+    REQUIRE(set.ok);
+    CHECK(set.grid == 16); // authored at the art's own scale; the world doubles it
+    CHECK(set.cols >= 1);
+    CHECK_FALSE(set.atlas.empty());
+
+    SECTION("a tileset that is not there is a miss, not a crash")
+    {
+        CHECK_FALSE(area::tileset("assets/maps/world.ldtk", "NoSuchTileset").ok);
+        CHECK_FALSE(area::tileset("assets/maps/there-is-no-project.ldtk").ok);
+    }
+
+    SECTION("naming one puts every tagged role at the cell its tag sits on")
+    {
+        EntityManager em;
+        REQUIRE(roomgen::generate(em, "config/rooms/cellar.json", 3u).ok);
+        REQUIRE_FALSE(em.tile_config.tileset_path.empty());
+        CHECK(em.tile_config.atlas_tile_size == set.grid);
+
+        // Whatever cell carries the tag is where the id draws from -- rearranging the sheet in
+        // the editor moves the art and nothing here needs editing to keep up.
+        for (const auto& [role, id] :
+             {std::pair<const char*, int>{"Floor", 0}, std::pair<const char*, int>{"Wall", 1}})
+        {
+            const auto tagged = set.tagged.find(role);
+            if (tagged == set.tagged.end() || tagged->second.empty())
+                continue; // not tagged yet: it keeps its flat colour, which is the point
+            const auto& vis = em.tile_config.tile_visuals.at(id);
+            CHECK(vis.uv_col == tagged->second.front() % set.cols);
+            CHECK(vis.uv_row == tagged->second.front() / set.cols);
+        }
+    }
+}
+
+// A HALF-DRAWN SET HAS TO RENDER BOTH WAYS. Naming a tileset must not make an id that has no
+// cell in it sample cell (0,0) -- that is a real tile, so the mistake looks like a deliberate
+// choice nobody made.
+TEST_CASE("an id with no cell keeps its colour even when the room has a tileset", "[roomgen]")
+{
+    EntityManager em;
+    REQUIRE(roomgen::generate(em, "config/rooms/cellar.json", 11u).ok);
+    REQUIRE_FALSE(em.tile_config.tileset_path.empty());
+
+    const std::string named =
+        formats::read("config/rooms/cellar.json").value("tileset", std::string{});
+    const area::Tiles set = area::tileset("assets/maps/world.ldtk", named);
+    REQUIRE(set.ok);
+
+    for (const auto& [id, role] :
+         {std::pair<int, const char*>{0, "Floor"}, std::pair<int, const char*>{1, "Wall"}})
+    {
+        const auto found = set.tagged.find(role);
+        const bool drawn = found != set.tagged.end() && !found->second.empty();
+        const auto vis = em.tile_config.tile_visuals.find(id);
+        REQUIRE(vis != em.tile_config.tile_visuals.end());
+        CHECK(vis->second.has_cell == drawn);
+    }
+}
+
+// WOULD THE STRICTER RULE STARVE THE WALLS? A hole cut into a wall that is really a slab
+// standing IN the room leads back into the room it left. Requiring solid all the way out is
+// correct, and this says what it costs in supply.
+TEST_CASE("probe: how many markers have solid all the way out", "[.probe]")
+{
+    int backed = 0;
+    int slab = 0;
+    int none = 0;
+    for (unsigned seed = 1; seed <= 200; ++seed)
+    {
+        EntityManager em;
+        const roomgen::Layout floor = roomgen::generate(em, "config/rooms/cellar.json", seed);
+        if (!floor.ok)
+            continue;
+        for (const auto& m : floor.markers)
+        {
+            bool anyWall = false;
+            bool anyBacked = false;
+            for (const world::Side side :
+                 {world::Side::North, world::Side::South, world::Side::East, world::Side::West})
+            {
+                if (world::wallFace(em, m.x, m.y, side, 4, 2) < 0.0f)
+                    continue;
+                anyWall = true;
+                // {0,0} means the solid runs out of the map: a real boundary.
+                if (world::slabBeyond(em, m.x, m.y, side, 4, 64).cols == 0)
+                    anyBacked = true;
+            }
+            if (!anyWall)
+                ++none;
+            else if (anyBacked)
+                ++backed;
+            else
+                ++slab;
+        }
+    }
+    WARN("backed by rock: " << backed << "  only a slab: " << slab << "  no wall at all: " << none);
 }

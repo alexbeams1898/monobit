@@ -1,7 +1,10 @@
 {
-    "_comment": "WHAT A GNAWED GAP OPENS INTO. A cellar with the walls closer in: fewer rooms, tighter, the rooms closer together so a run between them is a squeeze rather than a walk. Browner and warmer than poured concrete, because this is bedding rather than building. Spacing is in TILES, so the cellar's distances inherited into a smaller box leave nowhere to seat the second hole a floor is guaranteed -- a tighter space needs them tighter. Its holes lean gnawed, which is what makes a warren feel like a NETWORK -- more of it runs sideways than down -- and rooms_per_floor is how many rooms a warren spreads to on one floor before the space stops offering ways sideways.",
+    "_comment": "WHAT A GNAWED GAP OPENS INTO. A cellar with the walls closer in: fewer rooms, tighter, the rooms closer together so a run between them is a squeeze rather than a walk. Browner and warmer than poured concrete, because this is bedding rather than building. Spacing is in TILES, so the cellar's distances inherited into a smaller box leave nowhere to seat the second hole a floor is guaranteed -- a tighter space needs them tighter. Its holes lean gnawed, which is what makes a warren feel like a NETWORK -- more of it runs sideways than down -- and rooms_per_floor is how many rooms a warren spreads to on one floor before the space stops offering ways sideways. tile_visuals 0 is the floor and 1 is the wall, and that is the whole set: a wall is a flat block, and which way a hole goes is said by the HOLE, drawn at the angle it is seen from. A type may name a `tileset` (an LDtk tileset identifier) whose cells are found by their enum tags; an id with no tagged cell falls back to the colour here.",
     "base": "config/rooms/cellar.json",
-    "chambers": ["config/chambers/common", "config/chambers/warren"],
+    "chambers": [
+        "config/chambers/common",
+        "config/chambers/warren"
+    ],
     "width": 30,
     "height": 22,
     "chamber_limit": 3,
@@ -13,11 +16,25 @@
     "wall_depth": 2,
     "rooms_per_floor": 5,
     "tile_visuals": {
-        "0": { "r": 0.20, "g": 0.16, "b": 0.12 },
-        "1": { "r": 0.09, "g": 0.07, "b": 0.05 }
+        "0": {
+            "r": 0.2,
+            "g": 0.16,
+            "b": 0.12
+        },
+        "1": {
+            "r": 0.09,
+            "g": 0.07,
+            "b": 0.05
+        }
     },
     "hole_types": [
-        { "hole": "config/holes/foundation_crack.json", "weight": 3 },
-        { "hole": "config/holes/gnaw_hole.json", "weight": 7 }
+        {
+            "hole": "config/holes/foundation_crack.json",
+            "weight": 3
+        },
+        {
+            "hole": "config/holes/gnaw_hole.json",
+            "weight": 7
+        }
     ]
 }

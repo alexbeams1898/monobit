@@ -17,9 +17,14 @@ namespace sound
 // which is the same way the engine treats a machine with no audio device: silent, not broken.
 bool load(const std::string& path = "config/audio.json");
 
-// Play a named sound. Entries with variations rotate at random, so a sound repeated quickly --
-// footfalls, hits -- does not machine-gun. An unknown name logs once and is then silent, because
-// a missing sound should be findable but must not spam a frame loop.
-void play(const std::string& name);
+// Play a named sound. Two things keep a sound repeated quickly -- footfalls, hits, a voice --
+// from reading as one sample retriggered: variations are drawn WITHOUT REPLACEMENT so none can
+// follow itself, and each play is pitched somewhere in the entry's range. An unknown name logs
+// once and is then silent, because a missing sound should be findable but must not spam a
+// frame loop.
+//
+// Returns the file it chose, or an empty string if the name plays nothing. Callers are free to
+// ignore it; it is what makes the drawing rule testable on a machine with no audio device.
+std::string play(const std::string& name);
 
 } // namespace sound

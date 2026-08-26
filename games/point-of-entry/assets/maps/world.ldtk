@@ -11,7 +11,7 @@
 	"iid": "bf154c30-6fc0-11f1-95c8-af52c11bf874",
 	"jsonVersion": "1.5.3",
 	"appBuildId": 473703,
-	"nextUid": 29,
+	"nextUid": 30,
 	"identifierStyle": "Capitalize",
 	"toc": [],
 	"worldLayout": "Free",
@@ -576,6 +576,18 @@
 							6,
 							7
 						]
+					},
+					{
+						"enumValueId": "Floor",
+						"tileIds": [
+							0
+						]
+					},
+					{
+						"enumValueId": "Wall",
+						"tileIds": [
+							2
+						]
 					}
 				],
 				"customData": [],
@@ -584,6 +596,43 @@
 					"opaqueTiles": "11111111",
 					"averageColors": "f222f222f111f111f222f222f111f111"
 				}
+			},
+			{
+				"__cWid": 2,
+				"__cHei": 1,
+				"identifier": "Descent",
+				"uid": 29,
+				"relPath": "../tilesets/descent.png",
+				"embedAtlas": null,
+				"pxWid": 32,
+				"pxHei": 16,
+				"tileGridSize": 16,
+				"spacing": 0,
+				"padding": 0,
+				"tags": [],
+				"tagsSourceEnumUid": 2,
+				"enumTags": [
+					{
+						"enumValueId": "Solid",
+						"tileIds": [
+							1
+						]
+					},
+					{
+						"enumValueId": "Floor",
+						"tileIds": [
+							0
+						]
+					},
+					{
+						"enumValueId": "Wall",
+						"tileIds": [
+							1
+						]
+					}
+				],
+				"customData": [],
+				"savedSelections": []
 			}
 		],
 		"enums": [
@@ -601,6 +650,16 @@
 							"h": 32
 						},
 						"color": 12470831
+					},
+					{
+						"id": "Floor",
+						"tileRect": null,
+						"color": 14120515
+					},
+					{
+						"id": "Wall",
+						"tileRect": null,
+						"color": 15389866
 					}
 				],
 				"iconTilesetUid": 1,
@@ -796,7 +855,7 @@
 							],
 							"__tags": [],
 							"__tile": null,
-							"__smartColor": "#D77643",
+							"__smartColor": "#EAD4AA",
 							"iid": "50960181-3f22-411c-86bc-61286ed49bad",
 							"width": 16,
 							"height": 16,
@@ -10155,7 +10214,14 @@
 									"__value": "foundation_crack",
 									"__tile": null,
 									"defUid": 27,
-									"realEditorValues": []
+									"realEditorValues": [
+										{
+											"id": "V_String",
+											"params": [
+												"foundation_crack"
+											]
+										}
+									]
 								}
 							],
 							"__worldX": 1088,

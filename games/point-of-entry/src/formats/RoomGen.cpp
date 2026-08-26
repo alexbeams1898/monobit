@@ -1,6 +1,7 @@
 #include "formats/RoomGen.h"
 
 #include "ecs/EntityManager.h"
+#include "formats/AreaLoader.h"
 #include "formats/FloorTypes.h"
 #include "ops/LogUtils.h"
 
@@ -84,8 +85,40 @@ Config loadConfig(const nlohmann::json& j)
     return cfg;
 }
 
-// Per-tile-id colours. With no tileset the renderer draws flat quads from these,
-// which is what the art-less skeleton wants.
+// WHAT EACH ID IS CALLED WHERE THE ART IS. A cell tagged `Wall` in the tileset editor is the
+// wall, and that is the whole of the mapping -- no column and row copied into a config to fall
+// out of step with the art the first time the sheet is rearranged.
+const std::pair<int, const char*> kRoles[] = {
+    {TileMap::WALKABLE_ID, "Floor"},
+    {TileMap::SOLID_ID, "Wall"},
+};
+
+// Point a kind of space at a tileset in the LDtk project and let each id find its own cell.
+// Tiles a tag does not name keep their flat colour, so a half-drawn set renders both ways
+// rather than waiting to be finished.
+void loadTiles(const nlohmann::json& j, TileConfig& out)
+{
+    const std::string named = j.value("tileset", std::string{});
+    if (named.empty())
+        return;
+    const area::Tiles set =
+        area::tileset(j.value("project", std::string{"assets/maps/world.ldtk"}), named);
+    if (!set.ok)
+        return;
+    out.tileset_path = set.atlas;
+    out.atlas_tile_size = set.grid;
+    for (const auto& [id, role] : kRoles)
+    {
+        const auto found = set.tagged.find(role);
+        if (found == set.tagged.end() || found->second.empty())
+            continue;
+        TileConfig::TileVisual& tv = out.tile_visuals[id];
+        tv.uv_col = found->second.front() % set.cols;
+        tv.uv_row = found->second.front() / set.cols;
+        tv.has_cell = true;
+    }
+}
+
 void loadVisuals(const nlohmann::json& j, TileConfig& out)
 {
     const auto vis = j.find("tile_visuals");
@@ -97,6 +130,7 @@ void loadVisuals(const nlohmann::json& j, TileConfig& out)
         tv.r = v.value("r", tv.r);
         tv.g = v.value("g", tv.g);
         tv.b = v.value("b", tv.b);
+        tv.has_cell = false; // a colour, until a tag says where its cell is
         out.tile_visuals[std::stoi(id)] = tv;
     }
 }
@@ -205,10 +239,9 @@ void stamp(TileMap& map, const Placed& p)
             if (mc < 0 || mr < 0 || mc >= map.width || mr >= map.height)
                 continue;
             // Widen before multiplying, so the index arithmetic itself cannot overflow as int.
-            const int id =
-                p.chamber
-                    ->tiles[static_cast<std::size_t>(r) * static_cast<std::size_t>(p.chamber->width) +
-                            static_cast<std::size_t>(c)];
+            const int id = p.chamber->tiles[static_cast<std::size_t>(r) *
+                                                static_cast<std::size_t>(p.chamber->width) +
+                                            static_cast<std::size_t>(c)];
             auto& tile =
                 map.tiles[static_cast<std::size_t>(mr) * static_cast<std::size_t>(map.width) +
                           static_cast<std::size_t>(mc)];
@@ -217,6 +250,18 @@ void stamp(TileMap& map, const Placed& p)
         }
 }
 
+// THE WALLS GET A FRONT. Every solid cell with floor to its SOUTH is a wall the player is
+// looking at, so it takes a face; every other solid cell is a wall seen from above and stays as
+// it is. That one test is the whole convention: the wall at the top of a room faces the camera
+// and gets a front, while the wall at the BOTTOM has floor to its north, is never touched, and
+// so reads as a plain band of wall -- which is what stops it standing between the camera and the
+// room. Nothing is special-cased into that; it is what the predicate already says.
+//
+// A DECORATION rather than a second solid tile id. Walkability is worked out from the id when a
+// chamber is stamped and then kept on the tile, so a second solid id is a wall that whoever
+// stamps next silently makes walkable. Decoration carries no collision at all, so this cannot
+// reach the map's solidity however it is extended. Runs AFTER every stamp and carve, since it
+// reads the finished shape.
 // Carve a walkable run between two cells, `half` tiles either side of the line.
 void carve(TileMap& map, int c0, int r0, int c1, int r1, int half)
 {
@@ -337,7 +382,7 @@ namespace
 // many as it wants or the tries run out; a room that overlaps one already down is dropped rather
 // than shuffled, because a floor that is one room short is still a floor.
 std::vector<Placed> layChambers(TileMap& map, const Config& cfg, const std::vector<Chamber>& rooms,
-                             std::mt19937& rng)
+                                std::mt19937& rng)
 {
     std::vector<Placed> placed;
     std::uniform_int_distribution<int> pick(0, static_cast<int>(rooms.size()) - 1);
@@ -427,7 +472,7 @@ void spaceSpawners(const Config& cfg, float ts, Layout& out)
 }
 
 Layout generateOnce(EntityManager& em, const Config& cfg, const std::vector<Chamber>& rooms,
-                   unsigned seed)
+                    unsigned seed)
 {
     Layout out;
     out.seed = seed;
@@ -497,14 +542,41 @@ int spawnerCount(const Config& cfg, const Layout& floor)
 }
 } // namespace
 
-Layout generate(EntityManager& em, const std::string& typePath, unsigned seed)
+// A POCKET'S SIZE, from the slab it copies. Scaled up because a slab is measured in tiles of
+// wall and a room has to be stood in -- a four-by-two block is narrower than the man.
+//
+// TWO BOUNDS, AND NEITHER IS A NUMBER SOMEONE CHOSE. The ceiling is the type's own size, because
+// a space inside a room cannot come out bigger than the rooms around it. The floor is the
+// smallest template that exists plus the margin placement needs, because below that NOTHING can
+// be stamped and the floor comes back unbuildable -- a minimum written down in config is one
+// that can be set under what the templates require, and the failure is a room he cannot enter.
+Config resized(Config cfg, Extent extent, const nlohmann::json& type,
+               const std::vector<Chamber>& rooms)
+{
+    if (extent.cols <= 0 || extent.rows <= 0 || rooms.empty())
+        return cfg;
+    const int scale = type.value("pocket", nlohmann::json::object()).value("scale", 3);
+    int leastW = rooms.front().width;
+    int leastH = rooms.front().height;
+    for (const auto& r : rooms)
+    {
+        leastW = std::min(leastW, r.width);
+        leastH = std::min(leastH, r.height);
+    }
+    // `placeChambers` needs strictly more than the template plus its two-tile margin.
+    cfg.width = std::min(cfg.width, std::max(leastW + 3, extent.cols * scale));
+    cfg.height = std::min(cfg.height, std::max(leastH + 3, extent.rows * scale));
+    return cfg;
+}
+
+Layout generate(EntityManager& em, const std::string& typePath, unsigned seed, Extent extent)
 {
     const nlohmann::json type = formats::read(typePath);
-    const Config cfg = loadConfig(type);
     // POOLS, shared first: a type draws on the common templates plus whatever is its own, so a
     // plain corridor is authored once rather than copied into every kind of space.
     std::vector<Chamber> rooms;
-    for (const auto& dir : type.value("chambers", std::vector<std::string>{"config/chambers/common"}))
+    for (const auto& dir :
+         type.value("chambers", std::vector<std::string>{"config/chambers/common"}))
     {
         std::vector<Chamber> pool = loadChambers(dir);
         rooms.insert(rooms.end(), std::make_move_iterator(pool.begin()),
@@ -512,11 +584,13 @@ Layout generate(EntityManager& em, const std::string& typePath, unsigned seed)
     }
     if (rooms.empty())
         return Layout{};
+    const Config cfg = resized(loadConfig(type), extent, type, rooms);
 
     if (seed == 0)
         seed = static_cast<unsigned>(std::chrono::steady_clock::now().time_since_epoch().count() &
                                      0xFFFFFFFF);
     loadVisuals(type, em.tile_config); // seed-independent; once, not per attempt
+    loadTiles(type, em.tile_config);   // AFTER the colours: a drawn cell replaces its fallback
 
     // THE SEEP GUARANTEE. A floor with one spawner is a fight with one bearing, which is
     // campable however the emergence behaves -- so a layout that cannot seat min_count holes

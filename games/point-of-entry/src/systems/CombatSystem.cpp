@@ -35,8 +35,11 @@ int sFiringVoice = -1;
 // flickers "can fire" on and off every recovery delay, and hanging the clips on that machine-
 // guns them -- dozens of one-shots a second, which buries every other sound in the game.
 bool sTriggerHeld = false;
-float sDryCooldown = 0.0f;
-constexpr float kDryEvery = 0.35f; // a held click on an empty tank would fire every frame
+// ONE COUGH PER PULL. Running dry is an EVENT -- the moment the tank gave out -- and not a state
+// to be announced for as long as he leans on the trigger. Repeating it turns a piece of
+// information into a noise, and the wand holds only a few seconds, so a held trigger meant that
+// noise forever.
+bool sCoughedThisPull = false;
 // How much spray -- in seconds of it -- he must have the breath for before the stream will pick
 // back up. Enough to be a spray rather than a twitch.
 constexpr float kResumeSeconds = 0.4f;
@@ -47,8 +50,11 @@ constexpr float kResumeSeconds = 0.4f;
 // the stream's own state.
 void hushFiring()
 {
+    // Short. The dribble takes over at the level the body left off, so a long fade would lay two
+    // near-identical noises over each other and they comb -- which is heard as a wobble, not as
+    // a smooth handover. Just enough not to cut on a waveform.
     if (sFiringVoice >= 0)
-        AudioSystem::stopSfx(sFiringVoice, 25);
+        AudioSystem::stopSfx(sFiringVoice, 12);
     sFiringVoice = -1;
 }
 
@@ -57,6 +63,7 @@ void hushFiring()
 void forgetTrigger()
 {
     sTriggerHeld = false;
+    sCoughedThisPull = false;
 }
 
 ChargeTuning sCharge;
@@ -392,14 +399,15 @@ void releaseStream(entt::registry& reg, entt::entity stream, const Tool& tool, f
     hushFiring();
     if (wasFiring && !triggerHeld && !tool.sfx_stop.empty())
         AudioSystem::playSfx(tool.sfx_stop, tool.sfx_volume);
-    // THE COUGH: he pulled and the tank had nothing. Rate-limited, or a trigger held on empty
-    // is that click sixty times a second.
-    if (aim::firing() && !aim::guarding() && charge <= 0.0f && sDryCooldown <= 0.0f &&
-        !tool.sfx_dry.empty())
+    // THE COUGH: the tank gave out, or he pulled on one already empty. Said once, then not
+    // again until he lets go -- holding the trigger down is not new information.
+    if (triggerHeld && charge <= 0.0f && !sCoughedThisPull && !tool.sfx_dry.empty())
     {
         AudioSystem::playSfx(tool.sfx_dry, tool.sfx_volume);
-        sDryCooldown = kDryEvery;
+        sCoughedThisPull = true;
     }
+    if (!triggerHeld)
+        sCoughedThisPull = false;
 }
 
 void tickStream(EntityManager& em, const Tool& tool, entt::entity owner, float dt)
@@ -548,7 +556,6 @@ void update(EntityManager& em, float dt)
     // Ticked here rather than inside the swing, so it runs down while he is backing away as
     // well as while he is standing his ground.
     sFistCooldown = std::max(0.0f, sFistCooldown - dt);
-    sDryCooldown = std::max(0.0f, sDryCooldown - dt);
 
     const entt::entity owner = player::entity();
     auto& reg = em.registry();

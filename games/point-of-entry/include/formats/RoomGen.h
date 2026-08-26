@@ -1,6 +1,7 @@
 #pragma once
 
 #include "TileMap.h"
+#include "ops/NavUtils.h"
 
 #include <string>
 #include <vector>
@@ -63,6 +64,14 @@ Chamber parseChamber(const std::string& text, const std::string& name = {});
 // .room in the pools it names, place them without overlapping, connect them with corridors, and
 // collect the markers. A type may name a `base` and override only what differs. `seed` of 0
 // picks one from the clock; pass a real seed for a repeatable floor.
-Layout generate(EntityManager& em, const std::string& typePath, unsigned seed);
+// A SIZE SOMETHING OTHER THAN THE TYPE DECIDED, in tiles of the thing being resembled -- a
+// pocket is shaped like the slab it was cut into. Zero keeps the type's own size.
+struct Extent
+{
+    int cols = 0;
+    int rows = 0;
+};
+
+Layout generate(EntityManager& em, const std::string& typePath, unsigned seed, Extent extent = {});
 
 } // namespace roomgen

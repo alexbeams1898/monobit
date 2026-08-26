@@ -65,5 +65,13 @@
         "arc": 70.0,
         "cooldown": 0.42,
         "stamina": 4.0
+    },
+    "feedback": {
+        "_comment": "HOW BEING HURT LOOKS. flash/death_flash are how long a struck body stays lit, in seconds; a kill holds longer and stays on screen for it. wound_from is the fraction of health below which he starts to show it -- a body that reddens from the first scratch is always saying the same thing and so says nothing. wound_depth is how far green and blue are pulled out at nothing-left, and wound_red pushes red above full so a wounded man reads as lit rather than dimmed.",
+        "flash": 0.12,
+        "death_flash": 0.22,
+        "wound_from": 0.6,
+        "wound_depth": 0.85,
+        "wound_red": 1.2
     }
 }

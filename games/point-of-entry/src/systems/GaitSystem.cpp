@@ -5,7 +5,6 @@
 #include "ecs/GameComponents.h"
 #include "ops/NavUtils.h"
 #include "ops/SoundOps.h"
-#include "systems/SpriteAnimSystem.h"
 
 #include <cmath>
 
@@ -43,18 +42,16 @@ constexpr float kPosesPerStep = 4.0f;
 void update(EntityManager& em, float dt)
 {
     auto& reg = em.registry();
-    for (auto [entity, sprite, transform, prev] :
-         reg.view<Sprite, Transform, PreviousTransform>().each())
+    // CARRYING A GAIT IS WHAT MAKES A THING A WALKER. Membership is the component, never a
+    // guess from what else an entity happens to have: everything the game draws moves and has a
+    // sprite -- droplets of spray, a thrown area, a pest -- and none of those walk. Given a
+    // gait by whoever builds a body with legs.
+    for (auto [entity, sprite, transform, prev, gait] :
+         reg.view<Sprite, Transform, PreviousTransform, Gait>().each())
     {
-        // Pest do not walk, they vibrate -- and both write the same draw offset, so whichever
-        // ran last would win. Pests own their own motion; this is the two-legged gait.
-        if (reg.all_of<Pest>(entity))
-            continue;
-
         const float moved = std::sqrt((transform.x - prev.x) * (transform.x - prev.x) +
                                       (transform.y - prev.y) * (transform.y - prev.y));
 
-        auto& gait = reg.get_or_emplace<Gait>(entity, Gait{});
         gait.travelled += moved;
 
         // Settle to rest when standing still rather than freezing mid-hop, or a character stops

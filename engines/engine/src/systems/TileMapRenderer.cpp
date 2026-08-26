@@ -49,10 +49,13 @@ out vec4 fragColor;
 
 void main()
 {
-    if (uUseTexture != 0)
+    // A tile says which it is: alpha 0 means sample the atlas, anything else is a flat colour.
+    // Per FRAGMENT rather than per draw, so a map with a tileset can still hold tiles that have
+    // no cell in it yet.
+    if (uUseTexture != 0 && vColor.a == 0.0)
         fragColor = texture(uTileset, vUV);
     else
-        fragColor = vColor;
+        fragColor = vec4(vColor.rgb, 1.0);
 }
 )glsl";
 
@@ -105,9 +108,12 @@ static void emitTileQuad(std::vector<float>& verts, const TileConfig& config, in
     }
     const auto& vis = vit->second;
     float tr = 1.0f, tg = 1.0f, tb = 1.0f;
+    // The alpha channel is the switch: 0 says "sample the atlas", 1 says "I am this colour".
+    float ta = 1.0f;
     float u0 = 0.0f, v0 = 0.0f, u1 = 1.0f, v1 = 1.0f;
-    if (hasTileset)
+    if (hasTileset && vis.has_cell)
     {
+        ta = 0.0f;
         const float tw = static_cast<float>(atlasW);
         const float th = static_cast<float>(atlasH);
         const float tileF = static_cast<float>(config.atlas_tile_size);
@@ -129,7 +135,7 @@ static void emitTileQuad(std::vector<float>& verts, const TileConfig& config, in
     const float x1 = x0 + ts;
     const float y1 = y0 + ts;
     const auto push = [&](float x, float y, float u, float v)
-    { verts.insert(verts.end(), {x, y, u, v, tr, tg, tb, 1.0f}); };
+    { verts.insert(verts.end(), {x, y, u, v, tr, tg, tb, ta}); };
     push(x0, y0, u0, v0);
     push(x1, y0, u1, v0);
     push(x1, y1, u1, v1); // tri 1

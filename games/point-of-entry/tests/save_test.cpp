@@ -32,15 +32,16 @@ savegame::File oneLife()
     descent::Room basement;
     basement.area = "Bar_B1";
     basement.depth = 0;
-    basement.holes = {
-        descent::Hole{descent::Link{1, 0}, "config/holes/foundation_crack.json", true, true, 3}};
+    basement.holes = {descent::Hole{descent::Link{1, 0}, "config/holes/foundation_crack.json",
+                                    world::Side::North, true, true, 3}};
     descent::Room dug;
     dug.seed = 9182736u;
     dug.depth = 1;
     dug.way_in = 0;
-    dug.holes = {
-        descent::Hole{descent::Link{0, 0}, "config/holes/foundation_crack.json", true, true, 0},
-        descent::Hole{descent::Link{}, "config/holes/gnaw_hole.json", true, false, 2}};
+    dug.holes = {descent::Hole{descent::Link{0, 0}, "config/holes/foundation_crack.json",
+                               world::Side::South, true, true, 0},
+                 descent::Hole{descent::Link{}, "config/holes/gnaw_hole.json", world::Side::East,
+                               true, false, 2}};
     life.descent = {basement, dug};
 
     life.man.chemical = 4;
@@ -86,6 +87,11 @@ TEST_CASE("a written job comes back whole")
         REQUIRE(life.descent[0].holes[0].to.hole == 0);
         REQUIRE(life.descent[0].holes[0].cleared);
         REQUIRE(life.descent[0].holes[0].killed == 3);
+        // The wall a hole was cut into cannot be worked out again from the far side, so it has
+        // to survive the round trip like the kind does.
+        REQUIRE(life.descent[0].holes[0].side == world::Side::North);
+        REQUIRE(life.descent[1].holes[0].side == world::Side::South);
+        REQUIRE(life.descent[1].holes[1].side == world::Side::East);
         REQUIRE(life.descent[1].seed == 9182736u);
         REQUIRE(life.descent[1].way_in == 0);
         // Both halves of the edge: the way in points back at the hole it is the far end of.
@@ -222,24 +228,30 @@ TEST_CASE("a lateral network survives the write with both halves of every edge")
     a.depth = 3;
     a.label = "B3-A";
     a.way_in = 0;
-    a.holes = {
-        descent::Hole{descent::Link{-1, -1}, "config/holes/foundation_crack.json", true, true, 0},
-        descent::Hole{descent::Link{1, 0}, "config/holes/gnaw_hole.json", true, true, 4},
-        descent::Hole{descent::Link{2, 2}, "config/holes/gnaw_hole.json", true, true, 7}};
+    a.holes = {descent::Hole{descent::Link{-1, -1}, "config/holes/foundation_crack.json",
+                             world::Side::North, true, true, 0},
+               descent::Hole{descent::Link{1, 0}, "config/holes/gnaw_hole.json", world::Side::North,
+                             true, true, 4},
+               descent::Hole{descent::Link{2, 2}, "config/holes/gnaw_hole.json", world::Side::North,
+                             true, true, 7}};
     descent::Room b;
     b.depth = 3;
     b.label = "B3-B";
     b.way_in = 0;
-    b.holes = {descent::Hole{descent::Link{0, 1}, "config/holes/gnaw_hole.json", true, true, 0},
-               descent::Hole{descent::Link{2, 0}, "config/holes/gnaw_hole.json", true, true, 2}};
+    b.holes = {descent::Hole{descent::Link{0, 1}, "config/holes/gnaw_hole.json", world::Side::North,
+                             true, true, 0},
+               descent::Hole{descent::Link{2, 0}, "config/holes/gnaw_hole.json", world::Side::North,
+                             true, true, 2}};
     descent::Room c;
     c.depth = 3;
     c.label = "B3-C";
     c.way_in = 0;
-    c.holes = {
-        descent::Hole{descent::Link{1, 1}, "config/holes/gnaw_hole.json", true, true, 0},
-        descent::Hole{descent::Link{}, "config/holes/foundation_crack.json", false, false, 0},
-        descent::Hole{descent::Link{0, 2}, "config/holes/gnaw_hole.json", true, true, 1}};
+    c.holes = {descent::Hole{descent::Link{1, 1}, "config/holes/gnaw_hole.json", world::Side::North,
+                             true, true, 0},
+               descent::Hole{descent::Link{}, "config/holes/foundation_crack.json",
+                             world::Side::North, false, false, 0},
+               descent::Hole{descent::Link{0, 2}, "config/holes/gnaw_hole.json", world::Side::North,
+                             true, true, 1}};
     life.descent = {a, b, c};
     life.where.room = 0;
     life.where.stood = true;

@@ -13,6 +13,7 @@ add_library(poe-systems STATIC
     src/screens/ScreenStyle.cpp
     src/screens/ScreenInput.cpp
     src/systems/ChaseSystem.cpp
+    src/systems/TintSystem.cpp
     src/renderers/FloaterRenderer.cpp
     src/systems/RewardSystem.cpp
     src/systems/ThermosSystem.cpp
@@ -89,6 +90,7 @@ endif()
 # Tests -- link the same poe-systems the game does, so what is tested is what ships.
 add_executable(poe-tests
     tests/sound_test.cpp
+    tests/tint_test.cpp
     tests/nav_test.cpp
     tests/roomgen_test.cpp
     tests/sprite_anim_test.cpp

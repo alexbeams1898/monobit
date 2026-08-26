@@ -1,8 +1,11 @@
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
+#include "formats/SpriteDefLoader.h"
 #include "ops/ZoneUtils.h"
 #include "systems/DescentSystem.h"
 #include "systems/WaveSystem.h"
+
+#include <string>
 
 #include <catch2/catch_test_macros.hpp>
 #include <entt/entt.hpp>
@@ -379,9 +382,10 @@ TEST_CASE("a hole in the ground goes down; a hole in a wall goes across", "[desc
     descent::reset();
     descent::Room floor;
     floor.depth = 2;
-    floor.holes = {
-        descent::Hole{descent::Link{}, "config/holes/foundation_crack.json", false, false, 0},
-        descent::Hole{descent::Link{}, "config/holes/gnaw_hole.json", false, false, 0}};
+    floor.holes = {descent::Hole{descent::Link{}, "config/holes/foundation_crack.json",
+                                 world::Side::North, false, false, 0},
+                   descent::Hole{descent::Link{}, "config/holes/gnaw_hole.json", world::Side::North,
+                                 false, false, 0}};
     descent::restore({floor});
 
     CHECK(descent::descends(0, 0));       // a crack in the foundation
@@ -429,4 +433,22 @@ TEST_CASE("convergence is a property of the depth descended into", "[descent]")
     CHECK(descent::convergesAt(8));
     CHECK_FALSE(descent::convergesAt(3));
     CHECK_FALSE(descent::convergesAt(0)); // the first floor converges nothing
+}
+
+// A HOLE IS DRAWN AT THE ANGLE IT IS SEEN FROM: `closed-east` beside `closed`. A kind drawn for
+// only some sides has to keep working on the others rather than vanishing, which is what lets
+// the art arrive one direction at a time.
+TEST_CASE("a hole's art falls back to its undirected frames", "[descent]")
+{
+    const sprite_def::Def def = sprite_def::load("assets/sprites/mouse_hole.json");
+    REQUIRE(def.ok);
+
+    for (const char* side : {"north", "south", "east", "west"})
+        for (const char* state : {"closed", "opened"})
+        {
+            const int sided = sprite_def::frameOf(def, std::string{state} + "-" + side);
+            const int plain = sprite_def::frameOf(def, state);
+            // One of the two must answer, or the hole cannot be drawn at all.
+            CHECK((sided >= 0 || plain >= 0));
+        }
 }

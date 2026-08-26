@@ -16,6 +16,7 @@ nlohmann::json encode(const descent::Hole& h)
 {
     return nlohmann::json{{"to", {{"room", h.to.room}, {"hole", h.to.hole}}},
                           {"kind", h.kind},
+                          {"side", static_cast<int>(h.side)},
                           {"opened", h.opened},
                           {"cleared", h.cleared},
                           {"killed", h.killed}};
@@ -26,9 +27,10 @@ nlohmann::json encode(const descent::Room& f)
     nlohmann::json holes = nlohmann::json::array();
     for (const auto& h : f.holes)
         holes.push_back(encode(h));
-    return nlohmann::json{{"area", f.area}, {"label", f.label}, {"type", f.type},
-                          {"seed", f.seed}, {"depth", f.depth}, {"way_in", f.way_in},
-                          {"holes", holes}};
+    return nlohmann::json{
+        {"area", f.area},           {"label", f.label},         {"type", f.type},
+        {"seed", f.seed},           {"depth", f.depth},         {"way_in", f.way_in},
+        {"slab_cols", f.slab_cols}, {"slab_rows", f.slab_rows}, {"holes", holes}};
 }
 
 descent::Hole decodeHole(const nlohmann::json& j)
@@ -40,6 +42,8 @@ descent::Hole decodeHole(const nlohmann::json& j)
     h.to.room = to.value("room", to.value("node", -1));
     h.to.hole = to.value("hole", -1);
     h.kind = j.value("kind", h.kind);
+    // Absent on every file written before sides existed, and north is what those all were.
+    h.side = static_cast<world::Side>(j.value("side", static_cast<int>(h.side)));
     h.opened = j.value("opened", h.opened);
     h.cleared = j.value("cleared", h.cleared);
     h.killed = j.value("killed", h.killed);
@@ -58,6 +62,10 @@ descent::Room decodeFloor(const nlohmann::json& j)
     f.seed = j.value("seed", f.seed);
     f.depth = j.value("depth", f.depth);
     f.way_in = j.value("way_in", f.way_in);
+    // Absent on every file written before pockets existed, and absent is exactly right: a room
+    // dug then was not cut into a slab. No migration for the same reason.
+    f.slab_cols = j.value("slab_cols", f.slab_cols);
+    f.slab_rows = j.value("slab_rows", f.slab_rows);
     for (const auto& h : j.value("holes", nlohmann::json::array()))
         f.holes.push_back(decodeHole(h));
     return f;

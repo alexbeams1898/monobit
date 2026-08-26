@@ -15,6 +15,7 @@
 #include "systems/PickupSystem.h"
 #include "systems/PlayerSystem.h"
 #include "systems/RewardSystem.h"
+#include "systems/TintSystem.h"
 #include "systems/WaveSystem.h"
 
 #include <algorithm>
@@ -29,8 +30,6 @@ namespace
 
 // A struck thing flashes for a moment; a dying one holds noticeably longer, which is what makes
 // a kill legible in a crowd where several things are being hit at once.
-constexpr float kHitFlash = 0.12f;
-constexpr float kDeathFlash = 0.22f;
 // A corpse FADES rather than cutting out -- longer than the flash, so a kill pops bright and
 // then ghosts away instead of vanishing between one frame and the next.
 constexpr float kDeathFade = 0.4f;
@@ -115,7 +114,7 @@ void applyDamage(entt::registry& reg, HitArea& area, const Transform& at)
         // A hit flashes white briefly; a KILL flashes hot and holds longer, and the thing stays
         // on screen for it. The two have to look different, or clearing a crowd gives no
         // feedback about what actually died -- which is the only thing the player cares about.
-        reg.emplace_or_replace<HitFlash>(target, HitFlash{fatal ? kDeathFlash : kHitFlash});
+        reg.emplace_or_replace<HitFlash>(target, HitFlash{tint::flashSeconds(fatal)});
         if (fatal)
             reg.emplace_or_replace<Dying>(target, Dying{kDeathFade});
     }
@@ -149,8 +148,8 @@ void tickAreas(entt::registry& reg, float dt)
         reg.destroy(e);
 }
 
-// Flashes fade. TintOverride is what the renderer actually reads, so the flash both sets and
-// clears it -- a tint left behind would stain the thing white for the rest of its life.
+// Flashes run down. What a flash LOOKS like belongs to the tint pass, which decides every
+// colour in one place; this only says how much of one is left.
 void tickFlashes(entt::registry& reg, float dt)
 {
     std::vector<entt::entity> doneFlashing;
@@ -159,22 +158,9 @@ void tickFlashes(entt::registry& reg, float dt)
         flash.remaining -= dt;
         if (flash.remaining <= 0.0f)
             doneFlashing.push_back(entity);
-        else if (reg.all_of<Dying>(entity))
-        {
-            // Blown out toward white and fading with the corpse, so a kill reads as a thing
-            // going out rather than a thing being struck.
-            const float t = flash.remaining / kDeathFlash;
-            reg.emplace_or_replace<TintOverride>(
-                entity, TintOverride{6.0f, 5.0f * t + 1.0f, 3.0f * t + 1.0f});
-        }
-        else
-            reg.emplace_or_replace<TintOverride>(entity, TintOverride{2.5f, 2.5f, 2.5f});
     }
     for (const auto e : doneFlashing)
-    {
-        reg.remove<TintOverride>(e);
         reg.remove<HitFlash>(e);
-    }
 }
 
 // Clear the dead, once they have finished dying. Here rather than in a system of its own:
@@ -237,6 +223,11 @@ void reapDead(EntityManager& em, float dt)
 }
 
 } // namespace
+
+void forget(EntityManager& em)
+{
+    em.registry().clear<HitFlash>();
+}
 
 void update(EntityManager& em, float dt)
 {

@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <optional>
 #include <random>
 #include <unordered_map>
 #include <vector>
@@ -202,75 +203,199 @@ const HoleKind* kindByPath(std::vector<HoleKind>& kinds, const std::string& path
 // Answering them separately is how art ends up arching into something the assignment rule never
 // approved.
 constexpr int kArchReach = 4; // tiles above a marker an arch may reach for
-
-float archWallY(const EntityManager& em, float x, float y, int depth)
+// Past this a slab is architecture rather than something standing in a room, and a hole in it
+// is a hole in the room's edge like any other.
+constexpr int kSlabCap = 64;
+// How far outside the wall the mouth stands: where he waits to be offered the way through, and
+// where a pest arrives.
+constexpr float kMouthStand = 8.0f;
+// How far a drawing made for the wall at the TOP of a room has to come round to face another.
+// The art opens downward, toward him; every other wall opens some other way.
+float turnFor(world::Side side)
 {
-    return world::wallFaceAbove(em, x, y, kArchReach, depth);
+    switch (side)
+    {
+    case world::Side::North:
+        return 0.0f;
+    case world::Side::South:
+        return geom::kPi;
+    case world::Side::East:
+        return geom::kPi * 0.5f;
+    case world::Side::West:
+        return -geom::kPi * 0.5f;
+    }
+    return 0.0f;
 }
 
-// Place one hole's art (wall kinds snap their arch to the nearest front wall,
-// spawn moving WITH the art) and return where its pests surface.
+const char* sideName(world::Side side)
+{
+    switch (side)
+    {
+    case world::Side::North:
+        return "north";
+    case world::Side::South:
+        return "south";
+    case world::Side::East:
+        return "east";
+    case world::Side::West:
+        return "west";
+    }
+    return "?";
+}
+
+float archWallY(const EntityManager& em, float x, float y, world::Side side, int depth)
+{
+    return world::wallFace(em, x, y, side, kArchReach, depth);
+}
+
+// A WALL WORTH GNAWING THROUGH has something on the other side. Two ways it can:
+//
+//   ROCK ALL THE WAY OUT -- nothing of this room is back there, so the hole leads somewhere new.
+//   A SLAB -- an island of rock standing IN the room. A hole through it comes out where it went
+//   in, which is why what lies beyond one is a POCKET rather than more of the descent. The
+//   named exception to the rule above, and the only one.
+//
+// What is refused is the third case: rock, and then floor again. That is a divider between two
+// parts of the room he is already standing in, and a passage through it is a passage to here.
+bool wallWorthGnawing(const EntityManager& em, float x, float y, world::Side side, int depth)
+{
+    if (archWallY(em, x, y, side, depth) < 0.0f)
+        return false;
+    return world::rockAllTheWayOut(em, x, y, side) ||
+           world::slabBeyond(em, x, y, side, kArchReach, kSlabCap).cols > 0;
+}
+
+// WHICH WALL A MARKER GNAWS THROUGH, or nothing where it stands in the open: the NEAREST that is
+// worth gnawing. A template says where a hole may be and the room it is stamped into decides
+// which of its walls that spot is against, so the answer has to be a wall the spot is actually
+// beside AND one that leads anywhere.
+std::optional<world::Side> sideAtMarker(const EntityManager& em, float x, float y, int depth)
+{
+    std::optional<world::Side> best;
+    float nearest = 0.0f;
+    for (const world::Side side :
+         {world::Side::North, world::Side::South, world::Side::East, world::Side::West})
+    {
+        if (!wallWorthGnawing(em, x, y, side, depth))
+            continue;
+        const float face = archWallY(em, x, y, side, depth);
+        const auto [dc, dr] = world::stepOf(side);
+        const float away = std::abs((dc != 0 ? x : y) - face);
+        if (!best || away < nearest)
+        {
+            best = side;
+            nearest = away;
+        }
+    }
+    return best;
+}
+
 // A hole's two faces, read from the art by TAG. Missing tags are loud: a hole whose art cannot
 // say which frame is closed would sit there looking open and never react to being opened.
-PlacedHole artOf(const HoleKind* kind, int index)
+PlacedHole artOf(const HoleKind* kind, world::Side side, int index)
 {
     PlacedHole art;
     art.hole = index;
     if (kind == nullptr || !kind->def.ok)
         return art;
-    const int closed = sprite_def::frameOf(kind->def, "closed");
-    const int open = sprite_def::frameOf(kind->def, "opened");
+    // A HOLE IS DRAWN AT THE ANGLE IT IS SEEN FROM, and the tag says which angle: `closed-east`
+    // beside `closed`. Falling back to the undirected tag when a side has none is what lets a
+    // kind be drawn one direction at a time -- an undrawn side keeps the art it has instead of
+    // disappearing.
+    //
+    // EAST AND WEST ARE ONE DRAWING. A hole in the left wall is a hole in the right wall seen
+    // from the other side, so west asks for the east tag and is mirrored when drawn; the two
+    // can never drift apart because there is only one of them.
+    const world::Side drawn = side == world::Side::West ? world::Side::East : side;
+    bool fellBack = false;
+    const auto frame = [&](const char* state)
+    {
+        const int sided =
+            sprite_def::frameOf(kind->def, std::string{state} + "-" + sideName(drawn));
+        if (sided >= 0)
+            return sided;
+        fellBack = true;
+        return sprite_def::frameOf(kind->def, state);
+    };
+    const int closed = frame("closed");
+    const int open = frame("opened");
     if (closed < 0 || open < 0)
     {
         poe::log().error("descent: '{}' has no closed/opened tags -- it cannot be broken open",
                          kind->def.sheet);
         return art;
     }
+    // Nothing drawn for this wall: turn what there is to face it. A drawing made for one wall
+    // opens toward the room, and the turn is how far that opening has to come round.
+    //
+    // A HOLE IN THE GROUND IS LOOKED DOWN AT and has no wall to face, so none of this applies to
+    // one. Its side is whatever wall happened to be nearest its marker, which is a fact about
+    // the room rather than about the hole -- turning a floor crack by it would spin the art for
+    // no reason anyone could name.
+    if (kind->on_wall)
+    {
+        art.mirrored = !fellBack && side == world::Side::West;
+        if (fellBack)
+            art.turn = turnFor(side);
+    }
     art.closed_x = closed * kind->def.frame_w;
     art.open_x = open * kind->def.frame_w;
     return art;
 }
 
-void placeHole(EntityManager& em, float mx, float my, const HoleKind* kind, int index,
-               int wallDepth, float& mouthX, float& mouthY)
+// WHERE A HOLE'S PESTS SURFACE, and where he stands to be offered the way through. One point,
+// so the thing that arrives and the thing he steps on cannot disagree.
+struct Mouth
+{
+    float x = 0.0f;
+    float y = 0.0f;
+};
+
+Mouth placeHole(EntityManager& em, float mx, float my, const HoleKind* kind, world::Side side,
+                int index, int wallDepth)
 {
     const entt::entity hole = spawn::box(em, mx, my, kPoeSize, 0.75f, 0.15f, 0.15f);
-    em.registry().emplace<PlacedHole>(hole, artOf(kind, index));
-    mouthX = mx;
-    mouthY = my;
+    em.registry().emplace<PlacedHole>(hole, artOf(kind, side, index));
     if (kind == nullptr || !kind->def.ok)
-        return;
+        return Mouth{mx, my};
     auto& spr = em.registry().get<Sprite>(hole);
     spr.texture_path = kind->def.sheet;
     spr.src_x = em.registry().get<PlacedHole>(hole).closed_x; // sealed until he opens it
+    spr.flip_x = em.registry().get<PlacedHole>(hole).mirrored;
+    spr.rotation = em.registry().get<PlacedHole>(hole).turn;
     spr.src_w = kind->def.frame_w;
     spr.src_h = kind->def.frame_h;
     spr.layer = 1;
     em.registry().remove<SolidColor>(hole);
     if (!kind->on_wall)
-        return;
-    const float wallBottom = archWallY(em, mx, my, wallDepth);
-    if (wallBottom < 0.0f)
-        return; // nothing worth arching into; it stays where the marker put it
+        return Mouth{mx, my};
+    const float face = archWallY(em, mx, my, side, wallDepth);
+    if (face < 0.0f)
+        return Mouth{mx, my}; // no wall to cut into; it stays where the marker put it
+    // THE ART SITS IN THE WALL AND THE MOUTH ON THE FLOOR OUTSIDE IT, whichever wall it is. The
+    // step says which way that is, so this cannot disagree with the predicate that found the
+    // wall in the first place.
     const auto ts = static_cast<float>(em.tile_map.tile_size);
+    const auto [dc, dr] = world::stepOf(side);
+    const float half = static_cast<float>(dc != 0 ? kind->def.frame_w : kind->def.frame_h) * 0.5f;
     auto& t = em.registry().get<Transform>(hole);
-    t.x = std::floor(mx / ts) * ts + ts * 0.5f;
-    t.y = wallBottom - static_cast<float>(kind->def.frame_h) * 0.5f;
+    // Centred in its own tile on the axis it runs along, so a hole never straddles two cells.
+    t.x = dc != 0 ? face + static_cast<float>(dc) * half : std::floor(mx / ts) * ts + ts * 0.5f;
+    t.y = dr != 0 ? face + static_cast<float>(dr) * half : std::floor(my / ts) * ts + ts * 0.5f;
     em.registry().get<Sprite>(hole).layer = 2;
-    mouthX = t.x;
-    mouthY = wallBottom + 8.0f; // the floor at the arch's mouth
+    return Mouth{dc != 0 ? face - static_cast<float>(dc) * kMouthStand : t.x,
+                 dr != 0 ? face - static_cast<float>(dr) * kMouthStand : t.y};
 }
 
-// Build a room's world into `em`: everything except the player, who is
-// preserved and placed by the caller. GL-free. Reports the floor's way in
-// and where its ascend spot settled.
-// What a floor's holes look like and carry when he walks back into it. A hole he already
-// broke open wears its open face -- placement draws every hole sealed, because that is what a
-// hole is until something happens to it, and this is the something. A hole that is already
-// spent comes back as a way down rather than a spawner: the hole's OWN art carries the
-// component, since a second sprite would stack and fight.
-// Defined below, beside the queue it reads: arriving on a floor needs it, and what it needs
-// to know about the floors beneath is the last thing this file works out.
+// What a KIND OF SPACE draws its holes from: the mix, the letter-pinned kinds, and its rules.
+struct KindTable
+{
+    std::vector<HoleKind> kinds;
+    std::unordered_map<char, std::string> pinned;
+    Rules rules;
+    int total_weight = 0;
+};
+
 void beginFloor(int roomId);
 
 // IT REEKS WHEN IT IS WORKING. A hole he has opened and not finished, or a passage carrying
@@ -280,7 +405,8 @@ void beginFloor(int roomId);
 constexpr float kReekEvery = 0.5f;
 constexpr float kReekRise = 24.0f;
 constexpr float kReekDrift = 9.0f;
-constexpr int kReekBlobs = 5; // a cloud is a LUMP: several offset blobs read as one soft mass
+constexpr int kReekBlobs = 5;       // a cloud is a LUMP: several offset blobs read as one soft mass
+constexpr float kReekMouth = 10.0f; // back from the mouth to the opening it comes out of
 float sReekTimer = 0.0f;
 int sReekSide = 0;
 
@@ -406,7 +532,9 @@ int adoptArea(EntityManager& em, const std::string& area)
         const HoleKind kind = loadKind(reg.get<AuthoredHole>(holes[i]).kind);
         // A hole wears its KIND's face wherever it is: the map says where one is and what sort,
         // never what it looks like.
-        const PlacedHole art = artOf(&kind, static_cast<int>(i));
+        const world::Side side =
+            sideAtMarker(em, at.x, at.y, Rules{}.wall_depth).value_or(world::Side::North);
+        const PlacedHole art = artOf(&kind, side, static_cast<int>(i));
         if (kind.def.ok)
         {
             auto& spr = reg.get<Sprite>(holes[i]);
@@ -415,10 +543,12 @@ int adoptArea(EntityManager& em, const std::string& area)
             spr.src_w = kind.def.frame_w;
             spr.src_h = kind.def.frame_h;
             spr.layer = 1;
+            spr.flip_x = art.mirrored;
+            spr.rotation = art.turn;
             reg.remove<SolidColor>(holes[i]);
         }
         sMouths.push_back(swarm::Hole{at.x, at.y, kind.path});
-        room.holes.push_back(Hole{Link{}, kind.path, false, false, 0});
+        room.holes.push_back(Hole{Link{}, kind.path, side, false, false, 0});
         reg.emplace_or_replace<PlacedHole>(holes[i], art);
     }
     // An authored floor keeps whatever state the save brought back for holes the map still has.
@@ -511,16 +641,26 @@ bool depthIsFull(int depth, const HoleKind& kind, int granted)
 // EVERYTHING A MARKER NEEDS to become a hole: the kinds this room may grow, the letters pinned
 // to one, and the rules the space imposes. Passed together because they are read together and
 // come from one file -- nine loose arguments is a signature nobody calls correctly twice.
-struct KindTable
+// WHETHER A HOLE IN A WALL MAY STAND AT THIS MARKER. Three ways it may not: this room is a
+// POCKET, which grows none (a slab has the same room on both sides, so a passage through one of
+// its walls comes out where it went in); no wall beside the marker is worth gnawing; or the
+// depth it would open onto has no room left.
+//
+// A refusal is not a re-roll. The caller falls back to the table's first floor kind, with no
+// extra draw, so the seed still reproduces the floor exactly and nothing anywhere has to refuse
+// a hole that is already drawn.
+bool wallKindStands(const EntityManager& em, const roomgen::Marker& m, const KindTable& table,
+                    const HoleKind& kind, int depth, int granted, bool pocket)
 {
-    std::vector<HoleKind> kinds;
-    std::unordered_map<char, std::string> pinned;
-    Rules rules;
-    int total_weight = 0;
-};
+    if (pocket)
+        return false;
+    if (!sideAtMarker(em, m.x, m.y, table.rules.wall_depth))
+        return false;
+    return !depthIsFull(depth, kind, granted);
+}
 
 const HoleKind* chooseKind(const EntityManager& em, const roomgen::Marker& m, KindTable& table,
-                           std::mt19937& rng, int depth, int& granted)
+                           std::mt19937& rng, int depth, int& granted, bool pocket)
 {
     const auto pin = table.pinned.find(m.type);
     // A PIN IS AN INTENT, NOT AN EXEMPTION. An authored letter saying "this spot is a gnawed
@@ -543,13 +683,8 @@ const HoleKind* chooseKind(const EntityManager& em, const roomgen::Marker& m, Ki
             }
         }
     }
-    // A wall kind needs a wall to arch into, and needs the floor it would open onto to have
-    // room left on it. Either way it falls back to the table's first floor kind --
-    // deterministically, with no extra roll, so the seed still reproduces the floor exactly, and
-    // nothing anywhere has to refuse a hole that is already drawn.
     if (kind != nullptr && kind->on_wall &&
-        (archWallY(em, m.x, m.y, table.rules.wall_depth) < 0.0f ||
-         depthIsFull(depth, *kind, granted)))
+        !wallKindStands(em, m, table, *kind, depth, granted, pocket))
         for (const auto& k : table.kinds)
             if (!k.on_wall)
                 return &k;
@@ -565,6 +700,7 @@ void placeWayIn(EntityManager& em, Room& room, const roomgen::Layout& floor,
                 std::vector<HoleKind>& kinds, int wallDepth)
 {
     const HoleKind* kind = kindByPath(kinds, room.holes.front().kind);
+    const world::Side wayInSide = room.holes.front().side;
     // THE WAY IN IS THE FAR END OF THE HOLE HE CAME THROUGH, so it wears that hole's kind -- and
     // a kind that arches into a wall needs a wall wherever that puts it. The floor's own entrance
     // is chosen for standing room and knows nothing about what is above it, so the spot is
@@ -573,9 +709,10 @@ void placeWayIn(EntityManager& em, Room& room, const roomgen::Layout& floor,
     float ux = floor.spawn_x;
     float uy = floor.spawn_y;
     constexpr float kPoint = 1.0f; // a spot, not a body: standAt fits the man to it on arrival
-    const bool sited = kind != nullptr && kind->on_wall
-                           ? world::archSpotNear(em, ux, uy, kPoint, kPoint, kArchReach, wallDepth)
-                           : world::freeSpotNear(em, ux, uy, kPoint, kPoint);
+    const bool sited =
+        kind != nullptr && kind->on_wall
+            ? world::archSpotNear(em, ux, uy, kPoint, kPoint, wayInSide, kArchReach, wallDepth)
+            : world::freeSpotNear(em, ux, uy, kPoint, kPoint);
     if (!sited)
     {
         // A floor with no wall to arch into is a floor that failed to build, but he still has to
@@ -584,17 +721,20 @@ void placeWayIn(EntityManager& em, Room& room, const roomgen::Layout& floor,
                          room.label);
         world::freeSpotNear(em, ux, uy, kPoint, kPoint);
     }
-    float mouthX = ux;
-    float mouthY = uy;
-    placeHole(em, ux, uy, kind, 0, wallDepth, mouthX, mouthY);
-    sMouths[0] = swarm::Hole{mouthX, mouthY, room.holes.front().kind};
+    if (kind != nullptr && kind->on_wall)
+        poe::log().debug("descent: way in wears '{}' in the {} wall", room.holes.front().kind,
+                         sideName(wayInSide));
+    else
+        poe::log().debug("descent: way in wears '{}' in the ground", room.holes.front().kind);
+    const Mouth mouth = placeHole(em, ux, uy, kind, wayInSide, 0, wallDepth);
+    sMouths[0] = swarm::Hole{mouth.x, mouth.y, room.holes.front().kind};
 }
 
 // WHICH KIND A HOLE KEEPS between visits. A FLOOR IS THE SAME PLACE EVERY VISIT: a hole keeps
 // the kind it was first given, so retuning the table cannot change what is in a room he has
 // already stood in. `rolled` is what this marker would take if it were fresh, which is both the
 // answer for a new hole and the replacement for a broken one.
-const std::string& keptKind(std::string& held, const std::string& rolled, const EntityManager& em,
+const std::string& keptKind(Hole& hole, const std::string& rolled, const EntityManager& em,
                             const roomgen::Marker& m, int wallDepth, const std::string& tag)
 {
     // What it may NOT keep is a kind that cannot exist where it stands. A hole in a wall with no
@@ -602,18 +742,64 @@ const std::string& keptKind(std::string& held, const std::string& rolled, const 
     // every floor dug before the rule existed keeps a hole drawn in open floor forever. Only
     // that direction is repaired: a floor kind is left alone even where a wall has since become
     // available, because THAT would be the reshuffling the rule above exists to prevent.
-    if (!held.empty() && kindOnWall(held) &&
-        world::wallFaceAbove(em, m.x, m.y, kArchReach, wallDepth) < 0.0f)
+    if (!hole.kind.empty() && kindOnWall(hole.kind) &&
+        archWallY(em, m.x, m.y, hole.side, wallDepth) < 0.0f)
     {
-        poe::log().info("descent: {} kept '{}' with no wall to it -- it is '{}' now", tag, held,
-                        rolled);
-        held.clear();
+        poe::log().info("descent: {} kept '{}' with no wall to it -- it is '{}' now", tag,
+                        hole.kind, rolled);
+        hole.kind.clear();
     }
-    if (held.empty())
-        held = rolled;
+    if (hole.kind.empty())
+        hole.kind = rolled;
     // Resolved once, AFTER every decision: kindByPath appends to `kinds` for a path it has
     // not seen, and a pointer taken before that append is a pointer into the old buffer.
-    return held;
+    return hole.kind;
+}
+
+// ONE MARKER BECOMES ONE HOLE: what kind it is, which wall it is cut into, the wall opened where
+// he could not otherwise see in, and the art placed. Returns where its mouth ended up.
+// WHICH HOLE OF WHICH ROOM is being settled -- the four things that only ever travel together.
+struct Slot
+{
+    const Room& room;
+    Hole& hole;
+    int index = 0;
+    int room_id = 0;
+};
+
+Mouth settleHole(EntityManager& em, const roomgen::Marker& m, KindTable& table, std::mt19937& rng,
+                 const Slot& at, int& granted)
+{
+    const Room& room = at.room;
+    Hole& hole = at.hole;
+    const HoleKind* kind = chooseKind(em, m, table, rng, room.depth, granted, room.slab_cols > 0);
+    const std::string rolled = kind != nullptr ? kind->path : std::string{};
+    // DERIVED EVERY BUILD, never kept. Which wall a marker is nearest is a fact about the map,
+    // and the map comes back identical from its seed -- so a stored copy is a second source for
+    // one truth, and the day they disagree the map is right and the record is stale. It would
+    // also mean a room dug under an older rule answered by that rule forever, leaving the
+    // descent a patchwork of whatever was true the day each room was first entered.
+    //
+    // The KIND is kept, and the difference is the point: a kind is a ROLL off a weighted table,
+    // so keeping it is what stops a retune rewriting a room he has already stood in. A wall is
+    // not a roll.
+    // Only a hole in a WALL has one. A hole in the ground faces up at him, and giving it the
+    // nearest wall's direction would be recording an accident of the room as a fact about the
+    // hole -- something later code would eventually read and believe.
+    hole.side =
+        kind != nullptr && kind->on_wall
+            ? sideAtMarker(em, m.x, m.y, table.rules.wall_depth).value_or(world::Side::North)
+            : world::Side::North;
+    // Resolved once, AFTER every decision: kindByPath appends to `table.kinds` for a path it has
+    // not seen, and a pointer taken before that append is a pointer into the old buffer.
+    kind = kindByPath(table.kinds, keptKind(hole, rolled, em, m, table.rules.wall_depth,
+                                            poeTag(at.room_id, at.index)));
+    if (kind != nullptr && kind->on_wall)
+        poe::log().debug("descent: hole {} wears '{}' in the {} wall", at.index, hole.kind,
+                         sideName(hole.side));
+    else
+        poe::log().debug("descent: hole {} wears '{}' in the ground", at.index, hole.kind);
+    return placeHole(em, m.x, m.y, kind, hole.side, at.index, table.rules.wall_depth);
 }
 
 bool buildNode(EntityManager& em, int roomId, float& spawnX, float& spawnY)
@@ -632,7 +818,8 @@ bool buildNode(EntityManager& em, int roomId, float& spawnX, float& spawnY)
     travel::leaveAuthored();
     em.tile_config = TileConfig{}; // the floor's own tile vocabulary
 
-    const roomgen::Layout floor = roomgen::generate(em, typeOf(room), room.seed);
+    const roomgen::Layout floor = roomgen::generate(
+        em, typeOf(room), room.seed, roomgen::Extent{room.slab_cols, room.slab_rows});
     if (!floor.ok)
     {
         poe::log().error("descent: could not build floor at depth {}", room.depth);
@@ -660,19 +847,12 @@ bool buildNode(EntityManager& em, int roomId, float& spawnX, float& spawnY)
     {
         if (m.type != 'P' && table.pinned.find(m.type) == table.pinned.end())
             continue;
-        const HoleKind* kind = chooseKind(em, m, table, rng, room.depth, granted);
         const auto slot = static_cast<std::size_t>(index);
         if (slot >= room.holes.size())
             room.holes.resize(slot + 1);
-        const std::string rolled = kind != nullptr ? kind->path : std::string{};
-        // Resolved once, AFTER every decision: kindByPath appends to `table.kinds` for a path it
-        // has not seen, and a pointer taken before that append is a pointer into the old buffer.
-        kind = kindByPath(table.kinds, keptKind(room.holes[slot].kind, rolled, em, m,
-                                                table.rules.wall_depth, poeTag(roomId, index)));
-        float mouthX = m.x;
-        float mouthY = m.y;
-        placeHole(em, m.x, m.y, kind, index, table.rules.wall_depth, mouthX, mouthY);
-        sMouths.push_back(swarm::Hole{mouthX, mouthY, room.holes[slot].kind});
+        const Mouth mouth =
+            settleHole(em, m, table, rng, Slot{room, room.holes[slot], index, roomId}, granted);
+        sMouths.push_back(swarm::Hole{mouth.x, mouth.y, room.holes[slot].kind});
         ++index;
     }
     room.holes.resize(static_cast<std::size_t>(index));
@@ -962,7 +1142,7 @@ bool descends(int room, int hole)
 // branches rejoin, or a new one dug now. Its DEPTH is the only thing the hole's direction
 // decides -- a hole in the ground opens the floor below, a hole in a wall another room on this
 // one -- and everything downstream reads the depth rather than the direction.
-int openBeyond(int at, int hole)
+int openBeyond(int at, int hole, world::Slab slab)
 {
     const auto cur = static_cast<std::size_t>(at);
     const int existing = sRooms[cur].holes[static_cast<std::size_t>(hole)].to.room;
@@ -988,8 +1168,23 @@ int openBeyond(int at, int hole)
     const std::string& opens =
         kindFacts(sRooms[cur].holes[static_cast<std::size_t>(hole)].kind).opens;
     fresh.type = opens.empty() ? defaultType() : opens;
+    // A hole cut into a slab opens a POCKET: the same kind of space, shaped like the slab, and
+    // grown no further sideways. Only sideways -- a pocket in the ground still goes down.
+    if (!down)
+    {
+        fresh.slab_cols = slab.cols;
+        fresh.slab_rows = slab.rows;
+    }
+    // Said out loud, because a pocket is otherwise indistinguishable in the record from any
+    // other room and the difference is the whole reason it exists.
+    if (fresh.slab_cols > 0)
+        poe::log().info("descent: {} opens a POCKET -- cut into a slab {}x{} tiles",
+                        poeTag(at, hole), fresh.slab_cols, fresh.slab_rows);
     // The way in is the FAR END OF THE HOLE HE CAME THROUGH -- same kind, so it wears the same
     // art -- and it arrives already spent, because a passage is what a spent hole is.
+    // Which WALL it is in is not settled here: arriving decides that, because which hole he
+    // took to get here is what it depends on, and at an act boundary that differs between
+    // visits. One writer, and it is the arrival.
     Hole back;
     back.kind = sRooms[cur].holes[static_cast<std::size_t>(hole)].kind;
     back.opened = true;
@@ -1022,7 +1217,15 @@ bool travel(Engine& engine, EntityManager& em, int hole)
         return false;
     }
 
-    const int farId = openBeyond(sCurrent, hole);
+    // MEASURED HERE because this is the last moment the room that answers it exists: he is
+    // standing in it, and stepping through tears it down.
+    const auto slot = static_cast<std::size_t>(hole);
+    const world::Slab slab =
+        slot < sMouths.size()
+            ? world::slabBeyond(em, sMouths[slot].x, sMouths[slot].y, sRooms[cur].holes[slot].side,
+                                kArchReach, kSlabCap)
+            : world::Slab{};
+    const int farId = openBeyond(sCurrent, hole, slab);
     // WHERE HE COMES OUT is the far end of the passage, which the link already names. A floor
     // he has been through before has its own way in pointing somewhere else entirely, and
     // arriving at that instead of at this hole is how the way back gets lost.
@@ -1034,7 +1237,16 @@ bool travel(Engine& engine, EntityManager& em, int hole)
     // in: at an act boundary several holes lead into one floor, and the way out is whichever
     // way he came. Climbing back out of a floor must not rewrite the way in of the floor above.
     if (arriveAt >= 0 && arriveAt == sRooms[far].way_in)
-        sRooms[far].holes[static_cast<std::size_t>(arriveAt)].to = Link{sCurrent, hole};
+    {
+        Hole& back = sRooms[far].holes[static_cast<std::size_t>(arriveAt)];
+        back.to = Link{sCurrent, hole};
+        // AND IT FACES BACK THE WAY HE CAME, decided here rather than when the room was first
+        // dug -- for the same reason the link above is. At an act boundary several holes lead
+        // into one room, so which wall the way out is in depends on which hole he took to get
+        // here, and a side settled once at creation would be answering about a different
+        // journey.
+        back.side = world::opposite(here.side);
+    }
 
     const int fromId = sCurrent;
     if (enterNode(engine, em, farId, arriveAt))
@@ -1053,7 +1265,9 @@ void refreshPassages(EntityManager& em)
 // offsets, drifting at slightly different rates. Square particles read as squares when there
 // is one of them and as a cloud when there are several overlapping and none of them agree --
 // so the variation IS the effect, not decoration on it.
-void reek(EntityManager& em, float x, float y, bool rising)
+// `out` is the way the hole faces -- where what is inside it comes from. A hole in the ground
+// has none and its vapour simply rises.
+void reek(EntityManager& em, float x, float y, bool rising, world::Step out)
 {
     static std::mt19937 rng(0x5EEDu); // cosmetic only: nothing here is saved or replayed
     std::uniform_real_distribution<float> spread(-5.0f, 5.0f);
@@ -1066,16 +1280,34 @@ void reek(EntityManager& em, float x, float y, bool rising)
 
     auto& reg = em.registry();
     sReekSide = 1 - sReekSide;
-    const float lean = sReekSide == 0 ? kReekDrift : -kReekDrift;
+    // The wander, across whichever way the vapour is going: a column that leans the same way
+    // every puff is a jet, and this is meant to be a breath.
+    const float wobble = sReekSide == 0 ? kReekDrift : -kReekDrift;
+    const bool sideways = out.dc != 0;
+    const float lean = sideways ? static_cast<float>(out.dc) * kReekRise : wobble;
+    // IT STARTS AT THE OPENING, which is BACK along the way it comes out. The mouth is the spot
+    // he stands on, a little clear of the hole so he is not inside it; the art is on the other
+    // side of that. Nudging always upward was a north wall's habit -- for a hole in the wall
+    // BELOW him it started a step into the room, and the vapour appeared to come from thin air
+    // beside the hole rather than out of it.
+    const bool facing = out.dc != 0 || out.dr != 0;
+    const float fromX = x - (facing ? static_cast<float>(out.dc) * kReekMouth : 0.0f);
+    const float fromY = y - (facing ? static_cast<float>(out.dr) : 1.0f) * kReekMouth;
     for (int i = 0; i < kReekBlobs; ++i)
     {
         const float tone = vary(rng);
-        const entt::entity blob = spawn::box(em, x + spread(rng), y - 10.0f + lift(rng), size(rng),
+        const entt::entity blob = spawn::box(em, fromX + spread(rng), fromY + lift(rng), size(rng),
                                              0.52f + tone, 0.60f + tone, 0.30f + tone);
         // Direction says where it is COMING FROM: up out of a hole in the floor, down out of
         // the way he climbed in by.
-        const float climb = rising ? -kReekRise : kReekRise * 0.7f;
-        reg.emplace<Velocity>(blob, Velocity{lean + wander(rng), climb + wander(rng)});
+        // OUT OF THE HOLE, whichever way it faces. A hole in the ground sends its vapour
+        // straight up and the way he climbed in by lets it settle back down; a hole in a WALL
+        // pushes it into the room, and it lifts as it goes because vapour does.
+        const float climb = sideways      ? -kReekRise * 0.35f
+                            : out.dr != 0 ? static_cast<float>(out.dr) * kReekRise
+                                          : (rising ? -kReekRise : kReekRise * 0.7f);
+        reg.emplace<Velocity>(
+            blob, Velocity{lean + wander(rng), climb + (sideways ? wobble : 0.0f) + wander(rng)});
         Particle p;
         p.lifetime = live(rng);
         p.start_scale = 0.45f;
@@ -1155,8 +1387,13 @@ void breathe(EntityManager& em, const Room& room, float dt)
             const bool working =
                 hole.cleared ? !queueBeyond(sCurrent, static_cast<int>(i)).empty() : hole.opened;
             if (working)
+                // A hole in a wall breathes OUT of itself, which is back the way its wall lies.
+                // One in the ground has no way to face and simply rises.
                 reek(em, sMouths[i].x, sMouths[i].y,
-                     /*rising=*/descends(sCurrent, static_cast<int>(i)));
+                     /*rising=*/descends(sCurrent, static_cast<int>(i)),
+                     descends(sCurrent, static_cast<int>(i))
+                         ? world::Step{}
+                         : world::stepOf(world::opposite(hole.side)));
         }
     }
 }

@@ -9,15 +9,32 @@ machine-guns. So it is three:
   <prefix>_loop.ogg    the body -- seamless, played until release
   <prefix>_stop.ogg    the release -- the dribble after the trigger comes up
 
-THE LOOP'S CUTS SIT ON ZERO CROSSINGS. A loop spliced mid-waveform steps the
-signal discontinuously every cycle, and that step is a click -- audible, and
-worse the more times a second it happens. The start and stop are faded instead,
-since nothing repeats them.
+THE LOOP IS CROSSFADED INTO ITSELF, not spliced on a zero crossing. Zero
+crossings are the right answer for a tone; for BROADBAND NOISE -- a spray, a
+hiss, a rumble -- they are worthless. The signal crosses zero constantly and
+between two large samples, so "the nearest sign change" is just an arbitrary cut
+at whatever amplitude the noise happened to be at, and the step is exactly the
+click it was meant to avoid.
+
+So the loop's head is crossfaded with the audio that FOLLOWED its tail: wrapping
+from end to start then runs through material that already flowed together. The
+blend is equal-power (sqrt), because summing two uncorrelated noise signals with
+a linear fade dips about 3 dB in the middle and you hear it breathe.
+
+Every cut also gets a few milliseconds of fade so no clip begins or ends part-way
+up a waveform.
 
 Output is 22050 Hz mono ogg/vorbis, the engine's SFX standard (see
 prison-escape-game/docs/PERFORMANCE.md).
 
-THE THREE ARE NORMALISED AS ONE, by a single gain taken from the loudest of
+THE ENCODED FILE IS WHAT IS CHECKED, not the samples going into it. Vorbis
+reconstructs intersample peaks ABOVE the original, so PCM normalised to a target
+can decode louder than it and clip -- and on a LOOP one clipped sample is a tick
+you hear on every pass, forever. So each part is encoded, decoded back, and
+measured; if it hit the rail the whole set is knocked down and cut again. The
+default target leaves real headroom for that reason.
+
+THE PARTS ARE NORMALISED AS ONE, by a single gain taken from the loudest of
 them -- NOT per file. They are one sound cut in three, and their relative levels
 carry it: a release is quiet BECAUSE it is a dribble. Normalising each to the
 same peak makes the dribble as loud as the spray, which is not a mix, it is
@@ -33,57 +50,31 @@ Requires ffmpeg in PATH.
 import argparse
 import math
 import os
-import struct
-import subprocess
 import sys
 import tempfile
 
-SFX_RATE = 22050
+from audio_fx import (SFX_RATE, TARGET_DBFS, decode_to_wav, encode_to_ogg, read_wav, write_wav,
+                      dbfs, one_gain, applied, encoded_peak)
 
 
-def decode_to_wav(src, wav, rate):
-    subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", src,
-                    "-ar", str(rate), "-ac", "1", wav], check=True)
+def crossfade_loop(samples, start, end, blend):
+    """The loop body, with its head blended out of what followed its tail.
 
-
-def encode_to_ogg(wav, ogg, quality):
-    subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-i", wav,
-                    "-ar", str(SFX_RATE), "-ac", "1", "-acodec", "libvorbis",
-                    "-q:a", str(quality), ogg], check=True)
-
-
-def read_wav(path):
-    with open(path, "rb") as f:
-        data = f.read()
-    if data[:4] != b"RIFF" or data[8:12] != b"WAVE":
-        raise SystemExit("not a RIFF/WAVE file: " + path)
-    pos, rate, samples = 12, SFX_RATE, []
-    while pos + 8 <= len(data):
-        cid, size = data[pos:pos + 4], struct.unpack("<I", data[pos + 4:pos + 8])[0]
-        body = data[pos + 8:pos + 8 + size]
-        if cid == b"fmt ":
-            rate = struct.unpack("<I", body[4:8])[0]
-        elif cid == b"data":
-            samples = list(struct.unpack("<%dh" % (len(body) // 2), body[:len(body) // 2 * 2]))
-        pos += 8 + size + (size & 1)
-    return samples, rate
-
-
-def write_wav(path, samples, rate):
-    body = struct.pack("<%dh" % len(samples), *samples)
-    with open(path, "wb") as f:
-        f.write(b"RIFF" + struct.pack("<I", 36 + len(body)) + b"WAVE")
-        f.write(b"fmt " + struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16))
-        f.write(b"data" + struct.pack("<I", len(body)) + body)
-
-
-def nearest_zero_crossing(samples, frame, search):
-    """The closest sample either side of `frame` where the signal crosses zero."""
-    for offset in range(0, search):
-        for i in (frame - offset, frame + offset):
-            if 0 < i < len(samples) and (samples[i - 1] <= 0) != (samples[i] <= 0):
-                return i
-    return frame
+    `blend` samples beyond `end` are mixed over the loop's first `blend` samples,
+    the outgoing part fading down and the incoming up, so the wrap point is a
+    continuation rather than a cut.
+    """
+    body = samples[start:end]
+    if blend <= 0 or len(body) <= blend * 2:
+        return body
+    after = samples[end:end + blend]
+    if len(after) < blend:
+        return body
+    for i in range(blend):
+        w = (i + 0.5) / blend
+        # Equal power: uncorrelated noise summed with linear weights loses energy mid-blend.
+        body[i] = int(body[i] * math.sqrt(w) + after[i] * math.sqrt(1.0 - w))
+    return body
 
 
 def faded(samples, fade_in, fade_out):
@@ -105,8 +96,13 @@ def main():
     ap.add_argument("--attack", type=float, default=0.18, help="seconds of transient to split off")
     ap.add_argument("--tail", type=float, default=0.30, help="seconds of release to split off")
     ap.add_argument("--quality", type=int, default=3)
-    ap.add_argument("--target-dbfs", type=float, default=-1.0,
-                    help="peak of the LOUDEST part; the others keep their relation to it")
+    ap.add_argument("--fade", type=float, default=0.006, help="seconds faded at every cut")
+    ap.add_argument("--blend", type=float, default=0.060,
+                    help="seconds of crossfade at the loop's wrap point")
+    ap.add_argument("--target-dbfs", type=float, default=TARGET_DBFS,
+                    help="peak of the LOUDEST part AFTER encoding; the others keep their "
+                         "relation to it. -3 rather than -1: vorbis decodes above the samples "
+                         "it was given, and one clipped sample in a loop ticks on every pass")
     args = ap.parse_args()
 
     os.makedirs(args.out_dir, exist_ok=True)
@@ -118,25 +114,21 @@ def main():
         f = lambda t: max(0, min(len(samples) - 1, int(t * rate)))
         s, e = f(args.start), f(args.end)
         a_end, t_start = f(args.start + args.attack), f(args.end - args.tail)
-        # Only the loop's cuts are hunted to zero: nothing repeats the other two.
-        search = int(0.01 * rate)
-        a_end = nearest_zero_crossing(samples, a_end, search)
-        t_start = nearest_zero_crossing(samples, t_start, search)
 
-        fade = int(0.008 * rate)
+        fade = int(args.fade * rate)
+        blend = int(args.blend * rate)
         parts_raw = {
-            "start": faded(samples[s:a_end], fade, 0),
-            "loop": samples[a_end:t_start],
-            "stop": faded(samples[t_start:e], 0, fade),
+            # Faded at BOTH ends: a clip that begins part-way up a waveform pops, and the pull
+            # runs straight into the loop so its own tail must not step either.
+            "start": faded(samples[s:a_end], fade, fade),
+            "loop": crossfade_loop(samples, a_end, t_start, blend),
+            "stop": faded(samples[t_start:e], fade, fade),
         }
         # One gain for the set, from the loudest sample in any of them.
-        peak = max((max(abs(v) for v in b) if b else 0) for b in parts_raw.values())
-        target = int(32767 * (10.0 ** (args.target_dbfs / 20.0)))
-        gain = (target / peak) if peak else 1.0
+        gain, peak = one_gain(parts_raw.values(), args.target_dbfs)
         print("  set peak %.2f dBFS -> %.2f dBFS (gain x%.3f), balance kept"
-              % (20 * math.log10(peak / 32767.0) if peak else -99.0, args.target_dbfs, gain))
-        parts = {n: [max(-32768, min(32767, int(v * gain))) for v in b]
-                 for n, b in parts_raw.items()}
+              % (dbfs(peak), args.target_dbfs, gain))
+        parts = {n: applied(b, gain) for n, b in parts_raw.items()}
 
         for name, body in parts.items():
             if not body:
@@ -146,7 +138,10 @@ def main():
             write_wav(part_wav, body, rate)
             out = os.path.join(args.out_dir, "%s_%s.ogg" % (args.prefix, name))
             encode_to_ogg(part_wav, out, args.quality)
-            print("  %-6s %6.3fs  %s" % (name, len(body) / rate, out))
+            after = encoded_peak(out, os.path.join(tmp, name + "-back.wav"))
+            note = "  ENCODED PEAK %5.2f dBFS%s" % (
+                dbfs(after), "  <-- CLIPPED, lower --target-dbfs" if after >= 32700 else "")
+            print("  %-6s %6.3fs  %s%s" % (name, len(body) / rate, out, note))
     return 0
 
 

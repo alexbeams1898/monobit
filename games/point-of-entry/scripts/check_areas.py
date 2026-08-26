@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/ usr / bin / env python3
 """Map lint: the LDtk project's door contract, enforced by machine.
 
 Warps are the only cross-level references in the map, so they are where
@@ -22,10 +22,12 @@ authored yet.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
-PROJECT = Path(__file__).resolve().parent.parent / "assets" / "maps" / "world.ldtk"
+GAME = Path(__file__).resolve().parent.parent
+PROJECT = GAME / "assets" / "maps" / "world.ldtk"
 
 
 def entities(level: dict, identifier: str) -> list[dict]:
@@ -41,6 +43,19 @@ def field(entity: dict, name: str) -> str:
         if fi.get("__identifier") == name and isinstance(fi.get("__value"), str):
             return fi["__value"]
     return ""
+
+
+# WHERE A HOLE KIND LIVES, read from the code that decides it rather than written down again.
+# The builder wraps the map's bare kind in a directory and an extension; saying so a second time
+# here means the day that directory moves this lint goes on checking the old one and passes
+# things that cannot load.
+def holes_dir() -> Path:
+    build = GAME / "src" / "ops" / "AreaBuildOps.cpp"
+    if build.exists():
+        found = re.search(r'"(config/[a-z_]+/)" \+ kind', build.read_text(encoding="utf-8"))
+        if found:
+            return GAME / found.group(1)
+    return GAME / "config" / "holes"
 
 
 def main() -> int:
@@ -62,6 +77,25 @@ def main() -> int:
         name = level.get("identifier", "?")
         for _ in entities(level, "PlayerStart"):
             starts.append(name)
+#A HOLE WITH NO KIND IS NOT A HOLE.Unset, it names no hole file and no art, so the
+#game builds a placeholder box that leaks nothing-- an authored point of entry that
+#looks like it has already been cleared, on a brand new game.Loud here, because the
+#game's own complaint is one line in a log nobody reads on a good day.
+        for hole in entities(level, "Hole"):
+            kind = field(hole, "kind")
+            if not kind:
+                errors.append(f"{name}: a Hole has no 'kind' -- it would build as a box that "
+                              f"never leaks")
+            elif "/" in kind or kind.endswith(".json"):
+                # The map names the KIND; where hole files live is the code's business, and it
+                # wraps the name in the path. A path here becomes config/holes/<path>.json --
+                # nonsense that only shows up as one line in a log at run time.
+                errors.append(f"{name}: Hole kind '{kind}' is a path -- name the kind alone, "
+                              f"as '{Path(kind).stem}'")
+            elif not (holes_dir() / f"{kind}.json").exists():
+                errors.append(f"{name}: Hole kind '{kind}' names no file in "
+                              f"{holes_dir().relative_to(GAME).as_posix()}")
+
         for warp in entities(level, "Warp"):
             wid = field(warp, "id")
             target = field(warp, "target")
@@ -75,8 +109,9 @@ def main() -> int:
                 errors.append(f"warp id '{wid}' declared in both "
                               f"'{warps[wid]['level']}' and '{name}'")
                 continue
-            warps[wid] = {"level": name, "target": target}
-    # PlayerStart IS the game's start, so the project carries exactly one.
+            warps[wid] = {
+    "level" : name, "target" : target}
+#PlayerStart IS the game's start, so the project carries exactly one.
     if len(starts) > 1:
         errors.append(f"more than one PlayerStart in the project: {', '.join(starts)}")
     elif not starts:

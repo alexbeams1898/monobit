@@ -70,3 +70,42 @@ on any doormat — the exact state walking through its counterpart produces.
 Walking out through a warp fades through black and arrives at the warp its
 `target` names, standing on its facing side; turning straight around walks
 you back the way you came.
+
+## Generated space
+
+Below the bar the game builds its own rooms, and the halves divide cleanly:
+**a chamber template decides structure, a tileset decides look.**
+
+**Structure** is authored in ASCII, not painted -- `config/chambers/**/*.chamber`,
+one character per tile, `W` a wall and `.` floor. So walkability there comes
+from the template rather than from a `Solid` tag; the tag is for authored
+levels, where the painter chooses each cell. Two authoring surfaces, not two
+definitions of one thing.
+
+**Look** comes from the project, the same tileset a level paints with. A room
+type (`config/rooms/*.json`) names one:
+
+```json
+"tileset": "Descent"
+```
+
+and the importer resolves its atlas, its grid and its tags. Which cell is
+which is read from the tileset's **enum tags**, exactly as walkability is:
+`Floor` and `Wall`. An id no tag names keeps the flat colour in
+`tile_visuals`, so a half-drawn set renders both ways rather than waiting to be
+finished.
+
+**TWO TILES, AND THAT IS THE WHOLE SET.** A wall is a flat block and is meant
+to be. What tells the player which way a hole goes is the **hole**, drawn at
+the angle it is seen from -- so the perspective lives in the one thing he is
+looking at rather than in the walls behind it.
+
+This was tried the other way. Giving walls the perspective means a tile for
+every way rock can meet floor: edges are not enough, because a room's corner
+touches floor only DIAGONALLY and an isolated block touches it on every side,
+so neither is the sum of its sides. Done properly that is the standard 47-tile
+blob, selected per cell from an eight-neighbour mask. It works, and it was
+built and thrown away, because it buys nothing the hole art does not buy more
+cheaply: forty-seven tiles each of which can be wrong in every room, against a
+handful of hole sprites each of which can only be wrong once. Obstacles and
+the things standing in a room arrive later as their own art, not as tiles.

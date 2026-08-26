@@ -4,6 +4,9 @@
 #include "ecs/EntityManager.h"
 
 #include <cmath>
+#include <set>
+#include <utility>
+#include <vector>
 
 namespace world
 {
@@ -139,30 +142,166 @@ bool freeSpotNear(const EntityManager& em, float& x, float& y, float w, float h)
     return nearestTile(em, x, y, [&](float cx, float cy) { return boxFree(em, cx, cy, w, h); });
 }
 
-bool archSpotNear(const EntityManager& em, float& x, float& y, float w, float h, int reach,
-                  int depth)
+bool archSpotNear(const EntityManager& em, float& x, float& y, float w, float h, Side side,
+                  int reach, int depth)
 {
     return nearestTile(
         em, x, y, [&](float cx, float cy)
-        { return boxFree(em, cx, cy, w, h) && wallFaceAbove(em, cx, cy, reach, depth) >= 0.0f; });
+        { return boxFree(em, cx, cy, w, h) && wallFace(em, cx, cy, side, reach, depth) >= 0.0f; });
 }
 
-float wallFaceAbove(const EntityManager& em, float x, float y, int reach, int depth)
+Step stepOf(Side side)
+{
+    switch (side)
+    {
+    case Side::North:
+        return {0, -1};
+    case Side::South:
+        return {0, 1};
+    case Side::East:
+        return {1, 0};
+    case Side::West:
+        return {-1, 0};
+    }
+    return {0, -1};
+}
+
+Side opposite(Side side)
+{
+    switch (side)
+    {
+    case Side::North:
+        return Side::South;
+    case Side::South:
+        return Side::North;
+    case Side::East:
+        return Side::West;
+    case Side::West:
+        return Side::East;
+    }
+    return Side::South;
+}
+
+float wallFace(const EntityManager& em, float x, float y, Side side, int reach, int depth)
 {
     const auto ts = static_cast<float>(em.tile_map.tile_size);
     if (ts <= 0.0f)
         return -1.0f;
+    const auto [dc, dr] = stepOf(side);
     for (int step = 1; step <= reach; ++step)
     {
-        const float wy = y - static_cast<float>(step) * ts;
-        if (walkable(em, x, wy))
-            continue; // still open floor between the spot and whatever stands above it
+        const float wx = x + static_cast<float>(dc * step) * ts;
+        const float wy = y + static_cast<float>(dr * step) * ts;
+        if (walkable(em, wx, wy))
+            continue; // still open floor between the spot and whatever stands beyond it
         for (int back = 1; back < depth; ++back)
-            if (walkable(em, x, wy - static_cast<float>(back) * ts))
-                return -1.0f;                 // a partition, not a wall
-        return std::floor(wy / ts) * ts + ts; // the bottom edge of the tile the face sits in
+            if (walkable(em, wx + static_cast<float>(dc * back) * ts,
+                         wy + static_cast<float>(dr * back) * ts))
+                return -1.0f; // a partition, not a wall
+        // The face's NEAR edge -- the side of it he is standing on.
+        const float found = dc != 0 ? wx : wy;
+        const float edge = std::floor(found / ts) * ts;
+        return (dc + dr) > 0 ? edge : edge + ts;
     }
     return -1.0f;
+}
+
+namespace
+{
+
+// The cell of the first solid standing `side` of (x, y), or {-1,-1} within `reach`.
+std::pair<int, int> faceCell(const EntityManager& em, float x, float y, Side side, int reach)
+{
+    const TileMap& map = em.tile_map;
+    const auto ts = static_cast<float>(map.tile_size);
+    const auto [dc, dr] = stepOf(side);
+    for (int step = 1; step <= reach; ++step)
+    {
+        const float wx = x + static_cast<float>(dc * step) * ts;
+        const float wy = y + static_cast<float>(dr * step) * ts;
+        const int c = static_cast<int>(wx) / map.tile_size;
+        const int r = static_cast<int>(wy) / map.tile_size;
+        if (wx < 0.0f || wy < 0.0f || c >= map.width || r >= map.height)
+            return {-1, -1};
+        if (!walkable(em, wx, wy))
+            return {c, r};
+    }
+    return {-1, -1};
+}
+
+// The connected solid containing (col, row), as a bounding box -- or nothing where it reaches the
+// outside of the map (the room's own edge) or runs past `cap` (architecture, not a slab).
+Slab floodSlab(const EntityManager& em, int col, int row, int cap)
+{
+    const TileMap& map = em.tile_map;
+    const auto ts = static_cast<float>(map.tile_size);
+    std::vector<std::pair<int, int>> open{{col, row}};
+    std::set<std::pair<int, int>> seen{{col, row}};
+    int c0 = col, c1 = col, r0 = row, r1 = row;
+    while (!open.empty())
+    {
+        if (static_cast<int>(seen.size()) > cap)
+            return {};
+        const auto [c, r] = open.back();
+        open.pop_back();
+        c0 = std::min(c0, c);
+        c1 = std::max(c1, c);
+        r0 = std::min(r0, r);
+        r1 = std::max(r1, r);
+        constexpr int kAround[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (const auto& step : kAround)
+        {
+            const int nc = c + step[0];
+            const int nr = r + step[1];
+            if (nc < 0 || nr < 0 || nc >= map.width || nr >= map.height)
+                return {}; // it reaches the outside: this is the room's edge
+            const float wx = (static_cast<float>(nc) + 0.5f) * ts;
+            const float wy = (static_cast<float>(nr) + 0.5f) * ts;
+            if (walkable(em, wx, wy) || !seen.emplace(nc, nr).second)
+                continue;
+            open.emplace_back(nc, nr);
+        }
+    }
+    return Slab{c1 - c0 + 1, r1 - r0 + 1};
+}
+
+} // namespace
+
+bool rockAllTheWayOut(const EntityManager& em, float x, float y, Side side)
+{
+    const TileMap& map = em.tile_map;
+    if (map.tile_size <= 0)
+        return false;
+    const auto ts = static_cast<float>(map.tile_size);
+    const auto [dc, dr] = stepOf(side);
+    bool inRock = false;
+    for (int step = 1;; ++step)
+    {
+        const float wx = x + static_cast<float>(dc * step) * ts;
+        const float wy = y + static_cast<float>(dr * step) * ts;
+        const int c = static_cast<int>(wx) / map.tile_size;
+        const int r = static_cast<int>(wy) / map.tile_size;
+        if (wx < 0.0f || wy < 0.0f || c >= map.width || r >= map.height)
+            return inRock; // left the map still in rock: there is nothing behind this wall
+        if (walkable(em, wx, wy))
+        {
+            // Floor after rock is the far side of a divider. Floor BEFORE it is just the gap he
+            // is standing in, since a hole may stand back from the wall it is cut into.
+            if (inRock)
+                return false;
+            continue;
+        }
+        inRock = true;
+    }
+}
+
+Slab slabBeyond(const EntityManager& em, float x, float y, Side side, int reach, int cap)
+{
+    const TileMap& map = em.tile_map;
+    if (map.tile_size <= 0 || map.width <= 0 || map.height <= 0)
+        return {};
+    const auto [col, row] = faceCell(em, x, y, side, reach);
+    return col < 0 ? Slab{} : floodSlab(em, col, row, cap);
 }
 
 bool stepBlocked(const EntityManager& em, float& pos, float delta, bool horizontal, float otherAxis,

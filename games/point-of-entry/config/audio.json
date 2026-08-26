@@ -1,8 +1,8 @@
 {
-    "_comment": "THE SOUND BANK: every sound that belongs to the GAME rather than to a particular thing in it. A name here is a promise -- one sound means one thing everywhere it plays, which is what makes a menu feel like one menu and a floor feel like one place. Souls does this: there is a single confirm, a single back, and you learn them once. A sound that belongs to a THING lives with that thing instead (a tool's spray is in config/tools.json, a pest's voice will be in its own file), because adding the thing should bring its sound with it and not need an entry here. variations are rotated at random so a repeated sound does not machine-gun; volume scales the whole entry, and every file is peak-normalised to -1 dBFS so this is the only place loudness is decided.",
+    "_comment": "THE SOUND BANK: every sound that belongs to the GAME rather than to a particular thing in it. A name here is a promise -- one sound means one thing everywhere it plays, which is what makes a menu feel like one menu and a floor feel like one place. Souls does this: there is a single confirm, a single back, and you learn them once. A sound that belongs to a THING lives with that thing instead (a tool's spray is in config/tools.json, a pest's voice will be in its own file), because adding the thing should bring its sound with it and not need an entry here. variations are drawn without replacement so a sound can never follow itself, and min_pitch/max_pitch shift each play a little so one recording does not read as one sample retriggered -- leave them out and the file plays as recorded. volume scales the whole entry, and every file is peak-normalised to -3 dBFS (verified AFTER encoding, since Vorbis overshoots) so this is the only place loudness is decided.",
     "sounds": {
         "footstep": {
-            "volume": 0.18,
+            "volume": 0.22,
             "variations": [
                 "assets/audio/footstep_walk_1.ogg",
                 "assets/audio/footstep_walk_2.ogg",
@@ -12,6 +12,35 @@
                 "assets/audio/footstep_walk_6.ogg",
                 "assets/audio/footstep_walk_7.ogg",
                 "assets/audio/footstep_walk_8.ogg"
+            ],
+            "min_pitch": 0.85,
+            "max_pitch": 1.15
+        },
+        "hurt": {
+            "volume": 0.45,
+            "min_pitch": 0.92,
+            "max_pitch": 1.1,
+            "variations": [
+                "assets/audio/hurt.ogg"
+            ]
+        },
+        "death": {
+            "volume": 0.55,
+            "min_pitch": 0.96,
+            "max_pitch": 1.04,
+            "variations": [
+                "assets/audio/death.ogg"
+            ]
+        },
+        "hit": {
+            "volume": 0.3,
+            "min_pitch": 0.9,
+            "max_pitch": 1.12,
+            "variations": [
+                "assets/audio/hit_1.ogg",
+                "assets/audio/hit_2.ogg",
+                "assets/audio/hit_3.ogg",
+                "assets/audio/hit_4.ogg"
             ]
         }
     }

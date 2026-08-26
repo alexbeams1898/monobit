@@ -14,6 +14,7 @@
 #include "systems/TravelSystem.h"
 
 #include <algorithm>
+#include <chrono>
 
 #include <entt/entt.hpp>
 
@@ -103,6 +104,11 @@ void writeMan(EntityManager& em, const savegame::Man& man)
 
 void persist(const EntityManager& em)
 {
+    // TIMED, because this runs at every ground change and again on the way out, and a slow save
+    // is invisible in both places -- behind a door curtain it hides in the transition, and on
+    // quit it reads as the game refusing to close. It also reads the whole document back before
+    // writing it, so what it costs grows with the descent rather than staying flat.
+    const auto began = std::chrono::steady_clock::now();
     savegame::File file = savegame::load();
     if (file.lives.empty())
     {
@@ -124,6 +130,10 @@ void persist(const EntityManager& em)
         life.where.stood = true;
     }
     savegame::save(file);
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - began)
+                        .count();
+    poe::log().debug("save: written in {} ms ({} floor(s))", ms, life.descent.size());
 }
 
 bool resume(Engine& engine, EntityManager& em)

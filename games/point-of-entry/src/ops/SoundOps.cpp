@@ -5,7 +5,9 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <fstream>
+#include <numeric>
 #include <random>
 #include <unordered_map>
 #include <unordered_set>
@@ -19,10 +21,47 @@ struct Entry
 {
     std::vector<std::string> variations;
     float volume = 1.0f;
+    // PITCH. The same recording at the same pitch every time reads as a sample being retriggered
+    // rather than as a thing happening twice -- most of all for a voice, where a man grunting on
+    // exactly one note is the giveaway. Equal bounds means play it as recorded.
+    float min_pitch = 1.0f;
+    float max_pitch = 1.0f;
+    // THE BAG: which variations are still to be drawn before the pool refills. Drawing without
+    // replacement rather than at random, because random gives clumps -- eight footsteps rolled
+    // independently will repeat one back-to-back about once every eight steps, and a repeat is
+    // the one thing the ear picks out of a sequence meant to sound incidental.
+    std::vector<std::size_t> bag;
+    std::size_t last = 0; // what came out most recently, so a refill cannot repeat it
+    bool drawn = false;
 };
 
 std::unordered_map<std::string, Entry> sBank;
 std::unordered_set<std::string> sMissingSaid;
+
+std::mt19937& rng()
+{
+    static std::mt19937 gen(0xA0D10u); // cosmetic only: nothing here is saved or replayed
+    return gen;
+}
+
+// One variation, without replacement.
+std::size_t draw(Entry& e)
+{
+    if (e.bag.empty())
+    {
+        e.bag.resize(e.variations.size());
+        std::iota(e.bag.begin(), e.bag.end(), std::size_t{0});
+        std::shuffle(e.bag.begin(), e.bag.end(), rng());
+        // A fresh bag may open with the one that just played, which is the only seam a
+        // back-to-back repeat can still come through -- so trade it away from the front.
+        if (e.drawn && e.bag.size() > 1 && e.bag.back() == e.last)
+            std::swap(e.bag.back(), e.bag.front());
+    }
+    e.last = e.bag.back();
+    e.drawn = true;
+    e.bag.pop_back();
+    return e.last;
+}
 } // namespace
 
 bool load(const std::string& path)
@@ -46,6 +85,8 @@ bool load(const std::string& path)
     {
         Entry entry;
         entry.volume = body.value("volume", entry.volume);
+        entry.min_pitch = body.value("min_pitch", entry.min_pitch);
+        entry.max_pitch = body.value("max_pitch", entry.max_pitch);
         entry.variations = body.value("variations", std::vector<std::string>{});
         if (const auto one = body.value("path", std::string{}); !one.empty())
             entry.variations.push_back(one);
@@ -60,7 +101,7 @@ bool load(const std::string& path)
     return !sBank.empty();
 }
 
-void play(const std::string& name)
+std::string play(const std::string& name)
 {
     const auto found = sBank.find(name);
     if (found == sBank.end())
@@ -69,12 +110,16 @@ void play(const std::string& name)
         // log line per frame buries the thing it is trying to report.
         if (sMissingSaid.insert(name).second)
             poe::log().error("sound: nothing in the bank is called '{}'", name);
-        return;
+        return {};
     }
-    const Entry& entry = found->second;
-    static std::mt19937 rng(0xA0D10u); // cosmetic only: nothing here is saved or replayed
-    std::uniform_int_distribution<std::size_t> pick(0, entry.variations.size() - 1);
-    AudioSystem::playSfx(entry.variations[pick(rng)], entry.volume);
+    Entry& entry = found->second;
+    const float pitch =
+        entry.max_pitch > entry.min_pitch
+            ? std::uniform_real_distribution<float>(entry.min_pitch, entry.max_pitch)(rng())
+            : entry.min_pitch;
+    const std::string& file = entry.variations[draw(entry)];
+    AudioSystem::playSfx(file, entry.volume, pitch);
+    return file;
 }
 
 } // namespace sound

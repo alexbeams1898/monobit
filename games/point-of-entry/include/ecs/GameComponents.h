@@ -134,6 +134,14 @@ struct PlacedHole
     // and walked away from. A passage carrying something is not a way anywhere. Derived every
     // frame from the tree, never latched.
     bool in_use = false;
+    // DRAWN FROM THE OTHER SIDE. East and west are one drawing, so a hole in the left wall is
+    // the right wall's art mirrored -- one thing to draw and nothing that can drift.
+    bool mirrored = false;
+    // TURNED TO FACE ITS WALL, in radians. Only where the art has nothing drawn for this side:
+    // a hole drawn for one wall, turned, is a cheap approximation of being drawn for another,
+    // and it costs nothing to find out whether it reads. Art that HAS been drawn for a side is
+    // never turned -- it is already at the angle it is meant to be seen from.
+    float turn = 0.0f;
 };
 
 // What a pest pays when it dies. On the pest, not in a table here -- the config that

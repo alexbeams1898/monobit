@@ -6,6 +6,7 @@
 
 #include <functional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 class EntityManager;
@@ -26,6 +27,28 @@ class EntityManager;
 // everything else walks. No painted collision layer to drift from the art.
 namespace area
 {
+
+// A TILESET FROM THE PROJECT, by identifier. Where its atlas is, how it is gridded, and which
+// cells carry which enum tag.
+//
+// TAGS ARE HOW A CELL SAYS WHAT IT IS, and the project already works this way: `Solid` is a tag
+// on a cell, so walkability travels with the art. A cell's ROLE travels the same way, which is
+// what lets generated space draw with authored art while nothing about a tile is written down
+// twice -- draw the cell, tag it, and the game finds it.
+struct Tiles
+{
+    std::string atlas; // resolved against the project file, relative to the game root
+    int grid = 16;     // the authoring scale; the world runs at twice it
+    int cols = 1;
+    // Every cell carrying a given tag. A list rather than one cell, so a tag may name several
+    // and a caller that wants variation later does not need this changed.
+    std::unordered_map<std::string, std::vector<int>> tagged;
+    bool ok = false;
+};
+
+// Read one tileset definition out of the project. An empty identifier takes the first, which is
+// what a project with a single tileset means.
+Tiles tileset(const std::string& ldtkPath, const std::string& identifier = {});
 
 // One placed thing. (x,y) is its centre in world pixels; (w,h) its authored
 // size. `props` holds the entity's fields by their LDtk identifiers.

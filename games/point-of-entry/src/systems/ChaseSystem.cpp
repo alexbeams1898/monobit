@@ -5,9 +5,11 @@
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
 #include "ops/NavUtils.h"
+#include "ops/SoundOps.h"
 #include "systems/AimSystem.h"
 #include "systems/CombatSystem.h"
 #include "systems/PlayerSystem.h"
+#include "systems/TintSystem.h"
 
 #include <cmath>
 #include <unordered_map>
@@ -98,6 +100,12 @@ void integrate(EntityManager& em, float dt)
         return;
     const auto& pt = reg.get<Transform>(playerEnt);
 
+    // HE GRUNTS ONCE, however many of them reach him. Contact is resolved per pest -- it has to
+    // be, since each carries its own cooldown -- but being hurt is one thing that happened to
+    // one man, and a crowd landing together would otherwise stack a voice on itself.
+    bool hurt = false;
+    bool killed = false;
+
     for (auto [entity, t, vel, pest] : reg.view<Transform, Velocity, Pest>().each())
     {
         // One axis at a time, against the same walls the player obeys. The flow field routes
@@ -123,9 +131,28 @@ void integrate(EntityManager& em, float dt)
                     reg.all_of<Stats>(playerEnt) ? stats::defense(reg.get<Stats>(playerEnt)) : 0;
                 const int raw = static_cast<int>(reg.get<Pest>(entity).contact_damage);
                 // The guard stands between the hit and the bar -- see absorbWithGuard.
-                hp->current -= tools::absorbWithGuard(em, std::max(1, raw - def), aim::guarding());
+                const int taken =
+                    tools::absorbWithGuard(em, std::max(1, raw - def), aim::guarding());
+                hp->current -= taken;
+                hurt = hurt || taken > 0;
+                killed = killed || hp->current <= 0;
             }
         }
+    }
+
+    if (hurt)
+    {
+        // TWO LAYERS. The impact is the blow landing and belongs to any body; the grunt is the
+        // man it landed on. Held apart because only the second of them is his -- a pest struck
+        // by the wand wants the same impact and none of the voice.
+        sound::play("hit");
+        // Not for the hit that kills him: the death beat has its own voice, and both at once is
+        // one man too many out of one throat.
+        if (!killed)
+            sound::play("hurt");
+        // He flashes like anything else that gets struck; the tint pass decides what that looks
+        // like. Fatal or not, since the death beat runs its own fade over the top.
+        reg.emplace_or_replace<HitFlash>(playerEnt, HitFlash{tint::flashSeconds(killed)});
     }
 
     shoveApart(em);
