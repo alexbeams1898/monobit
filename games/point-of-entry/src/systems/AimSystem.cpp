@@ -3,6 +3,7 @@
 #include "Engine.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
+#include "ecs/FeelConfig.h"
 #include "renderers/DebugPanelRenderer.h"
 
 #include <SDL.h>
@@ -29,7 +30,6 @@ bool sStaleGuard = false;
 
 // Below this many pixels from the player, the cursor gives no usable direction -- the vector is
 // mostly rounding error and the aim would spin wildly. Hold the last direction instead.
-constexpr float kDeadZone = 8.0f;
 
 } // namespace
 
@@ -71,7 +71,7 @@ void update(Engine& engine, EntityManager& em)
         const float dx = sWorldX - t.x;
         const float dy = sWorldY - t.y;
         const float len = std::sqrt(dx * dx + dy * dy);
-        if (len > kDeadZone)
+        if (len > feel::current().aim.dead_zone)
         {
             sDirX = dx / len;
             sDirY = dy / len;

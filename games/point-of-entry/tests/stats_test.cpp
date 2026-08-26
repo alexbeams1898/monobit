@@ -2,6 +2,7 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
+#include "ecs/FeelConfig.h"
 #include "systems/CombatSystem.h"
 #include "systems/DescentSystem.h"
 #include "systems/PlayerSystem.h"
@@ -141,4 +142,31 @@ TEST_CASE("holding more fronts pays more per kill", "[reward]")
     CHECK(rateFor(4) == Catch::Approx(1.0f + per * 3.0f));
     // Each extra front is worth the same as the last -- no runaway on a floor full of holes.
     CHECK(rateFor(4) - rateFor(3) == Catch::Approx(rateFor(3) - rateFor(2)));
+}
+
+// THE NUMBERS YOU TUNE BY PLAYING have to actually be read, or a config file is a place people
+// change values and nothing happens -- which is worse than a constant, because a constant is at
+// least honest about where it lives.
+TEST_CASE("the feel config is read, and a missing one is not a crash", "[stats]")
+{
+    REQUIRE(feel::load("config/feel.json"));
+    const feel::Numbers& n = feel::current();
+
+    // Sanity, not values: every one of these is tuning and expected to change.
+    CHECK(n.walk.stride > 0.0f);
+    CHECK(n.walk.poses_per_step > 0.0f);
+    CHECK(n.contact.interval > 0.0f);
+    CHECK(n.contact.radius > 0.0f);
+    CHECK(n.reach.pickup > 0.0f);
+    CHECK(n.reach.passage > 0.0f);
+    CHECK(n.reek.every > 0.0f);
+    CHECK(n.fade.travel > 0.0f);
+    CHECK(n.aim.dead_zone > 0.0f);
+
+    SECTION("no file at all leaves the built-in numbers standing")
+    {
+        const float stride = feel::current().walk.stride;
+        CHECK_FALSE(feel::load("config/there-is-no-feel.json"));
+        CHECK(feel::current().walk.stride == stride);
+    }
 }

@@ -34,7 +34,16 @@ struct Hole
     float x = 0.0f;
     float y = 0.0f;
     std::string type;
-    int depth = 0;
+    // WHAT DEPTH ITS PROGRAM RUNS AT. Left alone it is THIS FLOOR'S -- which is what a hole
+    // belonging to the floor wants, and every hole does except one kind. A hole CARRIED from
+    // somewhere else names the depth it came from, because its fight is that floor's fight
+    // being finished here.
+    //
+    // The default is what makes it safe: depth 0 is a real depth (the bar), so a field that
+    // meant "unset" by holding zero would have every hole quietly running the easiest program
+    // in the game -- which is what it did, and why nothing got harder as he went down.
+    static constexpr int kThisFloor = -1;
+    int depth = kThisFloor;
 };
 
 // Where the whole floor's fight is up to -- the aggregate over every hole's own program.

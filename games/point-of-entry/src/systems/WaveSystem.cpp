@@ -571,7 +571,8 @@ void begin(const std::string& configPath, const std::vector<Hole>& holes, int de
         RunningHole active;
         active.at = hole;
         active.depth = hole.depth;
-        active.program = loadHoleKind(hole.type, hole.depth);
+        active.program =
+            loadHoleKind(hole.type, hole.depth == Hole::kThisFloor ? sDepth : hole.depth);
         sHoles.push_back(std::move(active));
     }
     restart();
@@ -629,6 +630,29 @@ entt::entity spawnOne(EntityManager& em, const std::string& pestPath, float x, f
     return emerge(em, x, y, -1, idx, sDepth);
 }
 
+// ONE HOLE, MID-WAVE: what it has left to send, sent on its own spacing. Pulled out of the
+// tick because a wave emerging and a wave being SCHEDULED are two different things happening on
+// two different clocks, and reading them interleaved is what made the tick hard to follow.
+void pushOut(EntityManager& em, RunningHole& hole, int index, float dt)
+{
+    hole.timer -= dt;
+    while (hole.timer <= 0.0f && hole.to_emerge > 0)
+    {
+        if (const std::size_t kind = pickPest(hole, sSpawnCounter);
+            kind != static_cast<std::size_t>(-1))
+        {
+            emerge(em, hole.at.x, hole.at.y, index, kind, hole.depth);
+            if (hole.to_emerge == countForWave(hole.program, hole.wave))
+                poe::log().info("swarm:   hole[{}] first emergence at ({:.0f},{:.0f})", index,
+                                hole.at.x, hole.at.y);
+        }
+        --hole.to_emerge;
+        hole.timer += hole.program.spacing;
+    }
+    if (hole.to_emerge <= 0)
+        hole.emerging = false;
+}
+
 void update(EntityManager& em, float dt)
 {
     // Every hole on its own clock, but CLEARING gates each: a hole's breath toward its next
@@ -641,22 +665,7 @@ void update(EntityManager& em, float dt)
             continue;
         if (hole.emerging)
         {
-            hole.timer -= dt;
-            while (hole.timer <= 0.0f && hole.to_emerge > 0)
-            {
-                if (const std::size_t kind = pickPest(hole, sSpawnCounter);
-                    kind != static_cast<std::size_t>(-1))
-                {
-                    emerge(em, hole.at.x, hole.at.y, i, kind, hole.depth);
-                    if (hole.to_emerge == countForWave(hole.program, hole.wave))
-                        poe::log().info("swarm:   hole[{}] first emergence at ({:.0f},{:.0f})", i,
-                                        hole.at.x, hole.at.y);
-                }
-                --hole.to_emerge;
-                hole.timer += hole.program.spacing;
-            }
-            if (hole.to_emerge <= 0)
-                hole.emerging = false;
+            pushOut(em, hole, i, dt);
             continue;
         }
         // Its output must die before its clock runs.
@@ -726,7 +735,7 @@ void retarget(int holeIndex, const Hole& to, int killed)
     }
     hole.at = to;
     hole.depth = to.depth;
-    hole.program = loadHoleKind(to.type, to.depth);
+    hole.program = loadHoleKind(to.type, to.depth == Hole::kThisFloor ? sDepth : to.depth);
     hole.wave = 0;
     hole.to_emerge = 0;
     hole.owed = 0;

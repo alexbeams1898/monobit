@@ -471,15 +471,21 @@ void spaceSpawners(const Config& cfg, float ts, Layout& out)
     out.markers.insert(out.markers.end(), kept.begin(), kept.end());
 }
 
-Layout generateOnce(EntityManager& em, const Config& cfg, const std::vector<Chamber>& rooms,
-                    unsigned seed)
+// AN ATTEMPT BUILDS ITS OWN MAP and hands it back beside the layout that describes it.
+//
+// Writing into the world instead meant every attempt destroyed the one before it, so choosing
+// the best of twelve required generating them all AGAIN to get the winner's map back -- twice
+// the work, and a Layout that described a floor the world was not holding whenever the second
+// pass failed to land on it. A map and the markers into it are one answer; returning half of it
+// through the world was what let the halves disagree.
+Layout generateOnce(const Config& cfg, const std::vector<Chamber>& rooms, unsigned seed,
+                    TileMap& map)
 {
     Layout out;
     out.seed = seed;
     std::mt19937 rng(seed);
 
     // Solid to begin with; rooms and corridors carve into it.
-    TileMap& map = em.tile_map;
     map.tile_size = cfg.tile_size;
     map.width = cfg.width;
     map.height = cfg.height;
@@ -592,7 +598,7 @@ Layout generate(EntityManager& em, const std::string& typePath, unsigned seed, E
     loadVisuals(type, em.tile_config); // seed-independent; once, not per attempt
     loadTiles(type, em.tile_config);   // AFTER the colours: a drawn cell replaces its fallback
 
-    // THE SEEP GUARANTEE. A floor with one spawner is a fight with one bearing, which is
+    // THE HOLE GUARANTEE. A floor with one spawner is a fight with one bearing, which is
     // campable however the emergence behaves -- so a layout that cannot seat min_count holes
     // (templates too sparse, or the spawn exclusion swallowing them) is not accepted. Reroll on
     // a seed DERIVED from the requested one, so a caller passing a fixed seed still gets a
@@ -600,41 +606,37 @@ Layout generate(EntityManager& em, const std::string& typePath, unsigned seed, E
     // than nothing, because a playable floor with one hole beats no floor at all.
     constexpr int kAttempts = 12;
     Layout best;
+    TileMap bestMap;
     int bestCount = -1;
     for (int attempt = 0; attempt < kAttempts; ++attempt)
     {
         const unsigned derived = seed + static_cast<unsigned>(attempt) * 2654435761u;
-        Layout f = generateOnce(em, cfg, rooms, derived);
+        TileMap map;
+        Layout f = generateOnce(cfg, rooms, derived, map);
         if (!f.ok)
             continue;
         const int count = cfg.spaced_types.empty() ? cfg.spaced_min_count : spawnerCount(cfg, f);
-        if (count > bestCount)
-        {
-            best = f;
-            bestCount = count;
-        }
         if (count >= cfg.spaced_min_count)
         {
             poe::log().info("floor: seed {} (attempt {}), {} markers", derived, attempt + 1,
                             f.markers.size());
+            em.tile_map = std::move(map);
             return f;
         }
+        if (count > bestCount)
+        {
+            best = f;
+            bestMap = std::move(map);
+            bestCount = count;
+        }
     }
+    // Give up loudly and ship the best seen, WITH ITS OWN MAP -- kept all along, so there is
+    // nothing to rebuild and no way for the markers and the world to be describing different
+    // floors.
     poe::log().warn("floor: no layout seated {} spawners in {} attempts -- shipping one with {}",
                     cfg.spaced_min_count, kAttempts, bestCount);
     if (bestCount >= 0)
-    {
-        // The tile map in `em` currently holds the LAST attempt; rebuild the best one so the
-        // returned markers and the world agree.
-        Layout rebuilt;
-        for (int attempt = 0; attempt < kAttempts; ++attempt)
-        {
-            const unsigned derived = seed + static_cast<unsigned>(attempt) * 2654435761u;
-            rebuilt = generateOnce(em, cfg, rooms, derived);
-            if (rebuilt.ok && spawnerCount(cfg, rebuilt) == bestCount)
-                return rebuilt;
-        }
-    }
+        em.tile_map = std::move(bestMap);
     return best;
 }
 

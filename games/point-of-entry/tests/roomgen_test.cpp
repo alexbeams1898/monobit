@@ -694,3 +694,43 @@ TEST_CASE("probe: how many markers have solid all the way out", "[.probe]")
     }
     WARN("backed by rock: " << backed << "  only a slab: " << slab << "  no wall at all: " << none);
 }
+
+// THE MARKERS AND THE MAP ARE ONE ANSWER. A floor that cannot seat its spawners ships the best
+// attempt anyway -- and the world must be holding THAT attempt, not whichever one happened to be
+// generated last. This is what the old rebuild-the-winner loop was trying to guarantee and could
+// not: when its second pass failed to land on the best count again, the returned markers
+// described a floor nobody was standing in.
+TEST_CASE("the markers describe the floor that actually got loaded", "[roomgen]")
+{
+    for (unsigned seed = 1; seed <= 60; ++seed)
+    {
+        EntityManager em;
+        const roomgen::Layout floor = roomgen::generate(em, "config/rooms/cellar.json", seed);
+        if (!floor.ok)
+            continue;
+        const TileMap& map = em.tile_map;
+        REQUIRE(map.tile_size > 0);
+
+        // Every marker stands on floor of the map that was loaded. A marker in rock means the
+        // layout came from a different attempt than the map did.
+        for (const auto& m : floor.markers)
+        {
+            const int c = static_cast<int>(m.x) / map.tile_size;
+            const int r = static_cast<int>(m.y) / map.tile_size;
+            REQUIRE(c >= 0);
+            REQUIRE(r >= 0);
+            REQUIRE(c < map.width);
+            REQUIRE(r < map.height);
+            INFO("seed " << seed << " marker at tile (" << c << "," << r << ")");
+            REQUIRE(map.tiles[static_cast<std::size_t>(r) * static_cast<std::size_t>(map.width) +
+                              static_cast<std::size_t>(c)]
+                        .walkable);
+        }
+        // And so does the spawn.
+        const int sc = static_cast<int>(floor.spawn_x) / map.tile_size;
+        const int sr = static_cast<int>(floor.spawn_y) / map.tile_size;
+        REQUIRE(map.tiles[static_cast<std::size_t>(sr) * static_cast<std::size_t>(map.width) +
+                          static_cast<std::size_t>(sc)]
+                    .walkable);
+    }
+}

@@ -4,6 +4,7 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
+#include "ecs/FeelConfig.h"
 #include "ops/LogUtils.h"
 #include "ops/NavUtils.h"
 #include "systems/AimSystem.h"
@@ -42,7 +43,6 @@ bool sTriggerHeld = false;
 bool sCoughedThisPull = false;
 // How much spray -- in seconds of it -- he must have the breath for before the stream will pick
 // back up. Enough to be a spray rather than a twitch.
-constexpr float kResumeSeconds = 0.4f;
 
 // Silence the trigger, wherever the trigger stopped. Called on release AND on holster, because a
 // stream can end without a release at all: a door, a death, switching tools. A looping voice
@@ -434,7 +434,8 @@ void tickStream(EntityManager& em, const Tool& tool, entt::entity owner, float d
     // starting, while continuing only asks for something left. He has to ease off, which is what
     // running out of breath ought to mean.
     const bool bodyWilling =
-        sta->current > (reg.valid(stream) ? 0.0f : tool.stamina * kResumeSeconds);
+        sta->current >
+        (reg.valid(stream) ? 0.0f : tool.stamina * feel::current().wand.resume_seconds);
     const bool wants = triggerHeld && charge->current > 0.0f && bodyWilling;
     if (!wants)
     {

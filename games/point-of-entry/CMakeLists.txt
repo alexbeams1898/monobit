@@ -6,6 +6,7 @@ project(PointOfEntry VERSION 0.1.0 LANGUAGES C CXX)
 # Kept separate from the exe so tests can link the same code without main().
 add_library(poe-systems STATIC
     src/ops/CaptureUtils.cpp
+    src/ecs/FeelConfig.cpp
     src/renderers/DebugPanelRenderer.cpp
     src/screens/PauseScreen.cpp
     src/screens/StagingScreen.cpp
@@ -13,6 +14,7 @@ add_library(poe-systems STATIC
     src/screens/ScreenStyle.cpp
     src/screens/ScreenInput.cpp
     src/systems/ChaseSystem.cpp
+    src/systems/HolePlacementSystem.cpp
     src/systems/TintSystem.cpp
     src/renderers/FloaterRenderer.cpp
     src/systems/RewardSystem.cpp
@@ -37,6 +39,7 @@ add_library(poe-systems STATIC
     src/formats/SpriteDefLoader.cpp
     src/formats/SaveGame.cpp
     src/screens/TitleScreen.cpp
+    src/formats/HoleKinds.cpp
     src/formats/RoomGen.cpp
     src/formats/AreaLoader.cpp
     src/ops/SpawnUtils.cpp
@@ -90,6 +93,10 @@ endif()
 # Tests -- link the same poe-systems the game does, so what is tested is what ships.
 add_executable(poe-tests
     tests/sound_test.cpp
+    tests/swarm_test.cpp
+    tests/guard_test.cpp
+    tests/gait_test.cpp
+    tests/thermos_test.cpp
     tests/tint_test.cpp
     tests/nav_test.cpp
     tests/roomgen_test.cpp

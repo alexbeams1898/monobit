@@ -13,6 +13,7 @@
 #include "gl/PixelRenderTarget.h"
 #include "ops/AreaBuildOps.h"
 #include "ops/CaptureUtils.h"
+#include "ecs/FeelConfig.h"
 #include "ops/LogUtils.h"
 #include "ops/NavUtils.h"
 #include "ops/RecordOps.h"
@@ -156,6 +157,7 @@ void ensurePlayer(EntityManager& em, float x, float y)
 
 void loadConfigs()
 {
+    feel::load("config/feel.json");
     stats::load("config/stats.json");
     tint::load("config/stats.json");
     thermos::load("config/stats.json");

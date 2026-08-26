@@ -4,6 +4,7 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
+#include "ecs/FeelConfig.h"
 #include "ops/NavUtils.h"
 #include "ops/SoundOps.h"
 #include "systems/AimSystem.h"
@@ -24,8 +25,6 @@ namespace
 
 // Contact hurts once every this many seconds. Pest have no attack: touching you IS the attack,
 // which is what lets hundreds of them exist without hundreds of attack animations.
-constexpr float kTouchInterval = 0.6f;
-constexpr float kTouchRadius = 12.0f;
 
 // Movement character is the SPECIES' business (see Motion in GameComponents): a tremor makes an
 // insect, a plain glide makes a mammal, and this system applies whatever the pest declared
@@ -43,7 +42,7 @@ void shoveApart(EntityManager& em)
     // swarm is meant to reach the hundreds, and an all-pairs scan is the one thing here that
     // could not afford that.
     constexpr float kCell = 8.0f;
-    constexpr float kSpace = 5.0f; // two ants closer than this get pushed apart
+    const float kSpace = feel::current().contact.spacing;
     static std::unordered_map<uint64_t, std::vector<entt::entity>> grid;
     grid.clear();
     const auto key = [](float x, float y)
@@ -120,9 +119,10 @@ void integrate(EntityManager& em, float dt)
         touch.remaining -= dt;
         const float tdx = pt.x - t.x;
         const float tdy = pt.y - t.y;
-        if (touch.remaining <= 0.0f && tdx * tdx + tdy * tdy < kTouchRadius * kTouchRadius)
+        if (touch.remaining <= 0.0f &&
+            tdx * tdx + tdy * tdy < feel::current().contact.radius * feel::current().contact.radius)
         {
-            touch.remaining = kTouchInterval;
+            touch.remaining = feel::current().contact.interval;
             if (auto* hp = reg.try_get<Health>(playerEnt))
             {
                 // Defense is derived from the sheet and shaves contact flat; the floor of 1

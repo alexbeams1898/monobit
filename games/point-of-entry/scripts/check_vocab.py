@@ -54,7 +54,10 @@ def retired_words(problems: list[str]) -> None:
             continue
         text = p.read_text(encoding="utf-8", errors="ignore")
         for word, say in RETIRED.items():
-            if re.search(r"\b%s\b" % word, text):
+            # CASE-BLIND on purpose. The house comment style SHOUTS, and a retired word
+            # survives longest in the capitals of a heading -- exactly where a
+            # case-sensitive search cannot see it.
+            if re.search(r"\b%s\b" % word, text, re.IGNORECASE):
                 problems.append(f"{p.relative_to(ROOT)}: '{word}' is retired -- say {say}")
 
 

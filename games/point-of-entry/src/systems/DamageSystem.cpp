@@ -3,6 +3,7 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
+#include "ecs/FeelConfig.h"
 #include "ops/GuideOps.h"
 #include "ops/LootOps.h"
 #include "ops/NavUtils.h"
@@ -32,7 +33,6 @@ namespace
 // a kill legible in a crowd where several things are being hit at once.
 // A corpse FADES rather than cutting out -- longer than the flash, so a kill pops bright and
 // then ghosts away instead of vanishing between one frame and the next.
-constexpr float kDeathFade = 0.4f;
 
 // Where `target` sits in the area's already-hurt ledger; the ledger's size when absent.
 size_t markIndex(const HitArea& area, entt::entity target)
@@ -116,7 +116,7 @@ void applyDamage(entt::registry& reg, HitArea& area, const Transform& at)
         // feedback about what actually died -- which is the only thing the player cares about.
         reg.emplace_or_replace<HitFlash>(target, HitFlash{tint::flashSeconds(fatal)});
         if (fatal)
-            reg.emplace_or_replace<Dying>(target, Dying{kDeathFade});
+            reg.emplace_or_replace<Dying>(target, Dying{feel::current().fade.death});
     }
 }
 
@@ -175,7 +175,7 @@ void reapDead(EntityManager& em, float dt)
         // The body dissolves as the timer runs down; by the time it is destroyed it is already
         // invisible, so the removal itself can never be seen.
         if (auto* spr = reg.try_get<Sprite>(entity))
-            spr->alpha = std::max(0.0f, dying.remaining / kDeathFade);
+            spr->alpha = std::max(0.0f, dying.remaining / feel::current().fade.death);
         if (dying.remaining <= 0.0f)
             dead.push_back(entity);
     }

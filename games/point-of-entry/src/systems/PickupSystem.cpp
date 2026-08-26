@@ -3,6 +3,7 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
+#include "ecs/FeelConfig.h"
 #include "renderers/NotificationRenderer.h"
 #include "systems/PlayerSystem.h"
 
@@ -15,7 +16,6 @@ namespace pickup
 namespace
 {
 // Stepping distance: the foot box, roughly. Anything wider is a magnet wearing a costume.
-constexpr float kReach = 14.0f;
 
 // Purple-family tints by rarity, brightness by quality -- the reference's convention: the TYPE
 // says how loudly it glows, the INSTANCE how brightly it came out.
@@ -69,7 +69,7 @@ void update(EntityManager& em)
     {
         const float dx = pt.x - t.x;
         const float dy = pt.y - t.y;
-        if (dx * dx + dy * dy > kReach * kReach)
+        if (dx * dx + dy * dy > feel::current().reach.pickup * feel::current().reach.pickup)
             continue;
 
         // Stack by (item, quality): a fine flake and a crude flake stay different goods.

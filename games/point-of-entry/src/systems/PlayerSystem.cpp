@@ -4,6 +4,7 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ops/CaptureUtils.h"
+#include "ecs/FeelConfig.h"
 #include "ops/LogUtils.h"
 #include "ops/NavUtils.h"
 #include "renderers/DebugPanelRenderer.h"
@@ -130,7 +131,6 @@ void pollDevKeys(const Uint8* keys)
 // clips the adjacent wall corner by a pixel and that axis dies even though he is clearly
 // sliding past. Two pixels of forgiveness absorbs the clip; a 2px-smaller box still cannot
 // pass through a full tile of wall.
-constexpr float kMoveInset = 2.0f;
 
 void stepWhole(float& pos, float& carry, float amount, const EntityManager& em, bool horizontal,
                float otherAxis, float boxW, float boxH)
@@ -160,8 +160,8 @@ entt::entity entity()
 void bodyBox(const EntityManager& em, entt::entity p, float& w, float& h)
 {
     const auto* col = em.registry().try_get<Collider>(p);
-    w = (col != nullptr ? col->width : 16.0f) - kMoveInset;
-    h = (col != nullptr ? col->height : 12.0f) - kMoveInset;
+    w = (col != nullptr ? col->width : 16.0f) - feel::current().walk.inset;
+    h = (col != nullptr ? col->height : 12.0f) - feel::current().walk.inset;
 }
 
 void standAt(EntityManager& em, float x, float y)
@@ -257,7 +257,7 @@ void tickBrace(EntityManager& em, double dt)
         return;
     // Eased rather than flipped: a man sets himself over a moment, and snapping the gait between
     // two shapes on a keypress reads as a glitch however right the two shapes are.
-    constexpr float kBraceTime = 0.18f;
+    const float kBraceTime = feel::current().walk.brace_time;
     const float want = aim::guarding() ? 1.0f : 0.0f;
     const float move = static_cast<float>(dt) / kBraceTime;
     gait->braced += std::clamp(want - gait->braced, -move, move);
@@ -296,8 +296,8 @@ void walkHim(EntityManager& em, Transform& t, float dx, float dy, double dt)
     // collider), so the torso may overlap a wall ABOVE him -- top-down depth -- but his feet
     // never enter one.
     const auto* col = em.registry().try_get<Collider>(sPlayer);
-    const float bw = (col != nullptr ? col->width : 16.0f) - kMoveInset;
-    const float bh = (col != nullptr ? col->height : 12.0f) - kMoveInset;
+    const float bw = (col != nullptr ? col->width : 16.0f) - feel::current().walk.inset;
+    const float bh = (col != nullptr ? col->height : 12.0f) - feel::current().walk.inset;
     // FULL-SPEED WALL SLIDE. A normalised diagonal into a wall would creep
     // along it at 70% -- the blocked axis still owns its share of the
     // stride. The wall absorbs that share instead: one axis blocked, the

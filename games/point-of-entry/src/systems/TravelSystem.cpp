@@ -1,9 +1,10 @@
 #include "systems/TravelSystem.h"
 
-#include "formats/AreaLoader.h"
 #include "Engine.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
+#include "formats/AreaLoader.h"
+#include "ecs/FeelConfig.h"
 #include "ops/LogUtils.h"
 #include "systems/PlayerSystem.h"
 #include "systems/TileMapRenderer.h"
@@ -48,8 +49,6 @@ void facingVec(const std::string& facing, float& dx, float& dy)
     else if (facing == "west")
         dx = -1.0f;
 }
-
-constexpr float kFade = 0.35f; // seconds each way; the cut hides under it
 
 std::string sWorldPath;                                  // the scanned .ldtk project
 std::unordered_map<std::string, std::string> sWarpIndex; // warp id -> level
@@ -254,7 +253,7 @@ void update(Engine& engine, EntityManager& em, float dt)
     if (sPhase == Phase::FadeOut)
     {
         sTimer += dt;
-        if (sTimer >= kFade)
+        if (sTimer >= feel::current().fade.travel)
         {
             // Full black: the safe point. Nothing is mid-tick and nothing shows.
             if (sPendingAct)
@@ -273,7 +272,7 @@ void update(Engine& engine, EntityManager& em, float dt)
     if (sPhase == Phase::FadeIn)
     {
         sTimer += dt;
-        if (sTimer >= kFade)
+        if (sTimer >= feel::current().fade.travel)
             sPhase = Phase::None;
         return;
     }
@@ -293,7 +292,7 @@ void update(Engine& engine, EntityManager& em, float dt)
     float ix = 0.0f;
     float iy = 0.0f;
     player::moveIntent(ix, iy);
-    constexpr float kReach = 16.0f;
+    const float kReach = feel::current().reach.passage;
     const float ex = t.x + ix * kReach;
     const float ey = t.y + iy * kReach;
 
@@ -318,9 +317,9 @@ void update(Engine& engine, EntityManager& em, float dt)
 float curtainAlpha()
 {
     if (sPhase == Phase::FadeOut)
-        return std::min(1.0f, sTimer / kFade);
+        return std::min(1.0f, sTimer / feel::current().fade.travel);
     if (sPhase == Phase::FadeIn)
-        return 1.0f - std::min(1.0f, sTimer / kFade);
+        return 1.0f - std::min(1.0f, sTimer / feel::current().fade.travel);
     return 0.0f;
 }
 

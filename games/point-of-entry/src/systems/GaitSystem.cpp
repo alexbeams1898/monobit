@@ -3,6 +3,7 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 #include "ecs/GameComponents.h"
+#include "ecs/FeelConfig.h"
 #include "ops/NavUtils.h"
 #include "ops/SoundOps.h"
 
@@ -28,14 +29,9 @@ namespace
 // CADENCE knob: at a given walk speed, a longer stride means fewer steps per second. Too short
 // and the rock becomes a shudder -- 13px at 120px/s was nine steps a second, triple a natural
 // rhythm, and every pose-snap landed three times as often as the eye wanted it.
-constexpr float kStrideLength = 34.0f;
-
-constexpr float kHopHeight = 2.0f;
-constexpr float kTiltMax = 0.12f; // radians (~7 deg) of rock at the peak of a step
 
 // Held poses per step. Fewer is snappier cutout, more is smoother; 4 keeps the paper feel
 // without the strobe of 3 at walking cadence.
-constexpr float kPosesPerStep = 4.0f;
 
 } // namespace
 
@@ -72,13 +68,14 @@ void update(EntityManager& em, float dt)
         const float loose = 1.0f - gait.braced;
 
         // Quantize distance into held poses -- the walk advances in snaps, not a glide.
-        const float posesPerPx = kPosesPerStep / kStrideLength;
-        const float s = std::floor(gait.travelled * posesPerPx) / (kPosesPerStep);
+        const float posesPerPx = feel::current().walk.poses_per_step / feel::current().walk.stride;
+        const float s =
+            std::floor(gait.travelled * posesPerPx) / (feel::current().walk.poses_per_step);
 
         // A FOOT LANDS on every whole step. Reported from here because this is where the walk
         // IS: anything else would have to work the same number out again from speed and time,
         // and the two would part company the first time he was slowed.
-        if (const int footfall = static_cast<int>(gait.travelled / kStrideLength);
+        if (const int footfall = static_cast<int>(gait.travelled / feel::current().walk.stride);
             footfall != gait.footfalls)
         {
             gait.footfalls = footfall;
@@ -88,11 +85,11 @@ void update(EntityManager& em, float dt)
 
         // One hop per step, and the lean ALTERNATES by step parity -- left step, right step. Both
         // peak mid-step together: up-and-tilted is one pose, level at each footfall.
-        const float hop =
-            std::abs(std::sin(s * geom::kPi)) * kHopHeight * amp * (0.6f + 0.4f * loose);
+        const float hop = std::abs(std::sin(s * geom::kPi)) * feel::current().walk.hop * amp *
+                          (0.6f + 0.4f * loose);
         const float side = static_cast<int>(s) % 2 == 0 ? 1.0f : -1.0f;
-        const float theta =
-            std::abs(std::sin(s * geom::kPi)) * kTiltMax * side * amp * (0.45f + 0.55f * loose);
+        const float theta = std::abs(std::sin(s * geom::kPi)) * feel::current().walk.tilt * side *
+                            amp * (0.45f + 0.55f * loose);
 
         // Pivot at the FEET. The engine rotates a sprite about its centre, which would swing the
         // feet out from under him -- offsetting by the base's displacement puts the hinge where
