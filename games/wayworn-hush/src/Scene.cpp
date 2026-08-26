@@ -108,9 +108,14 @@ bool parseWorldStep(const nlohmann::json& j, Step& s, bool& ok)
         ok = s.seconds > 0.0f;
         return true;
     }
+    // Both members ARE read, immediately below, through the structured binding in the loop.
+    // Static analysis does not follow a binding back to the members it names and reads them as
+    // dead; they are the table this function is built on.
     const struct
     {
+        // cppcheck-suppress unusedStructMember
         const char* key;
+        // cppcheck-suppress unusedStructMember
         Step::Kind kind;
     } named[] = {{"set_flag", Step::Kind::SetFlag},
                  {"sound", Step::Kind::Sound},

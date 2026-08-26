@@ -104,8 +104,8 @@ psyche::ObserveResult pushObserve(psyche::State& state, const growth::GrowthStat
 // each deed's result line until a deed CONSUMES the spot (the moment has passed) or the
 // player leaves. `must_choose` is a scene's decision beat: no Leave, no backing out --
 // the deeds repeat until a consuming one is taken.
-void openDeedMenu(psyche::State& state, const growth::GrowthState& growth, const std::string& spot,
-                  bool must_choose = false);
+void openDeedMenu(const psyche::State& state, const growth::GrowthState& growth,
+                  const std::string& spot, bool must_choose = false);
 
 // What a confirm did that the game must enact: EXP to bank, plus any item effects a
 // taken deed declared (ids only -- the box, like observations, is inventory-ignorant; the

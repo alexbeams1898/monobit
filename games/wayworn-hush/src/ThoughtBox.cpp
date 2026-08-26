@@ -455,8 +455,8 @@ psyche::ObserveResult pushObserve(psyche::State& state, const growth::GrowthStat
     return psyche::observeById(state, growth, spot, rng, impression);
 }
 
-void openDeedMenu(psyche::State& state, const growth::GrowthState& growth, const std::string& spot,
-                  bool must_choose)
+void openDeedMenu(const psyche::State& state, const growth::GrowthState& growth,
+                  const std::string& spot, bool must_choose)
 {
     // The RUNNING/Act stance: open the deed menu immediately. Always shows, even if the spot
     // has no deeds right now -- you get a "Leave"-only menu, not a dead press.

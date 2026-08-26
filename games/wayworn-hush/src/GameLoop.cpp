@@ -245,7 +245,7 @@ void tickWarpFade(Engine& engine, EntityManager& em, GameState& gs, double dt)
 
 // The world's global toggles: F1 = dev tunables panel (ImGui pass), F2 = warp-box
 // diagnostic overlay, M = soundtrack mute (persists across track changes).
-void handleWorldHotkeys(EntityManager& em)
+void handleWorldHotkeys(const EntityManager& em)
 {
     if (pressedThisFrame(em, SDL_SCANCODE_F1))
         tune_panel::toggle();
@@ -525,7 +525,8 @@ void leaveToTitle(EntityManager& em, GameState& gs)
 // Enact what the title committed. The ONE place a title action turns into something --
 // both its input paths (keys via step, mouse via render) funnel here, so a new entry is
 // wired in one spot and neither path can drop it (the same rule enactPageAction follows).
-void enactTitleAction(Engine& engine, EntityManager& em, GameState& gs, title_screen::Action action)
+void enactTitleAction(Engine& engine, const EntityManager& em, GameState& gs,
+                      title_screen::Action action)
 {
     (void)em;
     switch (action)
@@ -555,7 +556,7 @@ void enactTitleAction(Engine& engine, EntityManager& em, GameState& gs, title_sc
 }
 
 // The greeting: read the keys, let the title report what was chosen, enact it.
-void updateGreeting(Engine& engine, EntityManager& em, GameState& gs)
+void updateGreeting(Engine& engine, const EntityManager& em, GameState& gs)
 {
     const bool up = pressedThisFrame(em, SDL_SCANCODE_W);
     const bool down = pressedThisFrame(em, SDL_SCANCODE_S);
@@ -1522,7 +1523,7 @@ void routineAnim(EntityManager& em, entt::entity body, const npc::Config& c,
 
 // One routine step; true = complete (advance). Unlike scene steps these don't
 // chain within a tick -- ambient life can afford a tick between beats.
-bool runRoutineStep(EntityManager& em, GameState& gs, const npc::Config& c,
+bool runRoutineStep(EntityManager& em, const GameState& gs, const npc::Config& c,
                     GameState::NpcRoutineState& st, entt::entity body, const npc::RoutineStep& s,
                     float dt)
 {
@@ -2093,7 +2094,7 @@ void drawWarpDebug(const Engine& engine, EntityManager& em, const GameState& gs)
 // clock, dt 0, so it can't fade out under the card), the screen fade above all
 // (the warp's quick dip or a scene's slow waking; whichever holds more darkness
 // wins).
-void renderOverEverything(const Engine& engine, GameState& gs, int ww, int wh)
+void renderOverEverything(const Engine& engine, const GameState& gs, int ww, int wh)
 {
     const tutorial::Card* card = tutorial::current(gs.tutorial_state);
     if (card != nullptr)
@@ -2111,7 +2112,7 @@ void renderOverEverything(const Engine& engine, GameState& gs, int ww, int wh)
 
 // The corner badges -- the always-true STATUS half of the HUD, as against the content boxes.
 // Each is individually switchable (settings::Hud) and the whole set goes at visibility Off.
-void renderCornerBadges(const Engine& engine, GameState& gs, int ww, int wh)
+void renderCornerBadges(const Engine& engine, const GameState& gs, int ww, int wh)
 {
     if (gs.prefs.hud.visibility == hud::Visibility::Off)
         return;

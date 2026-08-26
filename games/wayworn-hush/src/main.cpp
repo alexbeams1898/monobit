@@ -112,7 +112,7 @@ thought_box::Config sBoxCfg; // feel + SFX, loaded once; re-passed on every resi
 
 // (Re)load the role fonts at the current window size and point the HUD systems at
 // the fresh handles. Called once at startup and from the resize callback.
-void reloadHudFonts(GameState& gs, int windowW, int windowH)
+void reloadHudFonts(const GameState& gs, int windowW, int windowH)
 {
     const float s = hud::scale(windowW, windowH);
     const FontHandle body = FontManager::loadFont(sFontCfg.face, sFontCfg.body_frac * s);
@@ -133,7 +133,7 @@ void reloadHudFonts(GameState& gs, int windowW, int windowH)
 void gameOnResize(Engine& engine, int w, int h)
 {
     engine::gl::pixelTargetResize(w, h);
-    auto& gs = engine.entityManager().registry().ctx().get<GameState>();
+    const auto& gs = engine.entityManager().registry().ctx().get<GameState>();
     reloadHudFonts(gs, w, h);
 }
 

@@ -40,7 +40,7 @@ unlock::Clause obsClause(std::vector<std::string> ids)
 }
 
 // A self with named stat levels.
-GrowthState self(std::vector<std::pair<std::string, int>> stats)
+GrowthState self(const std::vector<std::pair<std::string, int>>& stats)
 {
     GrowthState g;
     g.faculties = {"wonder", "reason", "perception"};
@@ -151,7 +151,9 @@ TEST_CASE("Objective tiers are deterministic: deepest met tier surfaces, no roll
     s.pending.clear();
 
     // Grow perception to 3: the moss tier now surfaces (deterministic threshold).
-    r = obsAt(s, self({{"perception", 3}}), "stone", kNoNudge);
+    // The RESULT is not what this line is for -- what it does to `s` is, and that is what the
+    // checks below read.
+    obsAt(s, self({{"perception", 3}}), "stone", kNoNudge);
     REQUIRE(s.pending.front().text == "a stone, mossy");
     REQUIRE(s.observed_tier.at("stone") == 2);
 }
