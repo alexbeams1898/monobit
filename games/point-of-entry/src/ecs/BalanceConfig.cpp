@@ -139,7 +139,8 @@ void applyDerivations(EntityManager& em, entt::entity entity)
     const float hpFrac =
         hp.max > 0 ? static_cast<float>(hp.current) / static_cast<float>(hp.max) : 1.0f;
     hp.max = newMaxHp;
-    hp.current = std::min(newMaxHp, static_cast<int>(std::lround(hpFrac * newMaxHp)));
+    hp.current =
+        std::min(newMaxHp, static_cast<int>(std::lround(hpFrac * static_cast<float>(newMaxHp))));
 
     const float newMaxSta = maxStamina(s);
     auto& sta = reg.get_or_emplace<Stamina>(entity, Stamina{newMaxSta, newMaxSta});

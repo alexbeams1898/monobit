@@ -2,8 +2,8 @@
 
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
-#include "ecs/GameComponents.h"
 #include "ecs/FeelConfig.h"
+#include "ecs/GameComponents.h"
 #include "ops/NavUtils.h"
 #include "ops/SoundOps.h"
 

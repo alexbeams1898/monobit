@@ -35,7 +35,7 @@ void drawRow(const char* label, float cx, float y, bool hot)
     screen_style::entry(label, cx, y, hot, /*enabled=*/true);
 }
 
-int pageRows(const EntityManager& em)
+int pageRows(const EntityManager& /*em*/)
 {
     switch (sPage)
     {
@@ -76,6 +76,80 @@ Action step(bool up, bool down, bool confirm, bool back)
     return Action::None;
 }
 
+// WHERE A PAGE'S ROWS ARE, and which one the mouse is over. Passed to a page rather than
+// recomputed by it, so every page lays out identically and a row is hit-tested against exactly
+// the rect it was drawn into.
+struct Sheet
+{
+    float cx = 0.0f;
+    float y = 0.0f;
+    float lh = 0.0f;
+    float row_h = 0.0f;
+    int over = shell_input::kNoChoice;
+
+    float rowAt(int i) const
+    {
+        return y + lh * 1.4f + row_h * static_cast<float>(i);
+    }
+    bool hover(int i) const
+    {
+        return i == over;
+    }
+};
+
+// WHAT GOES IN THE THERMOS. Its own function because a page is a page: the switch below is the
+// shape of the screen, and reading one page should not mean reading past the others.
+void drawBrew(EntityManager& em, const Sheet& sheet, const shell_input::Mouse& mouse)
+{
+    const float cx = sheet.cx;
+    const float y = sheet.y;
+    const auto& fills = thermos::fills();
+    screen_style::textCentered("what goes in the thermos", cx, y, screen_style::kTextDim);
+    for (int i = 0; i < static_cast<int>(fills.size()); ++i)
+    {
+        if (sheet.hover(i) && mouse.clicked)
+            sConfirmed = true;
+        const bool held = i == thermos::fillIndex();
+        drawRow(
+            (fills[static_cast<std::size_t>(i)].name + (held ? "  (in the thermos)" : "")).c_str(),
+            cx, sheet.rowAt(i), i == sCursor);
+    }
+    if (sConfirmed && sCursor != shell_input::kNoChoice)
+    {
+        sConfirmed = false;
+        thermos::setFill(em, sCursor); // at the spot, so this refills on the spot
+    }
+}
+
+// THE SHEET, and what the next point costs. Same reason.
+void drawPoints(EntityManager& em, const Sheet& sheet, const shell_input::Mouse& mouse)
+{
+    const float cx = sheet.cx;
+    const float y = sheet.y;
+    const entt::entity p = player::entity();
+    if (!em.registry().valid(p) || !em.registry().all_of<Stats>(p))
+        return;
+    const auto& s = em.registry().get<Stats>(p);
+    const bool canBuy = reward::banked(em) >= reward::costOfNext(em);
+    screen_style::textCentered("banked " + std::to_string(reward::banked(em)) + "   next point " +
+                                   std::to_string(reward::costOfNext(em)),
+                               cx, y, canBuy ? screen_style::kAccent : screen_style::kTextDim);
+    const char* names[5] = {"Chemical", "Physical", "Biological", "Endurance", "Inspection"};
+    const int values[5] = {s.chemical, s.physical, s.biological, s.endurance, s.inspection};
+    for (int i = 0; i < 5; ++i)
+    {
+        if (sheet.hover(i) && mouse.clicked)
+            sConfirmed = true;
+        drawRow((std::string{names[i]} + "  " + std::to_string(values[i])).c_str(), cx,
+                sheet.rowAt(i), i == sCursor);
+    }
+    if (sConfirmed && sCursor != shell_input::kNoChoice)
+    {
+        sConfirmed = false;
+        reward::spend(em, sCursor);
+    }
+}
+
 Action render(EntityManager& em, const shell_input::Mouse& mouse, int windowW, int windowH)
 {
     screen_style::dim(windowW, windowH);
@@ -93,14 +167,13 @@ Action render(EntityManager& em, const shell_input::Mouse& mouse, int windowW, i
     y += lh * 2.2f;
 
     Action out = Action::None;
-    const float rowH = screen_style::pageRowH();
-    const auto rowAt = [&](int i) { return y + lh * 1.4f + rowH * static_cast<float>(i); };
-    int over = shell_input::kNoChoice;
+    Sheet sheet{cx, y, lh, screen_style::pageRowH(), shell_input::kNoChoice};
     for (int i = 0; i < sRows; ++i)
-        if (screen_style::hit(screen_style::pageRow(cx, rowAt(i)), mouse.x, mouse.y))
-            over = i;
-    sCursor = shell_input::hover(sCursor, over, mouse.moved);
-    const auto hover = [&](int i) { return i == over; };
+        if (screen_style::hit(screen_style::pageRow(cx, sheet.rowAt(i)), mouse.x, mouse.y))
+            sheet.over = i;
+    sCursor = shell_input::hover(sCursor, sheet.over, mouse.moved);
+    const auto rowAt = [&](int i) { return sheet.rowAt(i); };
+    const auto hover = [&](int i) { return sheet.hover(i); };
 
     switch (sPage)
     {
@@ -130,51 +203,11 @@ Action render(EntityManager& em, const shell_input::Mouse& mouse, int windowW, i
         break;
     }
     case Page::Brew:
-    {
-        const auto& fills = thermos::fills();
-        screen_style::textCentered("what goes in the thermos", cx, y, screen_style::kTextDim);
-        for (int i = 0; i < static_cast<int>(fills.size()); ++i)
-        {
-            if (hover(i) && mouse.clicked)
-                sConfirmed = true;
-            const bool held = i == thermos::fillIndex();
-            drawRow((fills[static_cast<std::size_t>(i)].name + (held ? "  (in the thermos)" : ""))
-                        .c_str(),
-                    cx, rowAt(i), i == sCursor);
-        }
-        if (sConfirmed && sCursor != shell_input::kNoChoice)
-        {
-            sConfirmed = false;
-            thermos::setFill(em, sCursor); // at the spot, so this refills on the spot
-        }
+        drawBrew(em, sheet, mouse);
         break;
-    }
     case Page::Points:
-    {
-        const entt::entity p = player::entity();
-        if (!em.registry().valid(p) || !em.registry().all_of<Stats>(p))
-            break;
-        const auto& s = em.registry().get<Stats>(p);
-        const bool canBuy = reward::banked(em) >= reward::costOfNext(em);
-        screen_style::textCentered("banked " + std::to_string(reward::banked(em)) +
-                                       "   next point " + std::to_string(reward::costOfNext(em)),
-                                   cx, y, canBuy ? screen_style::kAccent : screen_style::kTextDim);
-        const char* names[5] = {"Chemical", "Physical", "Biological", "Endurance", "Inspection"};
-        const int values[5] = {s.chemical, s.physical, s.biological, s.endurance, s.inspection};
-        for (int i = 0; i < 5; ++i)
-        {
-            if (hover(i) && mouse.clicked)
-                sConfirmed = true;
-            drawRow((std::string{names[i]} + "  " + std::to_string(values[i])).c_str(), cx,
-                    rowAt(i), i == sCursor);
-        }
-        if (sConfirmed && sCursor != shell_input::kNoChoice)
-        {
-            sConfirmed = false;
-            reward::spend(em, sCursor);
-        }
+        drawPoints(em, sheet, mouse);
         break;
-    }
     }
     return out;
 }

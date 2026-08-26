@@ -3,8 +3,8 @@
 #include "ecs/BalanceConfig.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
-#include "ecs/GameComponents.h"
 #include "ecs/FeelConfig.h"
+#include "ecs/GameComponents.h"
 #include "ops/NavUtils.h"
 #include "ops/SoundOps.h"
 #include "systems/AimSystem.h"
@@ -160,6 +160,30 @@ void integrate(EntityManager& em, float dt)
 
 } // namespace
 
+// STILL COMING OUT. A burst owns the velocity until it expires, and only then does the pest
+// start hunting -- so this answers one question for the tick above: is it still surfacing? Walls
+// still apply either way; integrate() moves everything.
+bool surfacing(entt::registry& reg, entt::entity pest, Velocity& vel, float dt)
+{
+    auto* surge = reg.try_get<Surge>(pest);
+    if (surge == nullptr)
+        return false;
+    surge->remaining -= dt;
+    if (surge->remaining <= 0.0f)
+    {
+        reg.remove<Surge>(pest);
+        return false;
+    }
+    vel.dx = surge->dx * surge->speed;
+    vel.dy = surge->dy * surge->speed;
+    if (auto* facing = reg.try_get<FacingDirection>(pest); facing != nullptr && surge->dx != 0.0f)
+    {
+        facing->dx = surge->dx < 0.0f ? -1.0f : 1.0f;
+        facing->render_dx = facing->dx;
+    }
+    return true;
+}
+
 void update(EntityManager& em, float dt)
 {
     const entt::entity playerEnt = player::entity();
@@ -178,25 +202,8 @@ void update(EntityManager& em, float dt)
             continue;
         }
 
-        // Surfacing: the burst owns the velocity until it expires, and only then does the
-        // pest start hunting. Walls still apply -- integrate() moves everything.
-        if (auto* surge = reg.try_get<Surge>(entity))
-        {
-            surge->remaining -= dt;
-            if (surge->remaining > 0.0f)
-            {
-                vel.dx = surge->dx * surge->speed;
-                vel.dy = surge->dy * surge->speed;
-                if (auto* facing = reg.try_get<FacingDirection>(entity);
-                    facing != nullptr && surge->dx != 0.0f)
-                {
-                    facing->dx = surge->dx < 0.0f ? -1.0f : 1.0f;
-                    facing->render_dx = facing->dx;
-                }
-                continue;
-            }
-            reg.remove<Surge>(entity);
-        }
+        if (surfacing(reg, entity, vel, dt))
+            continue;
 
         // The flow field is a BFS from the player rebuilt only when he changes cell, so following
         // it is a table read -- which is what makes a thousand of these affordable. It also

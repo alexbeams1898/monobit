@@ -1,10 +1,10 @@
 #include "renderers/DebugPanelRenderer.h"
 
-#include "formats/AreaLoader.h"
 #include "Engine.h"
 #include "ecs/BalanceConfig.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
+#include "formats/AreaLoader.h"
 #include "ops/LogUtils.h"
 #include "ops/RecordOps.h"
 #include "systems/CombatSystem.h"
@@ -67,6 +67,33 @@ int zoom()
     return sZoom;
 }
 
+// THE SHEET, live: the five stats and what they derive to, with every slider re-deriving on the
+// spot so the curve can be read by dragging rather than by arithmetic. Its own function because
+// a panel is a list of sections and reading one should not mean scrolling past the others.
+void sheetSection(EntityManager& em)
+{
+    const entt::entity pl = player::entity();
+    if (!em.registry().valid(pl) || !em.registry().all_of<Stats>(pl))
+        return;
+    auto& sheet = em.registry().get<Stats>(pl);
+    ImGui::Separator();
+    ImGui::TextUnformatted("Sheet");
+    bool changed = false;
+    changed |= ImGui::SliderInt("chemical", &sheet.chemical, 1, 20);
+    changed |= ImGui::SliderInt("physical", &sheet.physical, 1, 20);
+    changed |= ImGui::SliderInt("biological", &sheet.biological, 1, 20);
+    changed |= ImGui::SliderInt("endurance", &sheet.endurance, 1, 20);
+    changed |= ImGui::SliderInt("inspection", &sheet.inspection, 1, 20);
+    if (changed)
+        stats::applyDerivations(em, pl);
+    ImGui::TextDisabled("level %d   hp %d   stam %.0f   def %d", stats::level(sheet),
+                        stats::maxHealth(sheet), stats::maxStamina(sheet), stats::defense(sheet));
+    if (tools::all().empty())
+        return;
+    const auto& held = tools::all()[static_cast<size_t>(tools::selected())];
+    ImGui::TextDisabled("%s dmg %.1f", held.name.c_str(), tools::damageOf(held, sheet));
+}
+
 void render(Engine& engine, EntityManager& em)
 {
     if (!sVisible)
@@ -80,7 +107,7 @@ void render(Engine& engine, EntityManager& em)
 
         ImGui::TextUnformatted("Movement");
         // Stepped in whole pixels-per-tick, because anything between them scrolls unevenly.
-        int perTick = static_cast<int>(sWalkSpeed / 60.0f + 0.5f);
+        int perTick = static_cast<int>(std::lround(sWalkSpeed / 60.0f));
         if (ImGui::SliderInt("px per tick", &perTick, 1, 6))
             sWalkSpeed = static_cast<float>(perTick) * 60.0f;
         ImGui::TextDisabled("%.0f px/s -- a 32px tile every %.2fs", static_cast<double>(sWalkSpeed),
@@ -105,29 +132,7 @@ void render(Engine& engine, EntityManager& em)
         // THE SHEET. Sliders rather than a readout, because whether a stat point is worth
         // feeling is a thing you judge by cranking it mid-swarm -- and every derived number
         // sits beside it so the formulas are never a mystery while tuning them.
-        if (const entt::entity pl = player::entity();
-            em.registry().valid(pl) && em.registry().all_of<Stats>(pl))
-        {
-            auto& sheet = em.registry().get<Stats>(pl);
-            ImGui::Separator();
-            ImGui::TextUnformatted("Sheet");
-            bool changed = false;
-            changed |= ImGui::SliderInt("chemical", &sheet.chemical, 1, 20);
-            changed |= ImGui::SliderInt("physical", &sheet.physical, 1, 20);
-            changed |= ImGui::SliderInt("biological", &sheet.biological, 1, 20);
-            changed |= ImGui::SliderInt("endurance", &sheet.endurance, 1, 20);
-            changed |= ImGui::SliderInt("inspection", &sheet.inspection, 1, 20);
-            if (changed)
-                stats::applyDerivations(em, pl);
-            ImGui::TextDisabled("level %d   hp %d   stam %.0f   def %d", stats::level(sheet),
-                                stats::maxHealth(sheet), stats::maxStamina(sheet),
-                                stats::defense(sheet));
-            if (!tools::all().empty())
-            {
-                const auto& held = tools::all()[static_cast<size_t>(tools::selected())];
-                ImGui::TextDisabled("%s dmg %.1f", held.name.c_str(), tools::damageOf(held, sheet));
-            }
-        }
+        sheetSection(em);
 
         // AUTHORED PLACES. Verifying a level means standing in it: click a
         // level to enter at its start, a door to land on its doormat -- the

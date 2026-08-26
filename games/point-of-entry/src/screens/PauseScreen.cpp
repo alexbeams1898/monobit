@@ -1,10 +1,10 @@
 #include "screens/PauseScreen.h"
 
-#include "formats/SpriteDefLoader.h"
 #include "TextureManager.h"
 #include "ecs/BalanceConfig.h"
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
+#include "formats/SpriteDefLoader.h"
 #include "ops/GuideOps.h"
 #include "ops/RecordOps.h"
 #include "systems/CombatSystem.h"

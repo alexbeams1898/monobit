@@ -241,16 +241,24 @@ void hitAreaOverlay(Engine& engine, const EntityManager& em, float camX, float c
         const float aim = std::atan2(area.dir_y, area.dir_x);
         const float half = area.arc > 0.0f ? geom::degToRad(area.arc) : geom::kPi;
         // The cone's two edges, out to full reach.
-        for (float d = 4.0f; d <= area.radius; d += 4.0f)
+        // Stepped by an INTEGER and the distance derived from it -- a float counter
+        // accumulates its own error and the last step lands wherever that error left it.
+        constexpr float kStep = 4.0f;
+        const int steps = static_cast<int>(area.radius / kStep);
+        for (int i = 1; i <= steps; ++i)
         {
+            const float d = static_cast<float>(i) * kStep;
             plot(t.x + std::cos(aim - half) * d, t.y + std::sin(aim - half) * d,
                  screen_style::kReticle);
             plot(t.x + std::cos(aim + half) * d, t.y + std::sin(aim + half) * d,
                  screen_style::kReticle);
         }
         // Full reach rim (faint) and the swept front (hot).
-        for (float a = -half; a <= half; a += 0.12f)
+        constexpr float kArcStep = 0.12f;
+        const int arcs = static_cast<int>(2.0f * half / kArcStep);
+        for (int i = 0; i <= arcs; ++i)
         {
+            const float a = -half + static_cast<float>(i) * kArcStep;
             plot(t.x + std::cos(aim + a) * area.radius, t.y + std::sin(aim + a) * area.radius,
                  screen_style::kReticle);
             plot(t.x + std::cos(aim + a) * front, t.y + std::sin(aim + a) * front,

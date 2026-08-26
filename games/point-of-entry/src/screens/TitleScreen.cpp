@@ -36,7 +36,7 @@ Action render(const shell_input::Mouse& mouse, int windowW, int windowH)
     // The title's own shape: the name large in the upper third, the menu low.
     screen_style::displayCentered("POINT OF ENTRY", cx, screen_style::titleY(windowH),
                                   screen_style::kText);
-    float y = screen_style::titleMenuY(windowH);
+    const float y = screen_style::titleMenuY(windowH);
 
     // Hover resolves BEFORE anything is drawn, so the highlight matches where the mouse is
     // this frame rather than lagging it by one. The rows are a fixed stride, so where each
