@@ -24,7 +24,7 @@ inline Color forReading(const growth::GrowthState& growth, const std::string& fa
 
     const growth::Rgb hue = growth::facultyColor(growth, faculty);
     // Difficulty 1..5 -> brightness ramp: common reads dim, legendary vivid.
-    const float t = std::clamp((difficulty - 1) / 4.0f, 0.0f, 1.0f);
+    const float t = std::clamp(static_cast<float>(difficulty - 1) / 4.0f, 0.0f, 1.0f);
     const float bright = 0.55f + 0.45f * t; // 0.55 (dim) .. 1.0 (vivid)
     return {hue.r * bright, hue.g * bright, hue.b * bright, alpha};
 }
