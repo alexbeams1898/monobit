@@ -25,7 +25,7 @@ TEST_CASE("level is points spent, nothing else", "[stats]")
 
 TEST_CASE("the body derives from the sheet", "[stats]")
 {
-    Stats a;
+    const Stats a;
     Stats b;
     b.endurance = 5;
     CHECK(stats::maxHealth(b) > stats::maxHealth(a));
@@ -39,7 +39,7 @@ TEST_CASE("the body derives from the sheet", "[stats]")
 
 TEST_CASE("defense rises with level, physical and endurance", "[stats]")
 {
-    Stats a;
+    const Stats a;
     Stats b;
     b.physical = 4;
     b.endurance = 4;

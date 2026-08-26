@@ -93,7 +93,7 @@ TEST_CASE("the work state follows the leak")
     REQUIRE_FALSE(zone::combat());
 
     const entt::entity e = em.registry().create();
-    PlacedHole site;
+    const PlacedHole site;
     em.registry().emplace<PlacedHole>(e, site);
 
     SECTION("a quiet way down in an authored room is not the trade's ground")
@@ -185,7 +185,7 @@ TEST_CASE("the work state asks only whether anything can reach him")
 // re-running it. A pest that emerged and escaped was not killed, so it comes up again.
 TEST_CASE("a hole resumes past what he has killed out of it", "[descent]")
 {
-    EntityManager em;
+    const EntityManager em;
 
     SECTION("a hole nothing has been taken from starts at the beginning")
     {
@@ -236,8 +236,10 @@ namespace
 // Run one hole's clock until it has finished mustering a wave, and report how many it sent.
 int surfacedFrom(EntityManager& em, int hole, float seconds = 30.0f)
 {
-    for (float t = 0.0f; t < seconds; t += 0.05f)
-        swarm::update(em, 0.05f);
+    constexpr float kTick = 0.05f;
+    const int ticks = static_cast<int>(seconds / kTick);
+    for (int i = 0; i < ticks; ++i)
+        swarm::update(em, kTick);
     int n = 0;
     for (auto [e, pest, source] : em.registry().view<Pest, FromHole>().each())
         if (source.index == hole)

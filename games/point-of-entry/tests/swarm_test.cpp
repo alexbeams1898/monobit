@@ -54,7 +54,7 @@ TEST_CASE("a hole runs a finite program and then is done", "[swarm]")
 
 TEST_CASE("deeper is worse -- the law of depth, from the config", "[swarm]")
 {
-    EntityManager em;
+    const EntityManager em;
     swarm::begin("config/swarm.json", oneHole(), 0, {false}, {}, {true});
     const int shallowWaves = swarm::holeWaves(0);
 
@@ -95,7 +95,7 @@ TEST_CASE("a sealed hole does nothing, and an opened one does", "[swarm]")
 
 TEST_CASE("a hole already cleared starts spent", "[swarm]")
 {
-    EntityManager em;
+    const EntityManager em;
     swarm::begin("config/swarm.json", oneHole(), 0, {true}, {}, {true});
     CHECK(swarm::holeCleared(em, 0));
     CHECK(swarm::phase() == swarm::Phase::Cleared);
@@ -123,7 +123,7 @@ TEST_CASE("a hole resumes its program rather than restarting it", "[swarm]")
     CHECK(taken > 0);
 
     // Walk away and come back carrying what was taken: the hole picks up, it does not restart.
-    EntityManager again;
+    const EntityManager again;
     swarm::begin("config/swarm.json", oneHole(), 0, {false}, {taken}, {true});
     CHECK(swarm::progress().at(0) == taken);
 }

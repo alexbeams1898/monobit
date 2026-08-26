@@ -52,7 +52,8 @@ int reachableFrom(const TileMap& map, float x, float y)
     std::vector<char> seen(static_cast<std::size_t>(map.width * map.height), 0);
     std::queue<std::pair<int, int>> q;
     q.emplace(c0, r0);
-    seen[static_cast<std::size_t>(r0 * map.width + c0)] = 1;
+    seen[static_cast<std::size_t>(r0) * static_cast<std::size_t>(map.width) +
+         static_cast<std::size_t>(c0)] = 1;
     int count = 0;
     while (!q.empty())
     {
@@ -67,7 +68,8 @@ int reachableFrom(const TileMap& map, float x, float y)
             const int nr = r + dr[i];
             if (nc < 0 || nr < 0 || nc >= map.width || nr >= map.height)
                 continue;
-            const auto idx = static_cast<std::size_t>(nr * map.width + nc);
+            const auto idx = static_cast<std::size_t>(nr) * static_cast<std::size_t>(map.width) +
+                             static_cast<std::size_t>(nc);
             if (seen[idx] || !map.tiles[idx].walkable)
                 continue;
             seen[idx] = 1;
@@ -138,7 +140,11 @@ TEST_CASE("dump one seed", "[.dump]")
     {
         for (int c = 0; c < map.width; ++c)
         {
-            char ch = map.tiles[static_cast<std::size_t>(r * map.width + c)].walkable ? '.' : '#';
+            char ch = map.tiles[static_cast<std::size_t>(r) * static_cast<std::size_t>(map.width) +
+                                static_cast<std::size_t>(c)]
+                              .walkable
+                          ? '.'
+                          : '#';
             if (c == sc && r == sr)
                 ch = '@';
             out += ch;
@@ -258,7 +264,7 @@ TEST_CASE("every floor type parses and keeps its promises", "[field guide]")
         CHECK(base.value("power", 0.0f) > 0.0f);
         CHECK(base.value("speed", 0.0f) > 0.0f);
         CHECK(base.value("xp", 0) > 0);
-        std::ifstream art(j.value("sprite", std::string{}));
+        const std::ifstream art(j.value("sprite", std::string{}));
         CHECK(art.good()); // the drawing it names must exist
     }
 }
@@ -370,7 +376,7 @@ FormulasFixture writeFormulasFixture(int smellMin, int smellMax, int atSmell)
     fs::create_directories(dir);
 
     const fs::path evolvedPath = dir / "evolved.json";
-    nlohmann::json evolved = {
+    const nlohmann::json evolved = {
         {"sheet", {{"resistance", 1}, {"defensiveness", 1}, {"dispersal", 1}}},
         {"base", {{"hp", 100}, {"power", 50.0}, {"speed", 300.0}, {"xp", 40}}},
     };

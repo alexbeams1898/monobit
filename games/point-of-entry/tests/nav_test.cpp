@@ -18,7 +18,7 @@ EntityManager walledRoom()
     em.tile_map.height = 10;
     em.tile_map.tiles.assign(100, TileMap::Tile{0, true});
     const auto at = [&](int c, int r) -> TileMap::Tile&
-    { return em.tile_map.tiles[static_cast<std::size_t>(r * 10 + c)]; };
+    { return em.tile_map.tiles[static_cast<std::size_t>(r) * 10 + static_cast<std::size_t>(c)]; };
     for (int i = 0; i < 10; ++i)
     {
         at(i, 0).walkable = false;
@@ -140,7 +140,10 @@ TEST_CASE("an arch only takes a wall with body behind it", "[nav]")
     em.tile_map.height = 8;
     em.tile_map.tiles.assign(64, TileMap::Tile{0, true});
     const auto solid = [&](int c, int r)
-    { em.tile_map.tiles[static_cast<std::size_t>(r * 8 + c)].walkable = false; };
+    {
+        em.tile_map.tiles[static_cast<std::size_t>(r) * 8 + static_cast<std::size_t>(c)].walkable =
+            false;
+    };
 
     // A boundary at the top: two rows of rock, the way a carved room backs onto the mass.
     for (int c = 0; c < 8; ++c)
@@ -187,7 +190,10 @@ TEST_CASE("a spot for an arch is found at a wall, not merely on floor", "[nav]")
     em.tile_map.height = 10;
     em.tile_map.tiles.assign(100, TileMap::Tile{0, true});
     const auto solid = [&](int c, int r)
-    { em.tile_map.tiles[static_cast<std::size_t>(r * 10 + c)].walkable = false; };
+    {
+        em.tile_map.tiles[static_cast<std::size_t>(r) * 10 + static_cast<std::size_t>(c)].walkable =
+            false;
+    };
     // Rock across the top two rows; the rest of the map is open.
     for (int c = 0; c < 10; ++c)
     {
@@ -271,7 +277,7 @@ TEST_CASE("a slab's footprint is the whole connected block", "[nav]")
     em.tile_map.height = 12;
     em.tile_map.tiles.assign(144, TileMap::Tile{0, true});
     const auto at = [&](int c, int r) -> TileMap::Tile&
-    { return em.tile_map.tiles[static_cast<std::size_t>(r * 12 + c)]; };
+    { return em.tile_map.tiles[static_cast<std::size_t>(r) * 12 + static_cast<std::size_t>(c)]; };
     for (int i = 0; i < 12; ++i)
     {
         at(i, 0).walkable = false;

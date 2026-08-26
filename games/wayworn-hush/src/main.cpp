@@ -73,6 +73,11 @@ static void terminateHandler()
     static char buf[256] = "std::terminate (no active exception)";
     try
     {
+        // A BARE THROW IS THE POINT HERE. std::terminate runs with the current exception still
+        // active where there is one, so rethrowing is how the handler gets a look at it; the
+        // catch(...) below is the case where there is none. Static analysis reads a bare throw
+        // outside a catch block as a mistake, and here it is the idiom.
+        // cppcheck-suppress rethrowNoCurrentException
         throw;
     }
     catch (const std::exception& e)
