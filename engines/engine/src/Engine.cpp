@@ -36,8 +36,14 @@ Engine::~Engine()
 
 bool Engine::init(const char* title, int width, int height)
 {
+    // Every failure below names itself and quotes SDL. A boot that dies here
+    // has no window and, on a WIN32-subsystem build, no console either -- so
+    // what it prints on the way down is the entire diagnosis anyone gets.
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "SDL_Init failed: %s", SDL_GetError());
         return false;
+    }
 
     // OpenGL 3.3 core profile — modern rendering without legacy cruft.
     // Core profile removes deprecated features (glBegin, glOrtho, etc.)
@@ -81,19 +87,30 @@ bool Engine::init(const char* title, int width, int height)
     window = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height,
                               window_flags);
     if (!window)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "SDL_CreateWindow(%dx%d) failed: %s", width,
+                     height, SDL_GetError());
         return false;
+    }
 
     SDL_ShowCursor(SDL_DISABLE);
 
     gl_context = SDL_GL_CreateContext(window);
     if (!gl_context)
+    {
+        // The usual cause is a driver that cannot give a 3.3 core context --
+        // a headless or software-rendered host, most often.
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                     "SDL_GL_CreateContext failed (need GL 3.3 core): %s", SDL_GetError());
         return false;
+    }
 
     // Load all OpenGL 3.3 core function pointers via GLAD.
     // SDL_GL_GetProcAddress is the cross-platform way to retrieve them —
     // on Windows, opengl32.dll only exposes GL 1.1; the driver fills in the rest.
     if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(SDL_GL_GetProcAddress)))
     {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "could not load GL function pointers");
         SDL_GL_DeleteContext(gl_context);
         gl_context = nullptr;
         return false;

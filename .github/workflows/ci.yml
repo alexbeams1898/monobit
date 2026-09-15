@@ -159,7 +159,12 @@ jobs:
         # Needs a display and a GL driver: xvfb plus mesa's software renderer.
         run: |
           sudo apt-get install -y xvfb libgl1-mesa-dri
-          xvfb-run -a bash games/selva-oscura/scripts/smoke_test.sh
+          # The runner has no GPU, so GL comes from mesa's software rasteriser.
+          # llvmpipe reports 4.5, which covers the 3.3 core context the engine
+          # asks for; without these it can fall through to a driver that cannot.
+          export LIBGL_ALWAYS_SOFTWARE=1
+          export GALLIUM_DRIVER=llvmpipe
+          xvfb-run -a --server-args="-screen 0 1280x720x24"             bash games/selva-oscura/scripts/smoke_test.sh
 
   # -----------------------------------------------------------------------
   # LINT
