@@ -53,8 +53,10 @@ TEST_CASE("Running fires steps faster than walking", "[footsteps]")
     {
         State s;
         int steps = 0;
-        for (float t = 0.0f; t < duration; t += 0.016f)
-            if (footsteps::tick(s, c, true, run, 0.016f))
+        constexpr float kDt = 0.016f;
+        const int ticks = static_cast<int>(duration / kDt);
+        for (int i = 0; i < ticks; ++i)
+            if (footsteps::tick(s, c, true, run, kDt))
                 ++steps;
         return steps;
     };

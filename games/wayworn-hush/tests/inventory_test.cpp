@@ -33,7 +33,7 @@ Registry makeRegistry()
 
 TEST_CASE("has/count on an empty satchel are false/zero", "[inventory]")
 {
-    Satchel s;
+    Satchel const s;
     REQUIRE_FALSE(has(s, "notebook"));
     REQUIRE(count(s, "notebook") == 0);
 }

@@ -151,6 +151,16 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
+      - name: Boot smoke test
+        # Nothing else in CI launches a game. Every other job compiles and
+        # unit-tests, and no test links main.cpp -- so a static-init-order
+        # fiasco, a missing required asset, or a shader that fails to compile
+        # passes every gate and is found by whoever runs the exe next.
+        # Needs a display and a GL driver: xvfb plus mesa's software renderer.
+        run: |
+          sudo apt-get install -y xvfb libgl1-mesa-dri
+          xvfb-run -a bash games/selva-oscura/scripts/smoke_test.sh
+
   # -----------------------------------------------------------------------
   # LINT
   #

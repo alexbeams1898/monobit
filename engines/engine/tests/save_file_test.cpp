@@ -91,9 +91,13 @@ TEST_CASE("writeJson then readJson round-trips a document", "[save]")
 
     const auto read = engine::save::readJson(tmp.file("save.json"));
     REQUIRE(read.has_value());
-    REQUIRE((*read)["n"] == 42);
-    REQUIRE((*read)["s"] == "text");
-    REQUIRE((*read)["nested"]["flag"] == true);
+    // Bound through value() rather than operator*: REQUIRE aborts the test on a
+    // missing optional, but the analyser cannot see that, and value() is
+    // checked access either way.
+    const nlohmann::json& loaded = read.value();
+    REQUIRE(loaded["n"] == 42);
+    REQUIRE(loaded["s"] == "text");
+    REQUIRE(loaded["nested"]["flag"] == true);
 }
 
 TEST_CASE("readJson of a missing file is nullopt, not an error", "[save]")

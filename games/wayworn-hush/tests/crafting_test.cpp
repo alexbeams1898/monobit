@@ -104,7 +104,8 @@ TEST_CASE("craft consumes inputs, grants output, records discovery + reveal", "[
     const crafting::Config cfg;
     crafting::State cs;
 
-    inventory::Registry items; // empty defs -> unknown items fall back to cap 1; count() still sums
+    inventory::Registry const
+        items; // empty defs -> unknown items fall back to cap 1; count() still sums
     inventory::Satchel sat;
     inventory::add(sat, items, inventory::ItemInstance{"thyme", 5});
     inventory::add(sat, items, inventory::ItemInstance{"water", 2});
@@ -143,9 +144,9 @@ TEST_CASE("craft fails (changes nothing) without enough materials", "[crafting]"
     crafting::Registry reg;
     reg.recipes["tea"] = teaRecipe();
     const crafting::Config cfg;
-    crafting::State cs;
+    crafting::State const cs;
 
-    inventory::Registry items;
+    inventory::Registry const items;
     inventory::Satchel sat;
     inventory::add(sat, items, inventory::ItemInstance{"thyme", 1}); // need 2; no water at all
 
@@ -166,8 +167,8 @@ TEST_CASE("a recipe naming no stats sends the whole reward to the default", "[cr
 
     crafting::Config cfg;
     cfg.default_xp_stat = "craftsmanship";
-    crafting::State cs;
-    inventory::Registry items;
+    crafting::State const cs;
+    inventory::Registry const items;
     inventory::Satchel sat;
     inventory::add(sat, items, inventory::ItemInstance{"thyme", 2});
     inventory::add(sat, items, inventory::ItemInstance{"water", 1});
