@@ -204,12 +204,20 @@ class TestChangelogFile(unittest.TestCase):
 
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
-        self.tmp_path = Path(self.tmp.name) / "CHANGELOG.md"
-        self._original = changelog.CHANGELOG_PATH
+        scope = Path(self.tmp.name)
+        # A scope is a directory holding a CHANGELOG.md beside a release config;
+        # the distribution repo is read from the config, never hardcoded here.
+        (scope / ".release-config.yml").write_text(
+            "public_repo: alexbeams1898/prison-escape-game-releases\n", encoding="utf-8")
+        self.tmp_path = scope / "CHANGELOG.md"
+        self._original_path = changelog.CHANGELOG_PATH
+        self._original_scope = changelog._scope_dir
+        changelog._scope_dir = scope
         changelog.CHANGELOG_PATH = self.tmp_path
 
     def tearDown(self) -> None:
-        changelog.CHANGELOG_PATH = self._original
+        changelog.CHANGELOG_PATH = self._original_path
+        changelog._scope_dir = self._original_scope
         self.tmp.cleanup()
 
     def _write_initial(self, content: str) -> None:
@@ -367,6 +375,57 @@ class TestChangelogFile(unittest.TestCase):
             changelog.cmd_release("v1.2.3")
         with self.assertRaises(changelog.ChangelogError):
             changelog.cmd_release("1.2")
+
+
+
+class TestChangelogRequired(unittest.TestCase):
+    """A branch prefix already says whether an entry can exist."""
+
+    def test_version_bumping_scopes_must_provide_one(self) -> None:
+        for branch in ("minor/selva-oscura/1-x", "patch/prison-escape/2-y",
+                       "major/point-of-entry/3-z"):
+            self.assertTrue(changelog.changelog_required(branch), branch)
+
+    def test_no_version_bumps_do_not(self) -> None:
+        for branch in ("chore/engine/159-ci-green", "docs/selva-oscura/4-readme"):
+            self.assertFalse(changelog.changelog_required(branch), branch)
+
+    def test_engine_scope_does_not(self) -> None:
+        # The engine ships no artifact, so a bump there has nothing to announce.
+        self.assertFalse(changelog.changelog_required("minor/engine/5-feature"))
+
+    def test_an_unparseable_branch_is_still_asked(self) -> None:
+        # Better to ask for a section that turns out unnecessary than to let a
+        # shippable change through without one.
+        for branch in ("", "master", "some-branch"):
+            self.assertTrue(changelog.changelog_required(branch), repr(branch))
+
+    def test_section_detection(self) -> None:
+        self.assertTrue(changelog.has_changelog_section("## Summary\n\n## Changelog\n\nskip"))
+        self.assertFalse(changelog.has_changelog_section("## Summary\n\nno section"))
+
+
+class TestPublicReleasesRepo(unittest.TestCase):
+    def test_read_from_scope_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            scope = Path(tmp)
+            (scope / ".release-config.yml").write_text(
+                "cmake_target: x\npublic_repo: owner/repo\n", encoding="utf-8")
+            original = changelog._scope_dir
+            changelog._scope_dir = scope
+            try:
+                self.assertEqual(changelog.public_releases_repo(), "owner/repo")
+            finally:
+                changelog._scope_dir = original
+
+    def test_absent_config_yields_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            original = changelog._scope_dir
+            changelog._scope_dir = Path(tmp)
+            try:
+                self.assertEqual(changelog.public_releases_repo(), "")
+            finally:
+                changelog._scope_dir = original
 
 
 if __name__ == "__main__":

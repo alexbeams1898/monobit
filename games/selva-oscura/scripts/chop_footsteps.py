@@ -239,7 +239,11 @@ def chop(source_path, out_dir, prefix, max_variations, slice_seconds,
     # this, banks chopped from quieter sources play visibly softer
     # than louder banks even at the same audio.json `volume` setting.
     if emitted > 0:
-        normalize_script = os.path.join(os.path.dirname(__file__), "normalize_audio.py")
+        # One copy at the repo root: both games chopped footsteps with their own
+        # byte-identical duplicate of it.
+        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__)))))
+        normalize_script = os.path.join(repo_root, "scripts", "normalize_audio.py")
         slice_paths = [str(out_dir / f"{prefix}_{i + 1}.ogg") for i in range(emitted)]
         subprocess.run(
             [sys.executable, normalize_script, "--files", *slice_paths, "--target-dbfs", "-1.0"],

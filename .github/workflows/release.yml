@@ -183,7 +183,7 @@ jobs:
           if [ "$SCOPE" = "engine" ]; then
             echo "Engine scope -- no CHANGELOG to update. Skipping prepend."
           else
-            python3 "$SCOPE_DIR/scripts/changelog.py" prepend /tmp/pr_body.md
+            python3 scripts/changelog.py --scope-dir "$SCOPE_DIR" prepend /tmp/pr_body.md
           fi
 
       - name: Promote [Unreleased] to released version
@@ -193,7 +193,7 @@ jobs:
           SCOPE_DIR: ${{ steps.parse.outputs.scope_dir }}
         run: |
           set -e
-          python3 "$SCOPE_DIR/scripts/changelog.py" release "$VERSION"
+          python3 scripts/changelog.py --scope-dir "$SCOPE_DIR" release "$VERSION"
 
       - name: Commit, tag, push
         if: steps.skip_check.outputs.skip != 'true' && steps.parse.outputs.pr_num != ''
@@ -290,7 +290,7 @@ jobs:
           VERSION: ${{ needs.bump.outputs.version }}
           SCOPE_DIR: ${{ needs.bump.outputs.scope_dir }}
         run: |
-          python3 "$SCOPE_DIR/scripts/changelog.py" notes "$VERSION" > /tmp/release_notes.md
+          python3 scripts/changelog.py --scope-dir "$SCOPE_DIR" notes "$VERSION" > /tmp/release_notes.md
           cat /tmp/release_notes.md
 
       - name: Create GitHub Release on source repo

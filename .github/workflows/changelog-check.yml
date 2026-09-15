@@ -24,4 +24,5 @@ jobs:
 
       - name: Validate
         run: |
-          python3 games/prison-escape-game/scripts/changelog.py validate-pr-body /tmp/pr_body.md
+          python3 scripts/changelog.py validate-pr-body /tmp/pr_body.md \
+            --branch "${{ github.head_ref }}"

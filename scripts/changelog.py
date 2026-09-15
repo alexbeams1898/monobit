@@ -88,14 +88,37 @@ ALLOWED_CATEGORIES = (
 # Order categories appear in CHANGELOG.md sections.
 CATEGORY_ORDER = {name: i for i, name in enumerate(ALLOWED_CATEGORIES)}
 
-PUBLIC_RELEASES_REPO = "alexbeams1898/prison-escape-game-releases"
-
-# Path layout: this script lives at games/<game>/scripts/changelog.py
-# So GAME_DIR is the parent's parent, REPO_ROOT is GAME_DIR's parent's parent.
+# One script for every scope. Which CHANGELOG.md it edits comes from --scope-dir,
+# and the distribution repo it links to comes from that scope's
+# .release-config.yml -- the file that already declares it for the release
+# workflow. A copy of this script per game drifts; a copy of that repo name in
+# the script drifts from the config beside it.
 SCRIPT_DIR = Path(__file__).resolve().parent
-GAME_DIR = SCRIPT_DIR.parent
-REPO_ROOT = GAME_DIR.parent.parent
-CHANGELOG_PATH = GAME_DIR / "CHANGELOG.md"
+REPO_ROOT = SCRIPT_DIR.parent
+
+_scope_dir = REPO_ROOT
+CHANGELOG_PATH = _scope_dir / "CHANGELOG.md"
+
+
+def set_scope(scope_dir: str | None) -> None:
+    """Point the tool at one scope. Called once from main()."""
+    global _scope_dir, CHANGELOG_PATH
+    _scope_dir = (REPO_ROOT / scope_dir).resolve() if scope_dir else REPO_ROOT
+    CHANGELOG_PATH = _scope_dir / "CHANGELOG.md"
+
+
+def public_releases_repo() -> str:
+    """The scope's distribution repo, read from its .release-config.yml.
+
+    Flat `key: value` lines, so a regex reads it without a YAML dependency --
+    these scripts are deliberately stdlib-only. Empty when the scope declares
+    no public repo, which is how link refs are omitted for one.
+    """
+    cfg = _scope_dir / ".release-config.yml"
+    if not cfg.is_file():
+        return ""
+    m = re.search(r"^public_repo:\s*(\S+)\s*$", cfg.read_text(encoding="utf-8"), re.M)
+    return m.group(1) if m else ""
 
 
 # ---------------------------------------------------------------------------
@@ -465,10 +488,10 @@ def cmd_release(version: str) -> None:
     # Add link ref for the new version, deduped, sorted with newest first
     # after [unreleased].
     new_link = (
-        f"[{version}]: https://github.com/{PUBLIC_RELEASES_REPO}/releases/tag/v{version}"
+        f"[{version}]: https://github.com/{public_releases_repo()}/releases/tag/v{version}"
     )
     unreleased_link = (
-        f"[unreleased]: https://github.com/{PUBLIC_RELEASES_REPO}/compare/v{version}...HEAD"
+        f"[unreleased]: https://github.com/{public_releases_repo()}/compare/v{version}...HEAD"
     )
 
     # Drop any existing link refs for the new version or [unreleased]; we'll
@@ -516,12 +539,43 @@ def _read_input(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
 
 
+# Bumps that change no version, and therefore produce no changelog entry.
+NO_VERSION_BUMPS = ("chore", "docs")
+
+# Scopes with nothing shippable, so nothing to write a changelog about.
+NO_CHANGELOG_SCOPES = ("engine",)
+
+
+def changelog_required(branch: str) -> bool:
+    """Whether this branch is one a changelog entry can come from.
+
+    The branch prefix already says. `chore/` and `docs/` are defined as
+    no-version-bump, and the engine ships no artifact -- asking the author to
+    type `skip` is asking them to restate what they chose when they named the
+    branch, in a second place that can disagree with the first.
+    """
+    parts = branch.split("/")
+    if len(parts) < 3:
+        return True  # unparseable: ask for one rather than let it through
+    bump, scope = parts[0], parts[1]
+    return bump not in NO_VERSION_BUMPS and scope not in NO_CHANGELOG_SCOPES
+
+
+def has_changelog_section(text: str) -> bool:
+    return re.search(r"^##\s+Changelog\s*$", text, re.M | re.I) is not None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="changelog.py")
+    parser.add_argument("--scope-dir", default=None,
+                        help="scope whose CHANGELOG.md to act on, e.g. games/selva-oscura")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_val = sub.add_parser("validate-pr-body", help="Validate a PR body")
     p_val.add_argument("file", help="path to PR body file, or - for stdin")
+    p_val.add_argument("--branch", default="",
+                       help="source branch; scopes that cannot produce a changelog "
+                            "entry are not asked for one")
 
     p_ext = sub.add_parser("extract-pr-body", help="Extract bullets from a PR body")
     p_ext.add_argument("file", help="path to PR body file, or - for stdin")
@@ -536,10 +590,15 @@ def main(argv: list[str] | None = None) -> int:
     p_notes.add_argument("version", help="semver version")
 
     args = parser.parse_args(argv)
+    set_scope(args.scope_dir)
 
     try:
         if args.cmd == "validate-pr-body":
             text = _read_input(args.file)
+            if not changelog_required(args.branch) and not has_changelog_section(text):
+                print(f"OK: branch '{args.branch}' ships no changelog entry; "
+                      "no `## Changelog` section required.")
+                return 0
             validate_pr_body(text)
             print("OK: `## Changelog` section is valid.")
             return 0

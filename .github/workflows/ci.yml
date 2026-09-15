@@ -64,6 +64,27 @@ jobs:
         # documents that are not in this repo.
         run: python3 scripts/check_comment_content.py
 
+      - name: Dialog register
+        run: python3 games/selva-oscura/scripts/check_dialog_register.py
+
+      - name: Game-specific gates
+        # These resolve config/ and assets/ relative to the game directory, so
+        # they run from inside it. Each catches drift a compiler cannot see: a
+        # word that grew a second spelling, a config key nothing reads, a map
+        # entity with no builder.
+        run: |
+          cd games/point-of-entry
+          python3 scripts/check_vocab.py
+          python3 scripts/check_design.py
+          python3 scripts/check_structure.py
+          python3 scripts/check_areas.py
+
+      - name: Script tests
+        # The tooling that gates every PR has tests; nothing was running them.
+        run: |
+          python3 scripts/test_changelog.py
+          python3 scripts/test_filter_compile_db.py
+
       - name: Complexity limits
         # prison-escape-game is excluded: it carries a pile of pre-existing
         # offenders that need their own cleanup pass before the gate can hold.
