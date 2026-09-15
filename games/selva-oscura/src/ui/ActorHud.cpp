@@ -545,7 +545,7 @@ const SangueTierVisual& tierVisual(int tier_index)
 // Sangue pulses fly in 2D screen space from a corpse-projected point
 // to the HUD vessel counter, curved through a control point offset
 // toward screen-center so the path bulges then sucks into the HUD.
-// Per [[project_crucible_censer_leveling_system]] auto-magnetization.
+// auto-magnetization.
 void drawSanguePulses(ImDrawList* overlay, const glm::mat4& /*view_proj*/)
 {
     const auto& pulses = selva::gameplay::sanguePulses();
@@ -616,7 +616,7 @@ void drawFloatingDamageNumbers(ImDrawList* overlay, const glm::mat4& view_proj)
 }
 
 // Draw the vessel counter in Roman numerals with manual vinculum
-// overbars. Per [[project_substance_has_no_in_game_name]] the
+// overbars. the
 // substance has no label; the count alone speaks. The encoder
 // returns a glyph string + parallel bar count (0 plain / 1 single /
 // 2 double). We iterate per-glyph so 1 or 2 horizontal lines can be
@@ -692,7 +692,7 @@ void renderActorHud()
 {
     const auto& p = selva::gameplay::player();
 
-    // Soulslike layout: top-left, ~250px bars, HP above stamina.
+    // Layout: top-left, ~250px bars, HP above stamina.
     // Layout constants live at file scope (kActorHudLayout namespace
     // below) so other systems (sangueHudAnchor, sangue pulse target)
     // share one source of truth.

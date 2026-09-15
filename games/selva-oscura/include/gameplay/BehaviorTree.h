@@ -38,7 +38,7 @@ float yawFacing(const glm::vec3& actor_pos, const glm::vec3& target_pos);
 //             this child a no-op. Selector: try next child. Sequence:
 //             abort the sequence and propagate Failure.
 //
-// Running is not modeled in v1 — every leaf is "instant" from the
+// Running is not modeled -- every leaf is "instant" from the
 // tree's perspective (it writes intent + maybe fires a one-shot,
 // then returns Success). Long-running behaviors (a swing in progress)
 // are tracked via cooldowns + Actor.sampler state, NOT via tree
@@ -168,7 +168,7 @@ class LeafFollowScriptedTarget : public Node
 // mid-animation). Weighted-random within the legal set using
 // actor.rng. Returns Success on fire, Failure if no legal action.
 //
-// This is the Souls-feel core: range bands + cooldowns + weighted
+// This is the core: range bands + cooldowns + weighted
 // choice produce 90% of perceived intelligence without per-enemy
 // code. Adding a new action = one JSON entry; adding a new enemy =
 // one JSON file.

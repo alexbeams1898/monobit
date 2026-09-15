@@ -97,7 +97,7 @@ void loadAllSkeletonJointMaps()
 {
     // Player map is required for the existing X_Bot rig.
     sMaps[std::string(kPlayerSkeletonKey)] = loadSkeletonJointMap(std::string(kPlayerSkeletonKey));
-    // Non-player maps are best-effort. Wolf is the v1 extra skeleton.
+    // Non-player maps are best-effort. Wolf is the only extra skeleton.
     static const char* kExtraSkeletons[] = {"wolf"};
     for (const char* id : kExtraSkeletons)
     {

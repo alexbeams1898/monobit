@@ -7,7 +7,7 @@
 //
 // Doctrine: dispatch verbs are state-setters that compose. Second-time
 // entry for an id already in the pool is a no-op regardless of current
-// state. Per [[feedback_spawn_systems_need_idempotency]] applied at
+// state. applied at
 // the dispatch layer.
 //
 // Pure-compute test against the actor pool. No archetype, no audio,

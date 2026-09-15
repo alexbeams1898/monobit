@@ -87,7 +87,7 @@ void loadInsightCountMap(const json& c, const char* key,
             dst[it.key()] = it.value().get<std::uint32_t>();
 }
 
-// Load the deprecated certain_conclusions list (back-compat).
+// Load certain_conclusions, which only older saves carry.
 void loadCertainConclusions(const json& c, PlayerProfile& p)
 {
     if (!c.contains("certain_conclusions") || !c["certain_conclusions"].is_array())
@@ -136,8 +136,8 @@ void loadWorkbenchVec(const json& arr, std::vector<PlayerProfile::WorkbenchNode>
     }
 }
 
-// Load workbench observations + inferences (with back-compat for
-// `workbench_conclusions`, the cognition-system-v1 prior name).
+// Load workbench observations + inferences. Older saves name the same
+// list `workbench_conclusions`; both are read.
 void loadWorkbenchNodes(const json& c, PlayerProfile& p)
 {
     if (c.contains("workbench_observations") && c["workbench_observations"].is_array())

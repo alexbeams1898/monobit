@@ -97,7 +97,7 @@ struct LocomotionConfig
     float blendInSeconds(const std::string& clip_name, float default_seconds) const;
 
     // Per-clip translation source. Missing entry returns the default
-    // (Velocity) — matches legacy behavior for clips not in the JSON.
+    // (Velocity), which is what a clip absent from the JSON resolves to.
     TranslationSource translationSource(const std::string& clip_name) const;
 };
 

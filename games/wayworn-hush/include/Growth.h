@@ -39,7 +39,7 @@ struct GrowthState
 {
     std::vector<std::string> faculties; // reading-self stat names (tier 1)
     std::vector<std::string> secondary; // doing-layer stat names (tier 2)
-    std::vector<BuffDef> buff_defs;     // authored, loaded once (empty for now)
+    std::vector<BuffDef> buff_defs;     // authored, loaded once; currently none
 
     // Display hue per faculty (for the observation-rarity coloring). Absent =
     // a neutral default.

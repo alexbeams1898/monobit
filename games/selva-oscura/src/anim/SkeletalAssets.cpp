@@ -224,9 +224,8 @@ bool initSkeletalAssets()
         // X_Bot skeleton at bake time, so they live in the X_Bot bundle's
         // ClipRegistry. Larva archetypes reference "zombie_walk" / etc.
         // by name and lookupArchetypeClip resolves them through this
-        // shared registry. Per [[universal-humanoid-enemy-rule]] every
-        // Hell-side enemy reuses the X_Bot skeleton; the rig is shared,
-        // clips are namespaced by name only.
+        // shared registry. Every Hell-side enemy reuses the one humanoid
+        // skeleton; the rig is shared, clips are namespaced by name only.
         const int n_larva = bundle.clips.loadDirectory("assets/characters/larva");
         std::fprintf(stderr, "[anim] loaded %d clip(s) from assets/characters/larva\n", n_larva);
         bundle.mesh = loadSkeletalMesh("assets/characters/x_bot/X_Bot.glb", bundle.skeleton);
@@ -252,8 +251,8 @@ bool initSkeletalAssets()
 
     // Try to load any non-player skeletons named in the manifest.
     // assets/characters/<id>/ subdirs OTHER than x_bot/player are
-    // candidate bundles. For v1 we hardcode the wolf attempt
-    // (Phase B asset drop); when more skeletons land, generalize
+    // candidate bundles. The wolf attempt is hardcoded; when more
+    // skeletons land, generalize
     // to a config/skeletons/manifest.json listing.
     static const struct
     {

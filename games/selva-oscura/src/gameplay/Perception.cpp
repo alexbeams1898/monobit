@@ -194,7 +194,7 @@ void tickPerception(Actor& actor, const Actor& player, float dt, const selva::tu
     }
     // Combat retention: once engaged, the actor "knows" where the
     // player is and tracks position continuously regardless of LOS.
-    // Souls convention — getting around behind a Combat-aware enemy
+    // Getting around behind a Combat-aware enemy
     // doesn't make them forget you exist, it just means they can't
     // *swing* at you (the LeafPickAction freshness gate handles
     // that) until they turn around and re-see. Without this update,

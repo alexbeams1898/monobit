@@ -277,9 +277,9 @@ TEST_CASE("a lateral network survives the write with both halves of every edge")
                 INFO("floor " << f << " hole " << h);
                 REQUIRE(static_cast<std::size_t>(to.room) < tree.size());
                 REQUIRE(static_cast<std::size_t>(to.hole) < tree[to.room].holes.size());
-                const descent::Link& back = tree[to.room].holes[to.hole].to;
-                CHECK(back.room == static_cast<int>(f));
-                CHECK(back.hole == static_cast<int>(h));
+                const descent::Link& reverse = tree[to.room].holes[to.hole].to;
+                CHECK(reverse.room == static_cast<int>(f));
+                CHECK(reverse.hole == static_cast<int>(h));
             }
     }
 

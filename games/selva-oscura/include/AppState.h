@@ -31,7 +31,7 @@ namespace selva
 // UIState - in-game overlay tracking. The pause menu and its tabs (Status,
 // Inventory, Equipment, System) live here. GameState owns the top-level
 // application mode; UIState owns the in-game overlay layered on top of
-// Playing. Layout follows Elden Ring's convention - gameplay-data tabs
+// Playing. Gameplay-data tabs
 // (Status, Inventory, Equipment) and a System tab that holds Save / Settings
 // / Quit-to-menu / Quit-to-desktop. Resume is universally ESC + RMB - not
 // a button in any tab.
@@ -150,8 +150,8 @@ struct UIState
 // step. Per docs/design/character-creation.md.
 //
 // Selva phases differ from prison-escape: no Victory/GameOver/HighScores/
-// RunSummary - Selva is roguelike, run-end loops back into Playing through
-// a Wood-respawn rather than terminating. Those phases will be added when
+// RunSummary. A run does not end: it loops back into Playing through a
+// Wood-respawn. Those phases will be added when
 // run-end + cycle structure ships.
 // ---------------------------------------------------------------------------
 struct GameState
@@ -198,14 +198,12 @@ struct GameState
 // PlayerClass -- the Vagrant's cosmological identity, locked at Beat 4 via
 // the Signing modal. `None` is the pre-Beat-4 state (player hasn't faced
 // the Guide yet). Per setting.md *The Signing* + locked
-// [[project_crucible_censer_leveling_system]].
 //
 // Cosmologically: the choice determines which commit-fire the Guide installs
 // in the Vagrant. Penitent/Heretic/Wretched receive the chrism-fire (the
 // Crucible verb -- feed self / install into substrate). Unburdened receives
 // the channel-fire (the Censer verb -- feed Beatrice / route to her reservoir).
 // Same fire, opposite mouths. The absorption-capacity is path-independent
-// (Vagrant-exception per [[project_imprint_handle_required_for_sangue]]).
 // ---------------------------------------------------------------------------
 enum class PlayerClass : std::uint8_t
 {
@@ -265,8 +263,8 @@ struct PlayerProfile
 
     // Region the player was in when saved. Player pos above is in this
     // region's local coordinate space. Missing / empty = "surface"
-    // (back-compat for save files written before the Regions system
-    // existed). When the region-aware load runs:
+    // -- a save written before regions existed records none. When the
+    // region-aware load runs:
     //   1. activateRegionImmediate(findRegionId(current_region_id))
     //   2. teleport player capsule to (pos_x, pos_y, pos_z), yaw
     std::string current_region_id;
@@ -277,12 +275,11 @@ struct PlayerProfile
     // spawn-decl id is appended here. On region load, any
     // `enemy_spawns[]` entry whose id appears in this list is SKIPPED
     // entirely -- the boss does not respawn, the slope stays empty
-    // for the rest of the save. Per [[selva-wood-lore-locked-2026-05-31]]
-    // the empty slope IS the monument.
+    // for the rest of the save: the empty slope IS the monument.
     //
     // Future: this list may merge with `keepers_felled` (per setting.md
     // *Cycle structure*) since keepers ARE a subset of bosses. Kept
-    // separate for v1 until the first keeper ships.
+    // separate until the first keeper ships.
     std::vector<std::string> felled_bosses;
 
     // Generic quest-state flag set. Persistent string set. Used by:
@@ -295,8 +292,8 @@ struct PlayerProfile
     // semantic prefixes like "lupa_felled", "met_guide", "grimoire_5".
     // Access through hasFlag / setFlag / clearFlag in AppStateGlobal.h
     // -- those normalize dedup behavior so direct push_back is never
-    // necessary. Empty = no flags set yet (back-compat default for
-    // saves written before the flag system shipped).
+    // necessary. Empty = no flags set, which is also how a save written
+    // before flags existed reads.
     std::vector<std::string> flags;
 
     // Per-character insight nodes the Vagrant has unlocked. Stable
@@ -349,15 +346,15 @@ struct PlayerProfile
         // requires. Locked once committed (cannot be removed while
         // the inference is on the workbench).
         std::vector<std::string> linked_observations;
-        // For inferences (per cognition-system v1): the authored
-        // reading id the player picked at Deduce time (or changed via
+        // For inferences: the authored reading id the player picked at
+        // Deduce time (or changed via
         // Reconsider). The reading's prose is what displays. The
         // reading's warrant_evidence is what determines whether the
         // inference is warranted (linked_observations exact-set-
         // matches the reading's warrant_evidence).
         std::string reading_id;
-        // DEPRECATED 2026-06-10 (cognition-system v1 replaced the
-        // confirmation mechanic with readings + warrant). Field kept
+        // Superseded: readings + warrant replaced the confirmation
+        // mechanic. Field kept
         // so old saves don't error on load; never populated by new
         // code; never displayed.
         std::vector<std::string> linked_confirmers;
@@ -370,8 +367,8 @@ struct PlayerProfile
     // computeCognitiveStat() = 1 + floor(log2(counter + 1)).
     // Diminishing returns naturally fall out of the log curve. The
     // counters are NOT decremented when Reconsider cascades release
-    // child inferences -- the simpler v1 model preserves growth so
-    // the system stays predictable. Future revision may track gains
+    // child inferences -- the simpler model preserves growth so the
+    // system stays predictable. A later revision may track gains
     // per inference and decrement on cascade.
     std::uint32_t perception_growth = 0;
     std::uint32_t cognition_growth = 0;
@@ -388,7 +385,7 @@ struct PlayerProfile
     // whose state has DEVIATED from their JSON-authored initial_state
     // need entries here. State_name is one of "Locked", "Closed",
     // "Open" (Opening is promoted to Open on save -- mid-animation
-    // doesn't persist). Per [[world/Door.h]].
+    // doesn't persist). Per world/Door.h.
     std::vector<std::pair<std::string, std::string>> door_states;
 
     // Per-character carried items. Categorized polymorphic entries
@@ -414,7 +411,7 @@ struct PlayerProfile
 
     // Substance currently held in the Vagrant's vessel (the
     // Crucible for class-pickers, the Censer for the unburdened, both
-    // TBD at Beat 4). Per [[project_crucible_censer_leveling_system]]
+    // TBD at Beat 4). Per
     // the vessel IS the holding zone (no separate wallet); the HUD
     // reads this field. Resets each cycle (uncommitted contents return
     // to Hell on second death; see setting.md *Hell reclaims its
@@ -425,7 +422,7 @@ struct PlayerProfile
 
     // Cumulative sangue routed to Beatrice's reservoir across all cycles.
     // Per setting.md *The unburdened path* + locked
-    // [[project_crucible_censer_leveling_system]]: this is the unburdened's
+    // this is the unburdened's
     // progression axis -- every Censer commit adds to this total and
     // contributes to the unburdened's subtractive evolution
     // (Unburdened -> Svuotato -> Diaphanous). Class-pickers leave this at 0;
@@ -453,7 +450,7 @@ struct Settings
     float bgm_volume = 0.8f;
     float sfx_volume = 1.0f;
     // Camera FOV in degrees. Separate values for third-person (default
-    // 60, narrow soulslike framing) and first-person (default 75,
+    // 60, narrow over-shoulder framing) and first-person (default 75,
     // wider for spatial awareness when the player can't see their own
     // body). User-tunable via the Settings screen.
     float fov_degrees_third_person = 60.0f;

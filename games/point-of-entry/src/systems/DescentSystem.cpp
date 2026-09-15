@@ -1178,7 +1178,7 @@ void repointPassages(const Room& room)
     }
 }
 
-void update(Engine& engine, EntityManager& em, float dt)
+void update(const Engine& engine, EntityManager& em, float dt)
 {
     (void)engine;
     syncArea(em);

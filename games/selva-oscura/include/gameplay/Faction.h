@@ -9,9 +9,7 @@ namespace selva::gameplay
 // Cosmological form of an actor. Five canonical values per the
 // bestiary doctrine + the "what kind of thing is this" axis the
 // engine uses to gate combat-permission rules (orthogonal to
-// Faction, which is "who is on whose side"). Locked per
-// [[soul-animal-form-combat-doctrine]] +
-// [[guide-pawn-doctrine-2026-06-01]] + docs/design/bestiary.md
+// Faction, which is "who is on whose side"). See docs/design/bestiary.md,
 // *Soul-form vs animal-form*.
 //
 //   UnjudgedSoul -- refused Hell's measurement at the gates. Lives
@@ -63,7 +61,7 @@ Form parseForm(const std::string& s);
 // Allied NPC can fight enemies alongside the player.
 //
 // Note on Neutral: actors who don't attack first but CAN be attacked
-// by Player (Souls/ER convention -- friendly NPCs the player can
+// by Player (friendly NPCs the player can
 // aggro into hostility). Same damage rule as Hostile from Player's
 // perspective; the NPC's response to taking damage is governed by
 // gameplay code (faction flip Allied->Hostile or Neutral->Hostile),
@@ -79,7 +77,7 @@ enum class Faction
 // Returns true if `attacker` should damage `target` on hit.
 constexpr bool factionsHostile(Faction attacker, Faction target)
 {
-    // Player damages Hostile + Neutral (Souls-style aggro of friendlies).
+    // Player damages Hostile + Neutral, so a passive NPC can be provoked.
     // Player does NOT damage Allied directly through this rule -- a
     // separate "attack an ally" code path may convert Allied->Hostile
     // first then re-evaluate.

@@ -1,6 +1,5 @@
 // PlayerClass enum + helpers: cosmological identity locked at Beat 4.
 // Per setting.md *The Signing and the commit-fire* + locked
-// [[project_crucible_censer_leveling_system]].
 //
 // Pure-compute tests for the enum / string / path-bit triad. Save/load
 // round-trip is covered in save_manager_test.cpp.

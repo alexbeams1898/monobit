@@ -245,7 +245,7 @@ class JsonRegion : public engine::world::AsyncCapableRegion
 
     // Door instances declared in region.json "doors":[]. Registered
     // with the world::Door system at commitPrepared time. See
-    // [[world/Door.h]] for the lifecycle.
+    // world/Door.h for the lifecycle.
     std::vector<selva::world::DoorDecl> parsed_doors;
 };
 

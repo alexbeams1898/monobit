@@ -15,8 +15,8 @@
 // character name, and pause-menu UIState. saveData() is the persisted
 // SaveData currently loaded from disk; main.cpp loads it at startup via
 // SaveManager::load() and writes it back on changes. playerInventory() /
-// playerEquipment() hold the player's bag and equipped slots; v1 leaves
-// them empty (no item content yet) but the pause menu reads them so the
+// playerEquipment() hold the player's bag and equipped slots. Both are
+// empty while there is no item content, but the pause menu reads them so the
 // Inventory and Equipment tabs show real state once items ship.
 // ---------------------------------------------------------------------------
 
@@ -102,7 +102,7 @@ bool hasInsight(const std::string& node);
 bool setInsight(const std::string& node);
 bool clearInsight(const std::string& node);
 
-// Per cognition-system v1: derive the displayed stat value from a
+// Derive the displayed stat value from a
 // raw cognitive-engagement counter. stat = 1 + floor(log2(growth+1)).
 // First engagement -> 2; 3 events -> 3; 7 events -> 4; 15 events -> 5;
 // 31 events -> 6; ... Diminishing returns built into the curve.

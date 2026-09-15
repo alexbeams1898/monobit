@@ -23,12 +23,11 @@ void setLocoLockoutUntil(float t)
 // Inertialization is intentionally NOT enrolled by any profile here.
 // The PoseSampler engine retains the capability (requestInertialization
 // + applyInertializationDecay) for future games or specific opt-in
-// callers, but Selva Oscura never requests it. Reason: every Mixamo
-// clip in our pipeline animates rapidly in its first 100-450ms
+// callers, but Selva Oscura never requests it. Reason: every clip in
+// the pipeline animates rapidly in its first 100-450ms
 // (windup, recoil, raise), which is exactly the failure mode for
 // inertialization's frozen-offset decay math — the offset overlays
 // the clip's authored motion and produces visible foot drift.
-// See feedback_animation_harmony_rule.md.
 
 namespace profiles
 {

@@ -49,7 +49,7 @@ engine::world::RegionId loadAllRegionsRegister()
         return engine::world::kInvalidRegion;
 
     // Phase 1 of region loading. Doctrine: ALL regions preload at
-    // boot, never mid-game. Soulslike gameplay can't tolerate mid-
+    // boot, never mid-game. Gameplay can't tolerate mid-
     // session loading hitches; everything the player can transition
     // into during a session is resident from before the main menu
     // appears. Boot is allowed to take longer; gameplay frames are
@@ -161,8 +161,8 @@ void spawnAllRegionEnemies()
 void spawnAllRegionProps()
 {
     // Iterate every JsonRegion's prop decls + scatter rules and
-    // route them through the prop spawn funnel. v1 only appends
-    // Tree-category props to the global CollisionRegion (which the
+    // route them through the prop spawn funnel. Only Tree-category props
+    // are appended to the global CollisionRegion (which the
     // existing renderer reads verbatim). Lights and future
     // categories extend the funnel. Authored props[] run BEFORE
     // prop_scatter[] so the scatter producer's tooCloseToExisting

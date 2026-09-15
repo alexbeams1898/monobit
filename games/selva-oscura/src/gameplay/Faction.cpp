@@ -11,9 +11,8 @@ Faction parseFaction(const std::string& s)
         return Faction::Allied;
     if (s == "Neutral")
         return Faction::Neutral;
-    // "Hostile" or empty / unknown -> Hostile (preserves legacy
-    // hardcoded default; existing shade JSON omits `faction` and
-    // continues to spawn hostile).
+    // "Hostile", empty, or unknown -> Hostile. An archetype that omits
+    // `faction` is an enemy.
     return Faction::Hostile;
 }
 
@@ -61,9 +60,8 @@ Form parseForm(const std::string& s)
         return Form::HellMachinery;
     if (s == "Divine")
         return Form::Divine;
-    // "DamnedSoul" or empty / unknown -> DamnedSoul (preserves legacy
-    // shade defaults; existing shade JSON omits `form` and continues
-    // to spawn as damned).
+    // "DamnedSoul", empty, or unknown -> DamnedSoul. An archetype that
+    // omits `form` is one of the damned.
     return Form::DamnedSoul;
 }
 

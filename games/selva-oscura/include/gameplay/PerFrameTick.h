@@ -43,8 +43,8 @@ void softResetWorldForCycle();
 // Symmetric write-back: copy the player Actor's persistent fields out
 // to the given PlayerProfile. Called by the pause-menu Save action and
 // by Quit-to-Main-Menu before SaveManager writes to disk, so the saved
-// file reflects what was earned in the run. v1 has nothing to write
-// (PlayerProfile only carries `name`, which doesn't change at runtime).
+// file reflects what was earned in the run. There is nothing to write
+// yet: PlayerProfile carries only `name`, which cannot change at runtime.
 void saveActiveCharacterFromPlayer(selva::PlayerProfile& profile);
 
 // Begin the wake-up Scene: lock combat + movement, fire the getting_up

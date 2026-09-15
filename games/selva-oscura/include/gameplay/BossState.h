@@ -50,7 +50,7 @@ void setBossState(Actor& actor, BossState next);
 // Dormant + Disengaged + Felled actors are untouched (already not
 // "engaged" in the fight-active sense).
 //
-// Per [[feedback_no_bandaids_root_cause]]: the symmetric rule -- if
+// the symmetric rule -- if
 // you ENTER the fight, you must EXIT it through the same pipeline.
 void tearDownActiveBosses();
 

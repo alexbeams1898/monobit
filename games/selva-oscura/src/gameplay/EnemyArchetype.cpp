@@ -86,10 +86,8 @@ void from_json(const nlohmann::json& j, EnemyAction& a)
     j.at("id").get_to(a.id);
     j.at("clip").get_to(a.clip);
     a.range_min = j.value("range_min", 0.0f);
-    // effective_reach_override is the new (post-Phase-4b) authoring
-    // key. range_max is the legacy key (semantically the same number)
-    // -- read it as a back-compat fallback so existing archetypes
-    // (shade, wolf) keep working until their JSON is migrated.
+    // range_max names the same number under an older key. Read as a
+    // fallback, so an archetype authored either way loads.
     a.effective_reach_override = j.value("effective_reach_override", j.value("range_max", 0.0f));
     a.cooldown_seconds = j.value("cooldown_seconds", 0.0f);
     a.weight = j.value("weight", 1.0f);
@@ -517,14 +515,12 @@ void EnemyArchetypeRegistry::resolveAllActionReach()
             // picked from cosmology rather than clip authoring (e.g.
             // hitbox_joint=Head on a hand-swing clip). Loud warning
             // so the bug is caught at boot, not in playtest. Per
-            // [[feedback_hitbox_joint_must_match_visible_strike]].
             if (action.resolved_effective_reach > 0.0f && action.resolved_effective_reach < 0.30f)
             {
                 selva::combat::combatLog(
                     "[reach:WARN] {}.{} reach={:.3f}m is suspiciously small. "
                     "Verify hitbox_joint='{}' is the joint that visibly STRIKES "
-                    "in clip '{}' (not the joint cosmology suggests). See "
-                    "memory/feedback_hitbox_joint_must_match_visible_strike.md",
+                    "in clip '{}' (not the joint cosmology suggests).",
                     arch_id, action.id, action.resolved_effective_reach, action.hitbox_joint,
                     action.clip);
             }

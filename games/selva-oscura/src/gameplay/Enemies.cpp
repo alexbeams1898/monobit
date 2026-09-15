@@ -65,7 +65,7 @@ constexpr float kEnemyRunSpeedFloor = 3.0f;   // m/s; above = Run family, below 
 // authored against skeleton A (e.g. player, 65 joints) to a sampler
 // bound to skeleton B (e.g. wolf, 53 joints) makes ozz's SamplingJob
 // write into uninit SoaTransform lanes, and the next LocalToModelJob
-// hits IsNormalizedEst on garbage memory. See [[feedback_data_driven_over_convention]].
+// hits IsNormalizedEst on garbage memory.
 enum class ClipFamily
 {
     PeacefulIdle,
@@ -365,7 +365,7 @@ void applyArchetypeInteractable(Actor& a)
 // Does NOT touch:
 //   * Identity: spawn_decl_id, spawn_pos, controller, rng (set once)
 //   * Sampler / skeleton binding (bound at spawn; cross-skeleton
-//     swaps would require sampler recreation -- not v1)
+//     swaps would require sampler recreation, which is not supported)
 //   * Physics body handle (created at spawn; destroyed at death).
 //     applyArchetypeSwap rebuilds the Jolt capsule itself when
 //     collider dims change -- this funnel writes body.collider_*
@@ -376,7 +376,6 @@ void applyArchetypeInteractable(Actor& a)
 //     owns, not derived state.
 //
 // This is the diamond-foundation funnel. Per
-// [[feedback_dual_source_of_truth_is_the_bug]].
 void applyArchetypeToActor(Actor& a, const EnemyArchetype& target)
 {
     a.archetype = &target;
@@ -409,7 +408,7 @@ void initSpawnIdentity(Actor& e, const std::string& region_id, const EnemySpawnD
     // Guide stands at the chapel door"), apply it now. Walk in JSON
     // order; later entries win on tie so authors can layer conditions.
     // This used to run at reset time too, but reset now rebuilds the
-    // pool from spawn (per [[feedback_spawn_systems_need_idempotency]]),
+    // pool from spawn,
     // so the same spawn-path logic covers both first-boot and reload.
     for (const auto& fp : decl.post_flag_positions)
     {
@@ -602,8 +601,7 @@ void spawnEnemyFromDecl(const std::string& region_id, const EnemySpawnDecl& decl
     //
     // 1) Felled-boss check: if this is a boss whose spawn-decl id is
     //    in the active profile's felled_bosses, skip permanently for
-    //    this save. Per [[selva-wood-lore-locked-2026-05-31]] the
-    //    empty slope IS the monument.
+    //    this save: the empty slope IS the monument.
     //
     // 2) Trigger-spawn skip: if spawn_trigger_id is non-empty, this
     //    enemy spawns on trigger (Pattern A), not at boot. Skipped
@@ -732,8 +730,8 @@ void tickPoiseRefill(Actor& a, float dt)
 // stale decision is the worst-case latency between a perception
 // change and an intent change.
 //
-// Yaw-acknowledgment overlay (Souls-style "the NPC notices you walking
-// by"). Runs after the BT tick so it only overrides yaw when the actor
+// Yaw-acknowledgment overlay: the actor turns its head as you pass.
+// Runs after the BT tick so it only overrides yaw when the actor
 // is passive. Caps to archetype->acknowledgment_max_angle_radians so
 // the NPC can't turn past their natural viewing arc -- reads as
 // natural attentiveness, not tracking.
@@ -1160,7 +1158,7 @@ void persistFelledBoss(Actor& e)
                                      e.spawn_decl_id, profile->name);
         }
     }
-    // Reward dispatch. v1 assumes the player killed the boss; routing
+    // Reward dispatch. Assumes the player killed the boss; routing
     // through hit-detection's owner field will refine attribution
     // later when faction-conflict ships.
     selva::gameplay::onBossFelled(e.spawn_decl_id, selva::gameplay::player());
@@ -1328,9 +1326,8 @@ bool applyArchetypeSwap(Actor& a, const EnemyArchetype& target)
     // After playOneShot, the first consumedHipDelta() may report a
     // large value (discontinuity between the prior loco clip's hip
     // and the new one-shot's frame-0 hip). Consume + discard it now
-    // so the next applyActorClipHipDelta call sees a fresh zero.
-    // Per [[feedback_hip_delta_two_sides]] -- the extract side leaves
-    // residual that the apply side would otherwise turn into a slide.
+    // so the next applyActorClipHipDelta call sees a fresh zero. Extraction
+    // leaves residual the apply side would otherwise turn into a slide.
     (void)a.sampler.consumedHipDelta();
     if (selva::debug::flags().enemy_lifecycle)
     {
@@ -1390,7 +1387,6 @@ void resetCycleEnemies()
     // boot uses. Anything that should survive must be derivable from
     // authored data (region JSON, flow JSON) or persisted save state
     // (PlayerProfile.felled_bosses / .flags / .door_states).
-    // Per [[feedback_spawn_systems_need_idempotency]].
     //
     // Phase 1: tear down every non-player actor. Destroys Jolt bodies,
     // unregisters interactables, erases pool slots.
@@ -1578,11 +1574,11 @@ static bool tickOneEnemy(Actor& a, const Actor& pc, float dt, const selva::tunin
     updateEnemyLockOnPlayer(a, pc);
     // Aggro-clip hook: fires once when this actor crosses the
     // Suspicious -> Alerted edge ("confirmed sighting" in the
-    // perception state machine; Souls/ER Hollow-wakes-up moment).
+    // perception state machine; the sleeper-wakes moment).
     // Movement-locked for the clip's full duration; the BT's chase
     // + attack only begins after the clip's one-shot finishes.
     // archetype.aggro_clip empty = no scream / wake-up; actor goes
-    // straight from Alerted into chase. See [[project_soul_larvae_cosmology]].
+    // straight from Alerted into chase.
     if (a.archetype != nullptr && !a.archetype->aggro_clip.empty() && !a.aggro_already_fired &&
         pre_perception_awareness < Awareness::Alerted &&
         a.perception.awareness >= Awareness::Alerted)

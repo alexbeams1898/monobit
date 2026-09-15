@@ -12,7 +12,7 @@
 namespace selva::combat
 {
 
-// Capsule-based hit volumes — the Souls-series convention.
+// Capsule-based hit volumes.
 //
 // HURTBOX: capsule attached to a character's bone. Multiple per
 // actor for region damage multipliers (head/torso/limbs). Damage
@@ -90,7 +90,7 @@ struct Hitbox
 // Per-frame pools. Both are cleared and repopulated each frame
 // (hurtboxes from bone transforms; hitboxes survive across frames
 // but get their `prev_shape` updated). Linear scan for overlap is
-// fine until counts exceed ~50 (Souls-class).
+// fine until counts exceed ~50.
 std::vector<Hurtbox>& hurtboxes();
 std::vector<Hitbox>& hitboxes();
 

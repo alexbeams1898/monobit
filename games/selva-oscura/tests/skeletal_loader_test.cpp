@@ -29,7 +29,7 @@ TEST_CASE("Skeleton loads from X Bot skeleton.ozz", "[anim][skeleton][load]")
 {
     const Skeleton skel = loadSkeleton(kSkeletonPath);
     REQUIRE(skel.isLoaded());
-    // X Bot ships with a 65-joint Mixamo humanoid rig. Test the lower
+    // X Bot ships with a 65-joint humanoid rig. Test the lower
     // bound (in case of small rig variants) rather than strict equality.
     REQUIRE(skel.boneCount() >= 49);
     // Sanity ceiling — we'd notice if something exploded the count.

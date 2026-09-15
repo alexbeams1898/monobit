@@ -5,8 +5,8 @@
 
 // THE RECORD: per-species kill tallies, the one ledger of everything he has put down. Guide
 // pages, rank and achievements all READ this; nothing keeps a count of its own. A species is
-// its pest file path -- the same id the swarm spawns by. Session-only for now; saving it
-// is a later system.
+// its pest file path -- the same id the swarm spawns by. Session-only: nothing
+// writes it to disk.
 namespace record
 {
 

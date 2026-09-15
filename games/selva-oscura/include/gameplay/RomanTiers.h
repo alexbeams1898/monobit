@@ -20,7 +20,7 @@
 // (999,999,999) decompose into <= 30 particles, which the renderer can
 // stagger across the full effect duration.
 //
-// Per [[project_crucible_censer_leveling_system]] auto-magnetization +
+// auto-magnetization +
 // the locked numeral-rendering doctrine.
 
 namespace selva::gameplay

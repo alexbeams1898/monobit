@@ -1,126 +1,126 @@
 {
-  "_comment": "Wolf archetype -- Lupa, the lone surviving legend of the pre-failure Wood (per [[selva-wood-lore-locked-2026-05-31]] and story.md Beat 2). Quaternius rig (CC0), quadruped using the 'wolf' skeleton (config/skeletons/wolf.json). Pattern B boss (already-there, sitting outside the chapel). 'Tired legend' framing locked: slow walking pursuit, single bite attack -- but legend-tier HP and devastating damage per landed bite. She LOOKS exhausted because she IS, but a wolf-of-old still hits like a god. Tune in-game by adjusting damage and HP override.",
-  "id": "wolf",
-  "form": "Animal",
-  "skeleton_id": "wolf",
-  "tree": "humanoid_basic",
-  "vision_fov_degrees": 120.0,
-  "vision_range_meters": 18.0,
-  "_idle_clip_note": "Pre-engage: eating loops naturally -- she's actively chewing the Lonza carcass at her feet (per the Capitoline-inversion framing: she's outlived the founders by devouring them). Loop-eating reads stronger than a frozen sad pose; the player walks up to find the apex predator mid-meal. combat_idle_clip = idle_2 = post-engage idle while she pauses between bites at the player.",
-  "idle_clip": "eating",
-  "combat_idle_clip": "idle_2",
-  "walk_clip": "walk",
-  "_locomotion_note": "Walking only -- no gallop, no leap. Lupa moves SLIGHTLY faster than the player (~2.4 m/s vs player 1.6 m/s) so a pure backpedal cannot escape her. Inexorable creep, not pursuit. No chase_speed override would leave her at player walk_speed and the player could outwalk her -- she needs the small edge.",
-  "chase_speed": 2.4,
-  "_strafe_note": "No duel-circle dance. Quadruped pursuit is straight-line walk into bite range.",
-  "disable_circle_strafe": true,
-  "death_clip": "death",
-  "knockdown_clip": "idle_hit_react_left",
-  "_flinch_note": "Wolf rig has only 2 hit-react clips (idle_hit_react_left/right). Maps all 4 flinch directions + both hit_react tiers to these. Crude but better than silent no-op (humanoid defaults like 'flinch_front' don't exist in the wolf registry; unmapped fields skip the play-once entirely).",
-  "flinch_front_clip": "idle_hit_react_left",
-  "flinch_back_clip": "idle_hit_react_right",
-  "flinch_left_clip": "idle_hit_react_left",
-  "flinch_right_clip": "idle_hit_react_right",
-  "hit_react_medium_clip": "idle_hit_react_right",
-  "hit_react_heavy_clip": "idle_hit_react_left",
-  "_boss_note": "Pattern B boss: initial_state=eating holds AI ticks off until engage_trigger fires. idle_clip (eating) loops naturally as her pre-engage animation -- she's mid-meal on the Lonza carcass. On engage, NO engage_clip plays -- she simply transitions from eating to combat_idle (idle_2) via the sampler's natural blend. Reads as 'she lifts her head, looks at you, decides you're more food.' Slow walking pursuit follows. Avoids needing a 'rise-to-attention' clip we don't have authored (jump_to_idle includes a physical jump that breaks the tired-legend framing).",
-  "is_boss": true,
-  "boss_name": "LUPA",
-  "boss_name_key": "interact.boss.lupa.boss_name",
-  "initial_state": "eating",
-  "engage_clip": "",
-  "encounter_audio_bed": "",
-  "felled_message": "",
-  "felled_message_key": "interact.boss.lupa.felled_message",
-  "_stats_note": "Legend HP, broken poise. 600 HP = ~30 player bites at average melee. Poise=40 means even light hits stagger her -- the player feels the trade landing instantly, every swing matters, but she keeps coming.",
-  "max_hp_override": 600,
-  "max_poise_override": 40.0,
-  "_scripted_death_note": "Lupa was poisoned by the Guide (Lonza-carcass) before the Vagrant arrived. Per story.md Beat 3 + [[guide-pawn-doctrine-2026-06-01]]: she dies on a 30s timer regardless of player damage. The HP-floor in PerFrameTick gates the player at 1 HP while she is Engaged with a scripted_death_seconds > 0 -- the player cannot die to her. Player damage that finishes her EARLY also works (Engaged -> Felled via fireEnemyDeath at HP=0); the timer is a guaranteed-lethal backstop. 30s gives a real fight window without dragging.",
-  "scripted_death_seconds": 30.0,
-  "scripted_death_pain_clip": "idle_2_head_low",
-  "scripted_death_drain_to_fraction": 0.67,
-  "scripted_death_drain_exponent": 1.5,
-  "felled_flag": "lupa_felled",
-  "show_felled_overlay": false,
-  "item_drops": ["lupa_meat", "lupa_bone", "lupa_hide"],
-  "_item_drops_note": "Wood-side organic loot, NOT Hell-substance. Per locked Wood-lore + Animal-form cosmology: Lupa is the lone surviving Wood-legend; killing her yields the matter of her body, not sangue. Sangue is absent from this archetype (sangue_drop field omitted) by design -- forcing Lupa into the Hell-substance economy would be cosmologically wrong. Item ids are stable identifiers; the pickup + inventory layer is TBD (item registry not yet wired). fireEnemyDeath currently logs the drop list; future commit ties to inventory.",
-  "_actions_note": "ONE action: a single deadly bite. No pounce, no gap-closer, no chain. Souls-style windup/active/recovery: 300ms windup (player's dodge window) + 180ms active (hitbox live) + the rest of the clip as recovery (locked body, can't slide). 35 damage per bite = a few bites kill the player. cooldown 1.4s -- she can land roughly one bite per 2 seconds.",
-  "actions": [
-    {
-      "id": "wolf_bite",
-      "clip": "attack",
-      "range_min": 0.0,
-      "range_max": 1.8,
-      "cooldown_seconds": 1.4,
-      "weight": 1.0,
-      "raw_damage": 35,
-      "poise_damage": 30,
-      "min_awareness": "Combat",
-      "hitbox_joint": "Head",
-      "hitbox_radius": 0.34,
-      "hitbox_tip_offset_z": 0.20,
-      "windup_seconds": 0.30,
-      "active_seconds": 0.18,
-      "cancel_fraction": 0.40,
-      "locks_movement": true
-    }
-  ],
-  "hurtbox_decls": [
-    {
-      "joint_a": "Back",
-      "joint_b": "Torso2",
-      "region": "Torso",
-      "radius_scale": 1.2
-    },
-    {
-      "joint_a": "Torso2",
-      "joint_b": "Neck1",
-      "region": "Torso",
-      "radius_scale": 1.0
-    },
-    {
-      "joint_a": "Neck1",
-      "joint_b": "Head",
-      "region": "Head",
-      "radius_scale": 0.7,
-      "damage_multiplier": 1.5
-    },
-    {
-      "joint_a": "FrontShoulder.L",
-      "joint_b": "FrontLowerLeg.L",
-      "region": "UpperLimb",
-      "radius_scale": 0.5
-    },
-    {
-      "joint_a": "FrontShoulder.R",
-      "joint_b": "FrontLowerLeg.R",
-      "region": "UpperLimb",
-      "radius_scale": 0.5
-    },
-    {
-      "joint_a": "BackShoulder.L",
-      "joint_b": "BackLowerLeg.L",
-      "region": "UpperLimb",
-      "radius_scale": 0.55
-    },
-    {
-      "joint_a": "BackShoulder.R",
-      "joint_b": "BackLowerLeg.R",
-      "region": "UpperLimb",
-      "radius_scale": 0.55
-    },
-    {
-      "joint_a": "Tail1",
-      "joint_b": "Tail4",
-      "region": "LowerLimb",
-      "radius_scale": 0.3
-    }
-  ],
-  "_lockon_note": "Multi-point lockon (ER convention for boss-scale enemies). default=head so first acquire snaps to Lupa's head -- the natural focal point. Mouse wheel cycles head -> torso -> hindleg_left -> hindleg_right -> wrap.",
-  "lockon_points": [
-    { "id": "head", "joint": "Head", "default": true },
-    { "id": "torso", "joint": "Torso2" },
-    { "id": "hindleg_left", "joint": "BackUpperLeg.L" },
-    { "id": "hindleg_right", "joint": "BackUpperLeg.R" }
-  ]
+ "_comment": "Wolf archetype -- Lupa, the lone surviving legend of the pre-failure Wood (see story.md, Beat 2). Quadruped using the 'wolf' skeleton (config/skeletons/wolf.json). Pattern B boss (already-there, sitting outside the chapel). 'Tired legend' framing locked: slow walking pursuit, single bite attack -- but legend-tier HP and devastating damage per landed bite. She LOOKS exhausted because she IS, but a wolf-of-old still hits like a god. Tune in-game by adjusting damage and HP override.",
+ "id": "wolf",
+ "form": "Animal",
+ "skeleton_id": "wolf",
+ "tree": "humanoid_basic",
+ "vision_fov_degrees": 120.0,
+ "vision_range_meters": 18.0,
+ "_idle_clip_note": "Pre-engage: eating loops naturally -- she's actively chewing the Lonza carcass at her feet (per the Capitoline-inversion framing: she's outlived the founders by devouring them). Loop-eating reads stronger than a frozen sad pose; the player walks up to find the apex predator mid-meal. combat_idle_clip = idle_2 = post-engage idle while she pauses between bites at the player.",
+ "idle_clip": "eating",
+ "combat_idle_clip": "idle_2",
+ "walk_clip": "walk",
+ "_locomotion_note": "Walking only -- no gallop, no leap. Lupa moves SLIGHTLY faster than the player (~2.4 m/s vs player 1.6 m/s) so a pure backpedal cannot escape her. Inexorable creep, not pursuit. No chase_speed override would leave her at player walk_speed and the player could outwalk her -- she needs the small edge.",
+ "chase_speed": 2.4,
+ "_strafe_note": "No duel-circle dance. Quadruped pursuit is straight-line walk into bite range.",
+ "disable_circle_strafe": true,
+ "death_clip": "death",
+ "knockdown_clip": "idle_hit_react_left",
+ "_flinch_note": "Wolf rig has only 2 hit-react clips (idle_hit_react_left/right). Maps all 4 flinch directions + both hit_react tiers to these. Crude but better than silent no-op (humanoid defaults like 'flinch_front' don't exist in the wolf registry; unmapped fields skip the play-once entirely).",
+ "flinch_front_clip": "idle_hit_react_left",
+ "flinch_back_clip": "idle_hit_react_right",
+ "flinch_left_clip": "idle_hit_react_left",
+ "flinch_right_clip": "idle_hit_react_right",
+ "hit_react_medium_clip": "idle_hit_react_right",
+ "hit_react_heavy_clip": "idle_hit_react_left",
+ "_boss_note": "Pattern B boss: initial_state=eating holds AI ticks off until engage_trigger fires. idle_clip (eating) loops naturally as her pre-engage animation -- she's mid-meal on the Lonza carcass. On engage, NO engage_clip plays -- she simply transitions from eating to combat_idle (idle_2) via the sampler's natural blend. Reads as 'she lifts her head, looks at you, decides you're more food.' Slow walking pursuit follows. Avoids needing a 'rise-to-attention' clip we don't have authored (jump_to_idle includes a physical jump that breaks the tired-legend framing).",
+ "is_boss": true,
+ "boss_name": "LUPA",
+ "boss_name_key": "interact.boss.lupa.boss_name",
+ "initial_state": "eating",
+ "engage_clip": "",
+ "encounter_audio_bed": "",
+ "felled_message": "",
+ "felled_message_key": "interact.boss.lupa.felled_message",
+ "_stats_note": "Legend HP, broken poise. 600 HP = ~30 player bites at average melee. Poise=40 means even light hits stagger her -- the player feels the trade landing instantly, every swing matters, but she keeps coming.",
+ "max_hp_override": 600,
+ "max_poise_override": 40.0,
+ "_scripted_death_note": "Lupa was poisoned by the Guide (Lonza-carcass) before the Vagrant arrived. Per story.md Beat 3: she dies on a 30s timer regardless of player damage. The HP-floor in PerFrameTick gates the player at 1 HP while she is Engaged with a scripted_death_seconds > 0 -- the player cannot die to her. Player damage that finishes her EARLY also works (Engaged -> Felled via fireEnemyDeath at HP=0); the timer is a guaranteed-lethal backstop. 30s gives a real fight window without dragging.",
+ "scripted_death_seconds": 30.0,
+ "scripted_death_pain_clip": "idle_2_head_low",
+ "scripted_death_drain_to_fraction": 0.67,
+ "scripted_death_drain_exponent": 1.5,
+ "felled_flag": "lupa_felled",
+ "show_felled_overlay": false,
+ "item_drops": ["lupa_meat", "lupa_bone", "lupa_hide"],
+ "_item_drops_note": "Wood-side organic loot, NOT Hell-substance. Per locked Wood-lore + Animal-form cosmology: Lupa is the lone surviving Wood-legend; killing her yields the matter of her body, not sangue. Sangue is absent from this archetype (sangue_drop field omitted) by design -- forcing Lupa into the Hell-substance economy would be cosmologically wrong. Item ids are stable identifiers; the pickup + inventory layer is TBD (item registry not yet wired). fireEnemyDeath currently logs the drop list; future commit ties to inventory.",
+ "_actions_note": "ONE action: a single deadly bite. No pounce, no gap-closer, no chain. Souls-style windup/active/recovery: 300ms windup (player's dodge window) + 180ms active (hitbox live) + the rest of the clip as recovery (locked body, can't slide). 35 damage per bite = a few bites kill the player. cooldown 1.4s -- she can land roughly one bite per 2 seconds.",
+ "actions": [
+ {
+ "id": "wolf_bite",
+ "clip": "attack",
+ "range_min": 0.0,
+ "range_max": 1.8,
+ "cooldown_seconds": 1.4,
+ "weight": 1.0,
+ "raw_damage": 35,
+ "poise_damage": 30,
+ "min_awareness": "Combat",
+ "hitbox_joint": "Head",
+ "hitbox_radius": 0.34,
+ "hitbox_tip_offset_z": 0.20,
+ "windup_seconds": 0.30,
+ "active_seconds": 0.18,
+ "cancel_fraction": 0.40,
+ "locks_movement": true
+ }
+ ],
+ "hurtbox_decls": [
+ {
+ "joint_a": "Back",
+ "joint_b": "Torso2",
+ "region": "Torso",
+ "radius_scale": 1.2
+ },
+ {
+ "joint_a": "Torso2",
+ "joint_b": "Neck1",
+ "region": "Torso",
+ "radius_scale": 1.0
+ },
+ {
+ "joint_a": "Neck1",
+ "joint_b": "Head",
+ "region": "Head",
+ "radius_scale": 0.7,
+ "damage_multiplier": 1.5
+ },
+ {
+ "joint_a": "FrontShoulder.L",
+ "joint_b": "FrontLowerLeg.L",
+ "region": "UpperLimb",
+ "radius_scale": 0.5
+ },
+ {
+ "joint_a": "FrontShoulder.R",
+ "joint_b": "FrontLowerLeg.R",
+ "region": "UpperLimb",
+ "radius_scale": 0.5
+ },
+ {
+ "joint_a": "BackShoulder.L",
+ "joint_b": "BackLowerLeg.L",
+ "region": "UpperLimb",
+ "radius_scale": 0.55
+ },
+ {
+ "joint_a": "BackShoulder.R",
+ "joint_b": "BackLowerLeg.R",
+ "region": "UpperLimb",
+ "radius_scale": 0.55
+ },
+ {
+ "joint_a": "Tail1",
+ "joint_b": "Tail4",
+ "region": "LowerLimb",
+ "radius_scale": 0.3
+ }
+ ],
+ "_lockon_note": "Multi-point lockon (ER convention for boss-scale enemies). default=head so first acquire snaps to Lupa's head -- the natural focal point. Mouse wheel cycles head -> torso -> hindleg_left -> hindleg_right -> wrap.",
+ "lockon_points": [
+ { "id": "head", "joint": "Head", "default": true },
+ { "id": "torso", "joint": "Torso2" },
+ { "id": "hindleg_left", "joint": "BackUpperLeg.L" },
+ { "id": "hindleg_right", "joint": "BackUpperLeg.R" }
+ ]
 }

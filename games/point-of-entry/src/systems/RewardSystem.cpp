@@ -10,6 +10,7 @@
 #include "systems/PlayerSystem.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <vector>
 
@@ -111,8 +112,10 @@ bool spend(EntityManager& em, int statIndex)
         return false;
     purse.banked -= price;
     auto& s = reg.get<Stats>(p);
-    int* fields[5] = {&s.chemical, &s.physical, &s.biological, &s.endurance, &s.inspection};
-    ++(*fields[statIndex]);
+    constexpr std::array<int Stats::*, 5> kFields = {&Stats::chemical, &Stats::physical,
+                                                     &Stats::biological, &Stats::endurance,
+                                                     &Stats::inspection};
+    ++(s.*kFields[statIndex]);
     // The body follows the sheet immediately -- and keeps its fraction, so buying points is
     // never a heal. The heal belongs to RESTING, which is a different act.
     stats::applyDerivations(em, p);

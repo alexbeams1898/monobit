@@ -24,7 +24,7 @@ void item(const std::string& key, const std::string& label, int count);
 void line(const std::string& key, const std::string& label);
 
 // Tick and draw. Called from the HUD's pass with its frame time.
-void render(Engine& engine, float dt);
+void render(const Engine& engine, float dt);
 
 // Drop everything -- a new job should not inherit the last one's feed.
 void clear();

@@ -718,7 +718,7 @@ int main(int argc, char* argv[])
     auto& em = engine.entityManager();
 
     // This game's world grid: 32px tiles. Sized to the 32x64 protagonist sprite
-    // so on-screen scale stays EarthBound/Pokemon (~1 tile wide, 2 tall) at the
+    // so on-screen scale keeps the era's proportions (~1 tile wide, 2 tall) at the
     // sprite's pixel density. See docs/design/SCALE.md.
     em.tile_map.tile_size = 32;
 

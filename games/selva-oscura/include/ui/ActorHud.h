@@ -13,7 +13,7 @@ namespace selva::ui
 glm::vec2 sangueHudAnchor();
 
 // Player HP + stamina HUD. Two stacked horizontal bars in the
-// top-left of the viewport (soulslike convention). HP red,
+// top-left of the viewport. HP red,
 // stamina green. Dark background, no decoration, drawn each
 // frame from selvaRenderImGui.
 //

@@ -45,8 +45,8 @@ namespace selva::gameplay
 // Coarse categorization mirroring EnemyArchetype's `form` enum.
 // Each category is a CLOSED enum value; adding more requires
 // doctrine (this is the prop-equivalent of "expanding the five
-// forms"). v1 enumerates only what trees + lights need; later
-// passes add categories as the lore demands them.
+// forms"). Enumerates only what trees + lights need; later passes
+// add categories as the lore demands them.
 enum class PropCategory : std::uint8_t
 {
     Unknown = 0,
@@ -54,8 +54,8 @@ enum class PropCategory : std::uint8_t
     Light = 2,
 };
 
-// Collision shape enum. v1 supports the union of what trees +
-// authored static meshes use today.
+// Collision shape enum. Supports the union of what trees + authored
+// static meshes use today.
 enum class PropCollisionKind : std::uint8_t
 {
     None = 0,
@@ -85,9 +85,8 @@ struct PropLightSource
 // Optional harvestable resource block. Forward-allocated per the
 // schema sketch: limbo.md anticipates light vignettes becoming
 // harvestable nodes when crafting ships, and pre-allocating the
-// shape now is one optional block + cheap. v1 trees + lights don't
-// set this; archetypes that ship harvestable behavior in future
-// fill it in.
+// shape now is one optional block + cheap. Trees and lights leave it
+// unset; archetypes that ship harvestable behavior fill it in.
 struct PropHarvestable
 {
     std::string resource_id;
@@ -224,8 +223,8 @@ struct PropExcludeCircleXZ
 // Scatter rule -- a procgen producer that emits PropDecl records at
 // region commit. Two modes today (aisle / disc); both share the
 // same archetype selection + exclude_aabb_xz carve-out pattern.
-// The schema is intentionally narrow for v1; new modes get added as
-// new scatter shapes become load-bearing.
+// The schema is deliberately narrow; new modes get added as new
+// scatter shapes become load-bearing.
 //
 // `archetypes` is the candidate list; the producer hash-picks one
 // per sample using the sample's XZ position, matching the

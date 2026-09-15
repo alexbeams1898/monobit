@@ -48,7 +48,7 @@ void update(float dt)
                     sFloaters.end());
 }
 
-void render(Engine& engine, float camX, float camY, int zoom)
+void render(const Engine& engine, float camX, float camY, int zoom)
 {
     const auto z = static_cast<float>(zoom);
     const float halfW = static_cast<float>(engine.windowWidth()) / (2.0f * z);

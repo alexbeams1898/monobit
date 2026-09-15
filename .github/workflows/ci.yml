@@ -51,12 +51,18 @@ jobs:
       - name: Comment density
         # Per-file ratio plus a project budget. Threshold starts at 30% and
         # ratchets down as files are trimmed.
-        run: python3 games/selva-oscura/scripts/check_comment_density.py
+        run: python3 scripts/check_comment_density.py
 
       - name: Deferred-work markers
         # TODO/FIXME/HACK and friends in source. Deferred work belongs in the
         # issue tracker, where it can be found, not in a comment nobody greps.
-        run: python3 games/selva-oscura/scripts/check_bandaid_keywords.py
+        run: python3 scripts/check_bandaid_keywords.py
+
+      - name: Comment content
+        # Density measures how much a comment says; this measures what it is
+        # allowed to say -- no tool names, no version labels, no citations to
+        # documents that are not in this repo.
+        run: python3 scripts/check_comment_content.py
 
       - name: Complexity limits
         # prison-escape-game is excluded: it carries a pile of pre-existing

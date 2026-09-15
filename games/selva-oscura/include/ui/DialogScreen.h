@@ -3,7 +3,7 @@
 namespace selva::ui
 {
 
-// Render the dialog box if a dialog is active. Souls/ER-style: a
+// Render the dialog box if a dialog is active. A
 // center-bottom panel with speaker name, NPC line, and the choice
 // list. No-op when selva::dialog::active() is false.
 //

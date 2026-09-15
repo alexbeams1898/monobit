@@ -45,8 +45,7 @@ void applyFormDefaults(Body& body, Stats& stats, Form form)
     // SHAPE (a wolf has more raw HP than a shade because animal-form
     // has biological mass; a Guide has less HP than a shade because
     // unjudged-soul has no substrate); per-instance authoring tunes
-    // within the shape. Per [[soul-animal-form-combat-doctrine]] +
-    // bestiary.md.
+    // within the shape. See docs/design/bestiary.md.
     // Collider defaults: every humanoid form uses the standard Vagrant
     // capsule. Animal approximates a quadruped via a vertical capsule
     // sized to the wolf's standing bounds (Jolt only supports vertical
@@ -254,7 +253,7 @@ const char* directionalLocoClip(const glm::vec3& fwd, const glm::vec3& right,
 
 void applyActorClipHipDelta(Actor& actor, float dt, float hip_delta_scale)
 {
-    // Contract from feedback_hip_delta_two_sides.md: PoseSampler
+    // Contract: PoseSampler
     // extracts the clip's authored hip-XZ and zeros it in the local
     // pose. Gameplay must apply that consumed delta back to world
     // motion or the actor's feet treadmill. Routed through the unified
@@ -362,9 +361,8 @@ Actor& player()
 {
     // Player is conventionally at index 0; initActorPool spawns it
     // first. Calling this before initActorPool is a logic error
-    // (returns the back-compat shim instead of crashing). When the
-    // shim is removed and the pool is the only state, this becomes
-    // a hard precondition.
+    // (returns a placeholder rather than crashing). Once the pool is
+    // the only state this becomes a hard precondition.
     return sActors.front();
 }
 
@@ -387,9 +385,8 @@ void initActorPool()
     // The Vagrant is an unjudged soul -- refused Hell's measurement,
     // received by the selva oscura. Form drives base stat-spread
     // (low HP, low poise, fragile vessel) before class-pick layers on
-    // top. Per [[soul-animal-form-combat-doctrine]] +
-    // story.md *The Guide / Identity* (the Vagrant is the second
-    // unjudged-soul, after the Guide).
+    // top. See story.md, *The Guide / Identity* -- the Vagrant is the
+    // second unjudged soul, after the Guide.
     pc.form = Form::UnjudgedSoul;
     pc.skeleton_id = "player";
     // Player hurtbox layout. Authored in
@@ -439,7 +436,7 @@ void tickActors(float dt)
     // pool and applies the systems that have unified contracts.
     //
     // Today: hip-delta apply (the contract from
-    // feedback_hip_delta_two_sides.md — extraction zeros hip-XZ in
+    // Extraction zeros hip-XZ in
     // the local pose; gameplay must apply it as world translation
     // or feet treadmill).
     //

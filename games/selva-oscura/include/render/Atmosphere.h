@@ -19,8 +19,8 @@ namespace selva::render::atmosphere
 // roughly toward -Z where the colle plateau sits. Cool→warm gradient
 // is wired into kAtmosphereGLSL.
 
-// Direction TO the sun (already normalized). Stable for v1; will
-// animate later if a day/night cycle ships.
+// Direction TO the sun (already normalized). Constant; would animate
+// if a day/night cycle ships.
 glm::vec3 sunDirection();
 
 // Sun radiance feeding the scattering integral + direct shading.

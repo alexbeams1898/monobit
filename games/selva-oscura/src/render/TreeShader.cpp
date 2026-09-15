@@ -71,7 +71,7 @@ uniform sampler2D uBaseColor;
 uniform float uAlphaCutoff;
 
 // Per-frame foliage tint multiplier (vec3). Multiplied into base.rgb
-// AFTER texture sample, BEFORE lighting. v1: hardcoded to a warm
+// AFTER texture sample, BEFORE lighting. Hardcoded to a warm
 // grey-brown at draw time to render the dead wood (per wood.md: the
 // wood is dead at game start, healing as keepers fall + sangue
 // leaks in). Identity = vec3(1.0) (default behavior, asset color

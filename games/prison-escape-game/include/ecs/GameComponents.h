@@ -134,7 +134,7 @@ struct AttackFeedback
     float remaining = 0.0f;
 };
 
-// LockOnTarget -- souls-style focus on a single enemy.
+// LockOnTarget -- focus held on a single enemy.
 struct LockOnTarget
 {
     entt::entity target = entt::null;

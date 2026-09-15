@@ -171,8 +171,8 @@ const std::vector<HitEvent>& detectHits()
             if (hb.has_prev)
             {
                 // For a sphere hitbox (tip_offset_z == 0 -> p0 == p1
-                // within each frame; v1's only shape -- all current
-                // attacks are sphere fists/bites), the swept segment
+                // within each frame; the only shape in use, since every
+                // attack is a sphere fist or bite), the swept segment
                 // is prev_pos -> curr_pos, the actual line the sphere
                 // traveled along between frames.
                 //

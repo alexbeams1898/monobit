@@ -136,7 +136,7 @@ bool travel(Engine& engine, EntityManager& em, int hole);
 bool descends(int room, int hole);
 
 // Watch the current floor: a hole whose assault exhausts becomes a passage.
-void update(Engine& engine, EntityManager& em, float dt);
+void update(const Engine& engine, EntityManager& em, float dt);
 
 // Set every passage's leak from the tree: a passage leaks while the floor BEYOND it has
 // something running -- a hole he broke open and did not finish -- and is quiet otherwise,

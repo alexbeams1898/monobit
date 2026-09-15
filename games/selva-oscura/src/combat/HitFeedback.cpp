@@ -12,7 +12,7 @@ namespace
 std::vector<DamageNumber> sNumbers;
 std::mt19937 sRng{0xD17AU}; // stable jitter seed
 
-// Per-number constants. Soulslike-ish: drift up ~1.5m over a 1s
+// Per-number constants. Drift up ~1.5m over a 1s
 // lifetime so the number reads above the head before fading.
 constexpr float kLifetime = 1.0f;
 constexpr float kDriftHeight = 1.5f;   // total upward drift in meters

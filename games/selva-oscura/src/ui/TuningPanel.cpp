@@ -277,7 +277,7 @@ static void renderAiPerceptionSection(selva::tuning::Tunables& tun)
 
 // Diagnostic dump of the loaded enemy-archetype registry. Read-only;
 // shows what was parsed from config/enemies/*.json so we can confirm
-// the data pipeline works before Sprint 4 wires actions to behavior.
+// the data pipeline works independently of the behavior wiring.
 static void renderEnemyArchetypesSection()
 {
     if (!ImGui::CollapsingHeader("Enemy Archetypes", ImGuiTreeNodeFlags_DefaultOpen))

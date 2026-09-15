@@ -3,7 +3,7 @@
 // particles (RomanTiers.h). Each particle stages, then flies in
 // screen-space to the HUD vessel counter, then grants its
 // denomination on arrival. Per
-// [[project_crucible_censer_leveling_system]] auto-magnetization +
+// auto-magnetization +
 // the locked numeral-rendering doctrine.
 
 #include "gameplay/RomanTiers.h"

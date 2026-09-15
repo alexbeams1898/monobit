@@ -39,27 +39,19 @@ constexpr int kCount = 3;
 
 int sTab = 0;
 int sCursor = shell_input::kNoChoice;
-int sStatCursor = shell_input::kNoChoice; // which sheet row, while there are points to spend
-bool sSpendRequested = false;             // confirm pressed on the sheet this frame
 
 // One stat row: name at the column's left edge, value at its right -- the shape of a form,
-// which is what a sheet is. A document while there is nothing to spend; the moment points
-// exist the rows wake up, carry a cursor, and a click or confirm buys.
-void statRow(const char* name, int value, const screen_style::Rect& row, float y, bool hot,
-             bool spendable)
+// which is what a sheet is.
+void statRow(const char* name, int value, const screen_style::Rect& row, float y)
 {
-    screen_style::link(name, row.x + screen_style::pad(3), y,
-                       hot ? screen_style::LinkState::Hot : screen_style::LinkState::Idle);
+    screen_style::link(name, row.x + screen_style::pad(3), y, screen_style::LinkState::Idle);
     // A form's value column: the numbers line up with each other instead of each sitting
     // wherever its own name happened to end.
     screen_style::textRight(std::to_string(value), screen_style::pageStop(row, 0.62f), y,
                             screen_style::kTextHot);
-    if (spendable)
-        screen_style::text("+", screen_style::pageStop(row, 0.70f), y,
-                           hot ? screen_style::kAccent : screen_style::kTextDim);
 }
 
-void renderSheet(EntityManager& em, const shell_input::Mouse& mouse, float cx, float y)
+void renderSheet(EntityManager& em, float cx, float y)
 {
     const entt::entity pl = player::entity();
     if (!em.registry().valid(pl) || !em.registry().all_of<Stats>(pl))
@@ -68,7 +60,6 @@ void renderSheet(EntityManager& em, const shell_input::Mouse& mouse, float cx, f
         return;
     }
     const auto& s = em.registry().get<Stats>(pl);
-    const bool spendable = false; // the sheet is a READOUT; points change hands at the staging
 
     const float rowH = screen_style::pageRowH();
     // A tab is handed where its content begins and lays out DOWNWARD from it. Reaching back
@@ -85,14 +76,7 @@ void renderSheet(EntityManager& em, const shell_input::Mouse& mouse, float cx, f
     {
         const float rowY = rowsY + rowH * static_cast<float>(i);
         const screen_style::Rect row = screen_style::pageRow(cx, rowY);
-        // Mouse owns the cursor when it moves over a row; a click buys, same as confirm.
-        if (spendable && screen_style::hit(row, mouse.x, mouse.y))
-        {
-            sStatCursor = i;
-            if (mouse.clicked)
-                reward::spend(em, i);
-        }
-        statRow(names[i], values[i], row, rowY, spendable && i == sStatCursor, spendable);
+        statRow(names[i], values[i], row, rowY);
     }
 
     // The derived line: what the five above actually buy. Shown so the sheet teaches its own
@@ -420,7 +404,7 @@ Action render(EntityManager& em, TextureManager& tm, const shell_input::Mouse& m
 
     if (sTab == 0)
     {
-        renderSheet(em, mouse, cx, y);
+        renderSheet(em, cx, y);
         return Action::None;
     }
     if (sTab == 1)

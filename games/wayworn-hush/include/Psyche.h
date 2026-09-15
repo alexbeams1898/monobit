@@ -313,7 +313,7 @@ struct State
     // Interaction reach (world px from an encounter's box edge). Dead simple: get within
     // this of a box and it GLOWS + can be observed (Space); step away and it's dark. One
     // number drives both -- the object marks the spot, you walk up, it lights, you press.
-    // (Souls-style: a trigger volume = box + reach.) One tuning knob for the whole game.
+    // A trigger volume is a box plus a reach. One tuning knob for the whole game.
     float interact_reach = 40.0f;
 
     // Trigger index (built once at load): a "changed key" (see makeKey helpers) ->

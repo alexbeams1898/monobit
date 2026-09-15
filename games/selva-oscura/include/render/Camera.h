@@ -17,8 +17,8 @@ float cameraPitch();
 void setCameraYaw(float yaw);
 void setCameraPitch(float pitch);
 
-// View mode. ThirdPerson is the soulslike over-shoulder default;
-// FirstPerson anchors the camera to the player head bone (Oblivion-
+// View mode. ThirdPerson is the over-shoulder default;
+// FirstPerson anchors the camera to the player head bone (head-
 // style) and hides the player mesh in the visible draw. Toggle via
 // V key bound in selvaPerFrame. Mode change is instant - no smooth
 // transition for v1.

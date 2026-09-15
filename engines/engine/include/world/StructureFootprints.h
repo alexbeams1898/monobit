@@ -88,9 +88,8 @@ struct StructureFootprint
 
     // Vertical profile: 3D slot through cuts_rim / cuts_ceiling /
     // cuts_wall surfaces. Empty profile (nx==0 || nz==0) falls back
-    // to "drop everything inside the rect" — the legacy behavior, fine
-    // for cuts_floor-only structures that don't have a vertical
-    // extent.
+    // to "drop everything inside the rect", which is all a cuts_floor-only
+    // structure can mean -- it has no vertical extent to test against.
     VerticalProfile vertical_profile;
 
     const char* debug_name = nullptr;
@@ -130,8 +129,8 @@ bool isInsideStructureFootprint(const char* region_name, float world_x, float wo
 // consumers use this to drop ONLY quads the structure actually
 // occupies in 3D, not every quad inside the 2D rect. When a matching
 // footprint has no vertical_profile, falls back to the 2D predicate
-// (preserves legacy "drop everything inside the rect" behavior for
-// structures without a slot).
+// ("drop everything inside the rect", all a structure without a slot
+// can mean).
 bool isInsideStructureSlot(const char* region_name, float world_x, float world_y, float world_z,
                            SurfaceCut surface);
 
@@ -150,9 +149,8 @@ bool isInsideStructureSlot(const char* region_name, float world_x, float world_y
 //
 // Greedy clip: for each slot rect that overlaps the input quad,
 // subtract it. Slots are sampled at the input quad's centroid (slot
-// Y bounds treated as constant across the quad's V extent — fine
-// for v1; per-V slot variation handled at sub-quad granularity in
-// the next iteration if needed).
+// Y bounds treated as constant across the quad's V extent, which is
+// enough until a structure needs per-V slot variation).
 struct ClipRect
 {
     float var_min;

@@ -33,7 +33,7 @@ constexpr Color kText{0.95f, 0.95f, 0.92f, 1.0f};
 constexpr Color kTextDim{0.95f, 0.95f, 0.92f, 0.45f};
 constexpr Color kShadow{0.0f, 0.0f, 0.0f, 0.55f};
 
-// Tab chrome -- soft, low-contrast fills (not the roguelike's saturated panels).
+// Tab chrome -- soft, low-contrast fills rather than saturated panels.
 // The active tab reads brighter and carries an underline accent.
 constexpr Color kTabActive{0.16f, 0.17f, 0.19f, 0.85f};
 constexpr Color kTabInactive{0.09f, 0.10f, 0.11f, 0.6f};

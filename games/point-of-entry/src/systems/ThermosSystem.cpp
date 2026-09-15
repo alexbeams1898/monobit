@@ -75,7 +75,7 @@ int fillIndex()
     return sFillIndex;
 }
 
-void setFill(EntityManager& em, int index)
+void setFill(const EntityManager& em, int index)
 {
     if (index < 0 || index >= static_cast<int>(sFills.size()))
         return;

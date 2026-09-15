@@ -47,7 +47,7 @@ namespace
 //   2. resolved_effective_reach (computed at archetype-load from clip
 //      geometry + hitbox_radius + hitbox_tip_offset_z)
 //   3. 0 = unresolved; caller decides fallback semantics
-// See [[feedback_action_range_max_is_chase_stop_range]] for why this
+// for why this
 // is one number used by BOTH actionLegal (fire-gate) and
 // computeStopRange (chase-stop).
 float effectiveActionRange(const EnemyAction& a)
@@ -81,7 +81,7 @@ bool actionLegal(const Actor& actor, const EnemyAction& a, float dist_to_target,
 // if declared. Returns the spawned hitbox id (0 if deferred via
 // windup or no hitbox). Logs the fire.
 //
-// Windup model (Souls-style attack timing):
+// Windup model:
 //   windup_seconds  -- delay from one-shot fire to hitbox spawn (the
 //                      tell; player's dodge window)
 //   active_seconds  -- hitbox lifetime once spawned (the strike)
@@ -163,7 +163,7 @@ std::uint32_t fireAction(Actor& actor, const EnemyAction& picked,
 
 // Compute the stop distance for an actor approaching a target.
 // Walks until in range of the *closest* awareness-legal action
-// declared on the archetype — Souls-style data-driven spacing.
+// declared on the archetype -- spacing is data-driven, never hardcoded.
 // If no awareness-legal action exists (or no archetype bound),
 // falls back to the global engage range so the actor doesn't walk
 // unblocked into the target. Per-action range_max is the source of
@@ -347,7 +347,7 @@ NodeResult LeafMoveToTarget::tick(Actor& actor, const selva::tuning::Tunables& t
     // hazard zone whose kind this actor avoids (e.g. damned souls in
     // Acheron), don't chase. The actor stays put and faces the target
     // -- the canonical "eternally awaiting" tableau when the player
-    // wades into the river. Per [[project_soul_larvae_cosmology]]
+    // wades into the river. Per
     // river-dissolves-on-contact + selva/hazard/HazardZones.h.
     if (actor.archetype != nullptr && !actor.archetype->avoids_hazards.empty() &&
         selva::hazard::positionIsInAvoidedZone(actor.perception.last_known_player_pos,
@@ -528,15 +528,13 @@ std::unique_ptr<BehaviorTree> buildHumanoidBasicTree()
     //     a legal action if one is ready). If no action is legal
     //     (out of range, all on cooldown, or one-shot in flight),
     //     fall through to LeafMoveToTarget to close the gap. This
-    //     is the Souls-feel core: action when ready, spacing when
-    //     not. The Sprint 4a rule "Combat shares Alerted's
-    //     locomotion" is preserved — Combat enemies follow the
+    //     is the core: action when ready, spacing when not. Combat
+    //     shares Alerted's locomotion -- Combat enemies follow the
     //     player out of melee instead of waiting for disengage.
     //   Alerted branch: walk toward target.
     //   Default: stand at spawn pose.
     // Combat-branch try order: fire an action (close enough + ready);
-    // else circle-strafe (locked + inside duel range — Elden Ring
-    // dance pattern); else close the gap.
+    // else circle-strafe (locked + inside duel range); else close the gap.
     // Scripted target wins above Combat: a Scene-driven scripted walk
     // (Guide rescue, Patches-betrayal-style flee, etc.) overrides
     // whatever combat AI would otherwise do. The leaf returns Failure

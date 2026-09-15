@@ -13,8 +13,8 @@
 namespace selva::world
 {
 
-// One region of terrain. v1 = single chunk per region; the chunking
-// architecture will subdivide this when streaming ships.
+// One region of terrain, a single chunk. The chunking architecture
+// subdivides this when streaming ships.
 struct TerrainRegion
 {
     std::string name;
@@ -130,7 +130,7 @@ const TerrainRegion* terrainRegionAtName(const char* name);
 
 // Sample world Y at the given world (x, z). Bilinear interpolation
 // across the heightmap. Returns 0 if (x, z) falls outside any
-// region. v1 assumes one region; expand to nearest-region or
+// region. Assumes one region; expand to nearest-region or
 // region-by-coordinate lookup when more ship.
 float sampleHeight(float world_x, float world_z);
 

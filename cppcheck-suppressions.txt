@@ -32,3 +32,9 @@ knownConditionTrueFalse:games/prison-escape-game/*
 # exception type for crash logging - canonical idiom; cppcheck can't see
 # the calling context.
 rethrowNoCurrentException:games/prison-escape-game/src/main.cpp
+
+# A unit test asserts a known output for literal inputs. Where the function
+# under test is pure, cppcheck evaluates it and reports the assertion as a
+# condition that is always true -- which is the test passing, restated as a
+# finding. The check cannot mean anything inside a test body.
+knownConditionTrueFalse:*/tests/*

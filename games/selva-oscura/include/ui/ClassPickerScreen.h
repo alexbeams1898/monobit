@@ -5,7 +5,7 @@
 // Beat 4 class-picker modal: the Signing UI. Full-screen modal,
 // four options (Penitent / Heretic / Wretched / Refuse), two-step
 // confirm, no back button. Per setting.md *The Signing and the
-// commit-fire* + locked [[project_crucible_censer_leveling_system]].
+// commit-fire* + locked.
 //
 // The Guide's dialog ends with this modal firing. The modal's
 // committed selection writes to the active profile's player_class

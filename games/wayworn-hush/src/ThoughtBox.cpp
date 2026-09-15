@@ -41,7 +41,7 @@ enum class ItemKind
 ItemKind sItem = ItemKind::None;
 
 // Animation phases for a Line. After Typing the box sits in Done until the player
-// dismisses it (Souls-like); it never auto-fades. Menus skip straight to Done.
+// dismisses it; it never auto-fades. Menus skip straight to Done.
 enum class Phase
 {
     None,
@@ -68,7 +68,7 @@ int sLinesPerPage = 0; // 0 until a line loads; >=1 thereafter
 
 // --- Menu state ---
 // The deed menu: the spot's offered actions, shown after its observation reading is read
-// (the EarthBound "Check it, then choose what to do"). W/S select, Space/click confirm,
+// (check it, then choose what to do). W/S select, Space/click confirm,
 // F/RMB closes.
 struct Option
 {

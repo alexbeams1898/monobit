@@ -28,7 +28,7 @@ bool encounterVisible(const Encounter& o, const unlock::Knowledge& k)
 
 // --- spatial resolution ----------------------------------------------------
 // The encounter the player can interact with: the NEAREST visible one whose box is
-// within interact_reach of the player (Souls-style: walk up, it lights, press). Nullptr
+// within interact_reach of the player: walk up, it lights, press. Nullptr
 // if none in reach.
 const Encounter* nearestInReach(const State& s, const growth::GrowthState& g, float px, float py)
 {

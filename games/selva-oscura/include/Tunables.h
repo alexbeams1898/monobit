@@ -51,7 +51,7 @@ struct Tunables
     // Lock-on camera + body yaw smoothing rates. Hard-snapping yaw to
     // a MOVING target every frame produces visible jolt (target moves
     // -> camera+body jump -> next frame target moves -> jump again).
-    // Souls/ER ease toward the target dir at a tunable rate so the
+    // Ease toward the target dir at a tunable rate so the
     // camera lags slightly behind a sprinting boss instead of teleporting.
     // Body rate slightly snappier than camera so the player always
     // faces the target while the camera reads-tracks behind. Set high
@@ -91,8 +91,8 @@ struct Tunables
     float locomotion_accel = 18.0f;
 
     // Deceleration toward zero when WASD released (m/s²). Separate
-    // from accel because the feel is different — Souls-style
-    // games often have faster decel than accel for responsive
+    // from accel because the feel is different -- faster decel than
+    // accel reads as responsive
     // stops. Too high: instant snap to idle (the "shoots back to
     // idle" complaint); too low: slidey overshoot.
     float locomotion_decel = 14.0f;
@@ -216,7 +216,7 @@ struct Tunables
     //     velocity continuity and a less "stop-and-restart" feel.
     //   * 0.80 = near peak: cancel almost on contact. Very snappy,
     //     visibly cuts the swing short.
-    // 0.50 is the practical sweet spot for Mixamo-style clips that
+    // 0.50 is the practical sweet spot for clips that
     // weren't authored with bookend matching: cancel mid-follow-through
     // (hand past contact, still in motion) so the chain-link splice
     // enters the next swing with continuous velocity rather than
@@ -279,7 +279,7 @@ struct Tunables
 
     // Floor on damage after defense reduction. Even heavily-armored
     // targets take this much per hit so combat never stalls on
-    // unbreakable defense numbers. 1 is a soulslike default.
+    // unbreakable defense numbers.
     float damage_floor = 1.0f;
 
     // ---- Enemy combat feel (gameplay/Enemies.cpp) ----
@@ -304,11 +304,11 @@ struct Tunables
     // of full alpha (read-the-kill beat), then linear fade to alpha=0
     // over `duration` seconds, then the draw is skipped. Cosmologically
     // the body dissolves back into Hell's substance per
-    // [[project_soul_larvae_cosmology]] dissolution doctrine.
+    // dissolution doctrine.
     float enemy_death_fade_hold_seconds = 0.3f;
     float enemy_death_fade_duration_seconds = 0.7f;
 
-    // ---- AI perception (Sprint 1) ----
+    // ---- AI perception ----
     // Forward-facing vision cone. FOV is the full angular spread (so
     // 90 degrees = 45 degrees off each side of forward). Range is the
     // max distance at which a target inside the cone is "seen."
@@ -321,7 +321,7 @@ struct Tunables
 
     // How many vision-confirmed sightings inside the suspicion window
     // are required to escalate Suspicious -> Alerted. 1 = snap-aggro;
-    // 3+ = the "double-take" Souls feel.
+    // 3+ = a "double-take" before committing.
     int ai_confirmed_sightings_to_alert = 2;
 
     // How long Alerted decays back to Suspicious if no further contact.
@@ -330,7 +330,7 @@ struct Tunables
     // Distance at which an Alerted actor commits to Combat.
     float ai_combat_engage_range_meters = 5.0f;
 
-    // Souls-style leash: once an actor enters Combat awareness, they
+    // Leash: once an actor enters Combat awareness, they
     // stay in Combat as long as the player is within this distance.
     // Combat is retained REGARDLESS of vision — the enemy "knows" the
     // player is engaged with them and tracks position continuously.
@@ -340,7 +340,7 @@ struct Tunables
     // behind them), but the enemy still knows the player exists and
     // walks toward them. Vision drives initial engagement (Unaware →
     // Suspicious → Alerted); leash drives retention. Generous default
-    // matches Souls convention — the player has to genuinely flee
+    // is deliberate -- the player has to genuinely flee
     // to lose aggro.
     float ai_combat_leash_range_meters = 25.0f;
 
@@ -351,7 +351,7 @@ struct Tunables
     // responsive once the player has actually escaped.
     float ai_combat_disengage_seconds = 1.0f;
 
-    // ---- AI decision-tick scheduler (Sprint 2) ----
+    // ---- AI decision-tick scheduler ----
     // Baseline rate at which an actor's decision-making code (behavior
     // tree, action selection) re-evaluates. Perception still runs at
     // full render rate; only the *decision* layer is throttled. Souls
@@ -364,16 +364,16 @@ struct Tunables
     // baseline is 10Hz.
     float ai_decision_tick_combat_hz_multiplier = 1.5f;
 
-    // ---- AI locomotion (Sprint 4a) ----
+    // ---- AI locomotion ----
     // Rate at which an AI actor rotates toward its turn_intent_yaw.
-    // Souls convention: enemies turn faster than they move, so they
-    // can re-orient before walking into a new direction. Per-
-    // archetype overrides land in Sprint 4b.
+    // Enemies turn faster than they move, so they
+    // can re-orient before walking into a new direction. No per-archetype
+    // override yet.
     float ai_turn_rate_radians_per_sec = 6.0f;
 
     // Action-fire freshness gate: how recently must the actor have
     // SEEN the player to fire an attack (vs walk to investigate).
-    // Souls rule: don't punch into empty air when you've lost
+    // Don't punch into empty air when you've lost
     // sight of the target. If perception's last_seen_time is older
     // than this window, LeafPickAction returns Failure and the
     // Selector falls through to LeafMoveToTarget — the actor walks

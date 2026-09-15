@@ -129,15 +129,15 @@ Tileset parseTileset(const nlohmann::json& j, const std::string& ldtkPath)
 const nlohmann::json* chooseLevel(const nlohmann::json& j, const std::string& level,
                                   const std::string& path)
 {
-    const auto levels = j.find("levels");
-    if (levels == j.end() || !levels->is_array() || levels->empty())
+    const auto found = j.find("levels");
+    if (found == j.end() || !found->is_array() || found->empty())
     {
         poe::log().error("area: '{}' has no levels", path);
         return nullptr;
     }
     if (level.empty())
-        return &levels->front();
-    for (const auto& l : *levels)
+        return &found->front();
+    for (const auto& l : *found)
         if (l.value("identifier", std::string{}) == level)
             return &l;
     poe::log().error("area: '{}' has no level '{}'", path, level);

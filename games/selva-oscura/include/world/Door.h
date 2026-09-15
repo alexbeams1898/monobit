@@ -24,8 +24,8 @@ namespace selva::world
 //   - triggers (those fire on player overlap; doors are interacted with)
 //   - enemy_spawns (those are actors; doors don't move, don't have HP)
 //
-// Per [[selva-wood-lore-locked-2026-05-31]] (eventually): doors are
-// load-bearing world-state objects, the chapel door being the first.
+// Doors are load-bearing world-state objects, the chapel door first
+// among them.
 enum class DoorState : std::uint8_t
 {
     Locked,  // Sealed; no interaction; collision solid; visual closed

@@ -23,6 +23,6 @@ void offer(const std::string& action);
 void offerStep(const std::string& destination, int dir);
 
 // Draw the band if anything was offered, and clear the offer.
-void render(Engine& engine);
+void render(const Engine& engine);
 
 } // namespace prompt

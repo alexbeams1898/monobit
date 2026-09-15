@@ -419,9 +419,9 @@ using selva::combat::combatLog;
 // 18 can't track inter-function dataflow.
 static std::string sDebugClipName;
 // The locomotion clip name (registry key) selected on the previous
-// frame — read this frame by combat-fire code that runs BEFORE the
-// per-frame SM pick. The ozz Animation::name() returns "mixamo.com"
-// for every Mixamo-exported clip, so it can't be used to identify
+// frame -- read this frame by combat-fire code that runs BEFORE the
+// per-frame SM pick. Animation::name() returns "mixamo.com" for every
+// exported clip, so it cannot identify
 // which loco clip is playing. This static IS the registry key
 // ("unarmed_combat_idle", "walking", "jogging", etc.).
 static std::string sLastLocoClipName = "standard_idle";
@@ -1423,7 +1423,6 @@ static float sLastTargetSpeed = 0.0f;
 // translation-source contract (extract-side in sampler, apply-side
 // in gameplay) reads `source` from here so both halves agree on
 // the SAME picked clip's declaration. See
-// feedback_data_driven_over_convention.md.
 struct LocomotionFrameDecision
 {
     std::string clip_name; // empty = no override; speed-based free-mode pick will fill this in
@@ -1736,7 +1735,7 @@ static void tickLockOnInput(int wheel_delta)
 // Rate-limited shortest-arc yaw step. Steps `current` toward `target`
 // by at most `rate * dt` radians, picking the shortest direction. Used
 // for lock-on yaw chase so the camera + body don't HARD-SNAP to a
-// moving target each frame (which reads as jolt). Souls/ER convention:
+// moving target each frame (which reads as jolt). The convention:
 // the camera lags slightly behind a sprinting boss, eases into final
 // position. Match that here.
 static float stepYawToward(float current, float target, float rate, float dt)
@@ -1978,8 +1977,8 @@ static void fireBlockOneShot(bool loco_settled, const BlockClipSet& set)
 
 // Resolve the block-lifecycle clip set for the current equipment +
 // modifiers. Buckler uses sword_and_shield_block + _idle (no lower
-// yet). Unarmed+shift uses the 3-clip set baked from Mixamo's
-// Center Block. Returns nullptr raise = caller treats RMB as a
+// yet). Unarmed+shift uses the 3-clip set baked from the authored
+// center-block source. Returns nullptr raise = caller treats RMB as a
 // normal attack input.
 static BlockClipSet resolveBlockClip(bool shift_held)
 {
@@ -2415,8 +2414,8 @@ static const char* selectLocomotionClipFromSpeed(float target_speed, bool is_arm
 // Combat stance lifecycle (preserved from the old SM): CombatReady
 // engages on combat_input_this_frame; auto-decays to Peaceful after
 // stance_active_until OR sooner if the player commits to sprinting
-// (sprinting reads as "not actively threatened" — the body lowers
-// its guard to commit to speed, soulslike convention). Without the
+// (sprinting reads as "not actively threatened" -- the body lowers its
+// guard to commit to speed). Without the
 // sprint-clear, the grace timer keeps stance latched through a
 // run; on stop, loco picks combat-idle, then 2s later the timer
 // expires and combat-idle visibly fades to standard-idle. Sprint
@@ -3056,7 +3055,7 @@ static bool maybeFloorPlayerHpForScriptedDeath()
     return scripted_death_active;
 }
 
-// Player hit-react clip pick. Souls convention: don't interrupt the
+// Player hit-react clip pick. Don't interrupt the
 // player's own swing -- that would feel awful (committed offense lost
 // to a free enemy poke). Fires only when no one-shot is active.
 static void playPlayerHitReact(int dmg_applied)
@@ -3599,7 +3598,6 @@ static void selvaPerFrame(Engine& engine, EntityManager& em, double dt_d)
     // the bilateral translation contract; selectLocomotionClip later
     // turns sLocoDecision.clip_name into the actual LocomotionPick
     // (only applying the loco-freeze guard on top). See
-    // feedback_data_driven_over_convention.md.
     runLocomotionDecision(moveIntent, tun);
 
     if (!sPlayer.is_dead && !combat_suppressed &&
@@ -3679,19 +3677,19 @@ static void selvaPerFrame(Engine& engine, EntityManager& em, double dt_d)
     // active-actor count reflects this frame's deaths. Walks all
     // loaded flows: detects arrivals at scripted targets, fires
     // delayed on_arrival actions, and runs the interval-polled
-    // spawn check. Per [[project_soul_larvae_cosmology]].
+    // spawn check. Per.
     {
         ZoneScopedN("tickFlowSpawner");
         selva::spawn::tickFlowSpawner(dt);
     }
 
     // Advance any Opening doors; transition to Open when animation
-    // completes and remove their colliders. Per [[world/Door.h]].
+    // completes and remove their colliders. Per world/Door.h.
     selva::world::tickDoors(dt);
 
     // Scripted events: per-frame check for trigger conditions on the
     // Guide-rescue / future moments, advance any in-flight Scene.
-    // Per [[gameplay/ScriptedEvents.h]].
+    // Per gameplay/ScriptedEvents.h.
     selva::gameplay::tickScriptedEvents();
     selva::dialog::tick();
     // Text-presentation tick: clears the just-began frame guard.
@@ -4076,7 +4074,7 @@ void renderTreePreviewControls()
 // Draw player + enemies. All actors share the X_Bot rig (figura umana
 // canon, see docs/design/bestiary.md); enemies tint differently so the
 // player can tell them apart while there's no material variation yet.
-// Yaw applies a +pi offset because the Mixamo bind pose faces +Z while
+// Yaw applies a +pi offset because the rig's bind pose faces +Z while
 // our gameplay convention has yaw=0 mean facing -Z.
 // Apply FPV head-hide to a bone palette: copy `in` to `out`, replacing
 // the head + neck bone slots with a degenerate matrix that translates
@@ -4155,7 +4153,6 @@ float computeEnemyDeathFadeAlpha(const selva::gameplay::Actor& enemy, float now_
 // scripted target AND has a known on_arrival_delay, lerp toward the
 // target's tint over the wait. Visualizes the inward-burn -- fresh
 // larvae go pale to sangue-red as they age. See
-// [[project_soul_larvae_cosmology]].
 glm::vec3 resolveEnemyTint(const selva::gameplay::Actor& enemy, float now_wc)
 {
     if (enemy.archetype == nullptr)
@@ -4211,7 +4208,7 @@ static void drawActorMeshes(const glm::mat4& viewProj, const glm::vec3& camPos)
         return;
     // Death-fade tuning lives in tunables.json. Cosmologically:
     // sangue is absorbed; residual substrate diffuses back into Hell's
-    // substance. Per [[project_soul_larvae_cosmology]] + setting.md.
+    // substance. + setting.md.
     const auto& fade_tun = selva::tuning::current();
     const float fade_hold = fade_tun.enemy_death_fade_hold_seconds;
     const float fade_duration = fade_tun.enemy_death_fade_duration_seconds;
@@ -4547,8 +4544,8 @@ static void selvaRenderWorld(Engine& /*engine*/, EntityManager& /*em*/, float /*
     }
     {
         ZoneScopedN("light-sprites");
-        // Render emissive billboards for every registered light. v1
-        // renders ALL lights regardless of region — caverns are
+        // Render emissive billboards for every registered light. ALL
+        // lights are drawn regardless of region -- caverns are
         // visually separated by walls anyway, so cross-region leakage
         // is bounded. When/if specific sealed boundaries need strict
         // gating, pass a player-region name here.

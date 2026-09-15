@@ -24,8 +24,7 @@
 // Both consumers delegate to actorAvoidsPos() so the avoidance test
 // is one truth.
 //
-// Cosmologically rooted in [[project_soul_larvae_cosmology]] (the
-// river-dissolves-on-contact mechanic): damned souls avoid Acheron.
+// The river dissolves on contact, so damned souls avoid Acheron.
 // Future extensions: lava in Phlegethon's later sections, frozen
 // ground in Cocytus, wind-blast zones in Lust. Schema is generic so
 // adding a new hazard kind only requires authoring + archetype

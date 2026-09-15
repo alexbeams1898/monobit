@@ -12,8 +12,8 @@ namespace selva::dialog
 
 void registerGuideHandlers()
 {
-    // Open the Beat-3 name-prompt modal (per the locked design: the
-    // Guide elicits the name in-dialog, not on a setup screen). Modal
+    // Open the Beat-3 name-prompt modal. The Guide elicits the name in
+    // dialog rather than on a setup screen. Modal
     // writes the typed name into selva::pendingProfile() + sets the
     // "name_given" flag so the next dialog topic gates correctly.
     registerActionHandler("guide_open_name_prompt",
