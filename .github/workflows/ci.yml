@@ -5,6 +5,12 @@ on:
     branches: [master]
   push:
     branches: [master]
+  # Whole-tree analysis is half an hour of work, so it runs nightly rather
+  # than in front of a merge. workflow_dispatch makes it available on demand
+  # when a branch wants the full picture before landing.
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
 
 jobs:
   # =======================================================================
@@ -220,10 +226,31 @@ jobs:
 
       - name: Find files to lint
         id: lint-files
+        # A PR and the push that merges it apply the SAME rule -- lint what the
+        # change touched -- differing only in which range names it. They used to
+        # disagree: a PR linted its own diff while a push linted the whole tree,
+        # so a violation in a file the PR never touched passed the merge gate and
+        # broke master seconds later, with nothing in between that could catch
+        # it. Whole-tree coverage still happens, nightly, where a half-hour job
+        # belongs rather than in front of a merge.
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            CHANGED=$(git diff --name-only --diff-filter=d \
-              origin/${{ github.base_ref }}...HEAD -- \
+          RANGE=""
+          case "${{ github.event_name }}" in
+            pull_request)
+              RANGE="origin/${{ github.base_ref }}...HEAD" ;;
+            push)
+              BEFORE="${{ github.event.before }}"
+              # All-zeros on a first push, and unreachable after a force-push:
+              # with no range to read, fall back to linting everything.
+              if [ -n "$BEFORE" ] \
+                 && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] \
+                 && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+                RANGE="${BEFORE}..${{ github.sha }}"
+              fi ;;
+          esac
+
+          if [ -n "$RANGE" ]; then
+            CHANGED=$(git diff --name-only --diff-filter=d "$RANGE" -- \
               'engines/' 'games/' \
               ':(exclude)engines/arduboy-legacy/**' \
               ':(exclude)games/rpg-arduboy/**')
