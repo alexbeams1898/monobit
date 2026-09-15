@@ -75,9 +75,10 @@ jobs:
     name: Build and test
     runs-on: ubuntu-latest
     steps:
+      # Default shallow checkout. Nothing in the build reads history -- no
+      # version is derived from git -- and a full clone costs 350MB here,
+      # most of it art assets no build step opens.
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Install dependencies
         run: |
@@ -179,9 +180,18 @@ jobs:
             -DCMAKE_BUILD_TYPE=Debug
 
       - name: Generate headers
-        # glad's header does not exist until its target is built. Nothing else
-        # here needs compiling.
-        run: cmake --build build --target glad
+        # Several dependencies write headers first-party code includes at
+        # BUILD time, so configure alone leaves include paths that do not
+        # resolve. The target names them; see cmake/FetchDependencies.cmake.
+        run: cmake --build build --target generated-headers
+
+      - name: Filter compile database
+        # Analysis reads our translation units only. Dropping the rest is
+        # what keeps this job independent of any dependency's build output.
+        run: |
+          mkdir -p build/analysis
+          python3 scripts/filter_compile_db.py build/compile_commands.json \
+            -o build/analysis/compile_commands.json
 
       - name: Find files to lint
         id: lint-files
@@ -242,29 +252,22 @@ jobs:
         if: steps.lint-files.outputs.skip != 'true'
         run: |
           xargs -P $(nproc) \
-            clang-tidy -p build \
+            clang-tidy -p build/analysis \
               --header-filter='(engines/engine|games/[^/]+)/.*\.(h|hpp)$' \
               --warnings-as-errors='*' \
             < /tmp/lint-files.txt
 
   # -----------------------------------------------------------------------
   # 4. STATIC ANALYSIS  (cppcheck)
-  #    Runs against the project compile_commands.json. Restricted to our
-  #    source trees; suppresses noise in third-party deps and a small set
-  #    of pedantic checks we don't want enforced.
-  #
-  #    NOTE: continue-on-error while the pre-existing pile is cleaned up.
-  #    Flip to required (remove continue-on-error) once master is clean.
-  #    Tracking issue: see engines/engine/docs/TECH-DEBT.md.
+  #    Runs against the filtered compile database. Suppresses a small set of
+  #    pedantic checks we don't want enforced.
   # -----------------------------------------------------------------------
   cppcheck:
     name: Static analysis (cppcheck)
     runs-on: ubuntu-latest
-    # No `needs: build` -- cppcheck only requires compile_commands.json,
-    # which CMake writes at CONFIGURE time, not BUILD time. Running this
-    # in parallel with `build` (which compiles + clang-tidies a much
-    # larger TU set) shortens overall CI wall time.
-    continue-on-error: true
+    # No `needs: build` -- analysis needs the compile database and the headers
+    # dependencies generate, not object files. Building those alone is seconds,
+    # so this runs beside `build` rather than behind it.
     steps:
       - uses: actions/checkout@v4
 
@@ -284,21 +287,23 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-monobit-build-
 
-      - name: Configure (if cache miss)
-        run: |
-          if [ ! -f build/compile_commands.json ]; then
-            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
-          fi
+      - name: Configure
+        # Unconditionally, so the database describes the tree being analysed.
+        # A cache restored from another commit carries that commit's database.
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 
-      - name: Generate sources
-        # cppcheck reads compile_commands.json, which names glad.c -- a file
-        # glad's target GENERATES at build time. Without it the whole project
-        # fails to load and nothing is analysed at all.
-        run: cmake --build build --target glad
+      - name: Generate headers
+        run: cmake --build build --target generated-headers
+
+      - name: Filter compile database
+        run: |
+          mkdir -p build/analysis
+          python3 scripts/filter_compile_db.py build/compile_commands.json \
+            -o build/analysis/compile_commands.json
 
       - name: cppcheck
         run: |
-          cppcheck --project=build/compile_commands.json \
+          cppcheck --project=build/analysis/compile_commands.json \
             --enable=all \
             --inline-suppr \
             --suppress=missingInclude \
@@ -309,10 +314,6 @@ jobs:
             --suppress=normalCheckLevelMaxBranches \
             --suppress=checkersReport \
             --suppressions-list=cppcheck-suppressions.txt \
-            --file-filter='engines/engine/*' \
-            --file-filter='games/prison-escape-game/*' \
-            --file-filter='games/selva-oscura/*' \
-            --file-filter='games/wayworn-hush/*' \
             --error-exitcode=1 \
             --quiet
 
