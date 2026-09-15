@@ -378,6 +378,31 @@ class TestChangelogFile(unittest.TestCase):
 
 
 
+class TestReleaseWithoutMirror(unittest.TestCase):
+    """A scope with no distribution repo gets no link refs, not broken ones."""
+
+    def test_no_link_refs_when_no_public_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            scope = Path(tmp)
+            (scope / ".release-config.yml").write_text(
+                'public_repo: ""\n', encoding="utf-8")
+            (scope / "CHANGELOG.md").write_text(
+                "# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n- A thing.\n",
+                encoding="utf-8")
+            original_scope, original_path = changelog._scope_dir, changelog.CHANGELOG_PATH
+            changelog._scope_dir = scope
+            changelog.CHANGELOG_PATH = scope / "CHANGELOG.md"
+            try:
+                changelog.cmd_release("0.2.0")
+                text = (scope / "CHANGELOG.md").read_text(encoding="utf-8")
+            finally:
+                changelog._scope_dir = original_scope
+                changelog.CHANGELOG_PATH = original_path
+            self.assertIn("## [0.2.0] -", text)
+            self.assertNotIn("https://github.com//", text)
+            self.assertNotIn("[unreleased]:", text)
+
+
 class TestChangelogRequired(unittest.TestCase):
     """A branch prefix already says whether an entry can exist."""
 
@@ -415,6 +440,29 @@ class TestPublicReleasesRepo(unittest.TestCase):
             changelog._scope_dir = scope
             try:
                 self.assertEqual(changelog.public_releases_repo(), "owner/repo")
+            finally:
+                changelog._scope_dir = original
+
+    def test_quoted_empty_reads_as_no_repo(self) -> None:
+        # A scope with no distribution repo writes `public_repo: ""`. Read
+        # naively that is a repo literally named "", and every link ref comes
+        # out pointing at github.com/""/.
+        self.assertEqual(self._repo_for('public_repo: ""\n'), "")
+
+    def test_quoted_value_is_unquoted(self) -> None:
+        self.assertEqual(self._repo_for('public_repo: "owner/repo"\n'), "owner/repo")
+
+    def test_unquoted_value_is_read(self) -> None:
+        self.assertEqual(self._repo_for("public_repo: owner/repo\n"), "owner/repo")
+
+    def _repo_for(self, config_text: str) -> str:
+        with tempfile.TemporaryDirectory() as tmp:
+            scope = Path(tmp)
+            (scope / ".release-config.yml").write_text(config_text, encoding="utf-8")
+            original = changelog._scope_dir
+            changelog._scope_dir = scope
+            try:
+                return changelog.public_releases_repo()
             finally:
                 changelog._scope_dir = original
 

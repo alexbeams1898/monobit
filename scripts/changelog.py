@@ -117,8 +117,11 @@ def public_releases_repo() -> str:
     cfg = _scope_dir / ".release-config.yml"
     if not cfg.is_file():
         return ""
-    m = re.search(r"^public_repo:\s*(\S+)\s*$", cfg.read_text(encoding="utf-8"), re.M)
-    return m.group(1) if m else ""
+    m = re.search(r"^public_repo:\s*(.*?)\s*$", cfg.read_text(encoding="utf-8"), re.M)
+    # Quotes are optional in the config and mean nothing here; a scope with no
+    # distribution repo writes `public_repo: ""`, which must read as empty
+    # rather than as a repo literally named "".
+    return m.group(1).strip("\"'") if m else ""
 
 
 # ---------------------------------------------------------------------------
@@ -485,17 +488,8 @@ def cmd_release(version: str) -> None:
     releases[idx] = (new_heading, body)
     releases.insert(idx, ("## [Unreleased]", []))
 
-    # Add link ref for the new version, deduped, sorted with newest first
-    # after [unreleased].
-    new_link = (
-        f"[{version}]: https://github.com/{public_releases_repo()}/releases/tag/v{version}"
-    )
-    unreleased_link = (
-        f"[unreleased]: https://github.com/{public_releases_repo()}/compare/v{version}...HEAD"
-    )
-
-    # Drop any existing link refs for the new version or [unreleased]; we'll
-    # rewrite them in the right order.
+    # Drop any existing link refs for the new version or [unreleased]; they are
+    # rewritten below in the right order.
     pruned: list[str] = []
     for ref in link_refs:
         s = ref.strip().lower()
@@ -504,7 +498,18 @@ def cmd_release(version: str) -> None:
         if s.startswith("[unreleased]:"):
             continue
         pruned.append(ref)
-    link_refs = [unreleased_link, new_link] + pruned
+
+    # A scope with no distribution repo gets no link refs. Rendering them
+    # anyway yields https://github.com//releases/tag/v0.2.0 -- a link that goes
+    # nowhere, written into a file whose whole audience is people following it.
+    repo = public_releases_repo()
+    if repo:
+        link_refs = [
+            f"[unreleased]: https://github.com/{repo}/compare/v{version}...HEAD",
+            f"[{version}]: https://github.com/{repo}/releases/tag/v{version}",
+        ] + pruned
+    else:
+        link_refs = pruned
 
     _write_changelog(_render(preamble, releases, link_refs))
     cmd_notes(version)
