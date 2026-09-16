@@ -86,6 +86,21 @@ bool Engine::init(const char* title, int width, int height)
 
     window = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height,
                               window_flags);
+    if (!window && msaa_samples > 0)
+    {
+        // No visual matched the requested attributes. Multisampling is the
+        // usual reason -- a driver offers plenty of visuals and none of them
+        // multi-sampled. Antialiasing is worth less than starting, so drop it
+        // and ask once more.
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "no %dx-multisampled visual (%s); retrying without MSAA", msaa_samples,
+                    SDL_GetError());
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 0);
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 0);
+        msaa_samples = 0;
+        window = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width,
+                                  height, window_flags);
+    }
     if (!window)
     {
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "SDL_CreateWindow(%dx%d) failed: %s", width,
