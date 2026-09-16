@@ -111,6 +111,12 @@ go-to-definition, find-references, and — the one that saves real pain —
 correctly, instead of a manual find-and-replace. Configure the build once (F7) so
 `build/compile_commands.json` exists before opening a C++ file.
 
+## Licence
+
+The engine is [MIT](engines/engine/LICENSE) and reusable. Everything else --
+the games, their assets, and the design docs -- is all rights reserved and
+source-available for reading only. See [LICENSE](LICENSE).
+
 ## Documentation
 
 ### Per-game
