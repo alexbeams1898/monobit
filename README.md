@@ -2,12 +2,12 @@
 
 [![CI](https://github.com/alexbeams1898/monobit/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/alexbeams1898/monobit/actions/workflows/ci.yml)
 
-A multi-game / multi-engine C++ workspace: one custom engine, four games, and
-the build and release infrastructure that ships them.
+One custom C++ engine, four games, and the build and release infrastructure
+that ships them.
 
 ## Build and release infrastructure
 
-The part worth reading first. Two engines and four games share one pipeline,
+The part worth reading first. One engine and four games share one pipeline,
 and every scope releases independently.
 
 **Release automation** — [`release.yml`](.github/workflows/release.yml) reads
@@ -59,7 +59,7 @@ Dear ImGui · CMake · Ninja
 ```
 engines/
   engine/             main custom engine -- long-term home for everything
-  arduboy-legacy/     archived 1-bit Arduboy engine (read-only reference)
+  arduboy-legacy/     1-bit Arduboy backend, not yet folded into the engine
 games/
   prison-escape-game/ top-down action roguelike
   selva-oscura/       3D soulslike
@@ -72,8 +72,11 @@ vendor/               vendored dependencies (miniz, stb)
 ```
 
 Each engine and each game declares its own `project(... VERSION X.Y.Z)` and
-versions independently. The arduboy-legacy directories are not part of the
-build.
+versions independently.
+
+`arduboy-legacy` is an earlier pass at running the engine on a 32KB
+microcontroller -- the constrained-platform target, kept for the parts worth
+folding back in. It is not in the build.
 
 Binaries for individual games are published to per-game distribution repos —
 e.g. [prison-escape-game-releases](https://github.com/alexbeams1898/prison-escape-game-releases).
@@ -123,4 +126,4 @@ correctly, instead of a manual find-and-replace. Configure the build once (F7) s
 - engine: [ENGINE](engines/engine/docs/ENGINE.md)
   · [3D extension plan](engines/engine/docs/3D-EXTENSION.md)
 - arduboy-legacy: [ARCHIVED.md](engines/arduboy-legacy/ARCHIVED.md)
-  (do not extend; merge target is the main engine)
+  (frozen until it is folded into the engine as a platform target)
