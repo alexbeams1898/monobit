@@ -24,8 +24,48 @@ jobs:
   standards:
     name: Code standards
     runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.detect.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # need the range to see what the change touched
+
+      - name: Is this change docs-only?
+        id: detect
+        # Compiling four games and running sanitisers to check a README is
+        # twenty minutes spent on prose. Stage 2 is skipped outright when this
+        # says yes. A skipped JOB still reports, and satisfies a required check;
+        # it is a workflow-level paths filter that leaves a check waiting
+        # forever, because then the run never happens at all.
+        #
+        # Conservative on purpose: anything not obviously prose means a full
+        # run. A wrong "yes" skips real checks; a wrong "no" costs minutes.
+        run: |
+          case "${{ github.event_name }}" in
+            pull_request) RANGE="origin/${{ github.base_ref }}...HEAD" ;;
+            push)
+              BEFORE="${{ github.event.before }}"
+              if [ -n "$BEFORE" ]                  && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]                  && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+                RANGE="${BEFORE}..${{ github.sha }}"
+              fi ;;
+          esac
+
+          if [ -z "${RANGE:-}" ]; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            echo "No range (scheduled or first push) -- running everything."
+            exit 0
+          fi
+
+          CHANGED=$(git diff --name-only --diff-filter=d "$RANGE")
+          echo "$CHANGED" | sed 's/^/  /'
+          NON_DOCS=$(echo "$CHANGED" | grep -vE '(\.md$|^docs/|/docs/|^LICENSE$)' || true)
+          if [ -z "$NON_DOCS" ] && [ -n "$CHANGED" ]; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+            echo "Prose only -- build, lint, analysis and sanitisers will report without running."
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install tools
         run: |
@@ -111,6 +151,7 @@ jobs:
   build:
     name: Build and test
     needs: standards
+    if: needs.standards.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     steps:
       # Default shallow checkout. Nothing in the build reads history -- no
@@ -183,6 +224,7 @@ jobs:
   lint:
     name: Lint
     needs: standards
+    if: needs.standards.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     # No `needs: build`. Linting wants the compile database and the headers
     # dependencies generate, never object files -- and those headers cost
@@ -332,6 +374,7 @@ jobs:
   static-analysis:
     name: Static analysis
     needs: standards
+    if: needs.standards.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     # No `needs: build` -- analysis needs the compile database and the headers
     # dependencies generate, not object files. Building those alone is seconds,
@@ -399,6 +442,7 @@ jobs:
   sanitized-tests:
     name: Tests (sanitized)
     needs: standards
+    if: needs.standards.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
