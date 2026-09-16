@@ -8,9 +8,8 @@
 //
 // Encodes using subtractive form (4 = IV, 9 = IX, etc.) per standard
 // rules. Supports single AND double vinculum so the cosmological cap
-// (999,999,999 = 9^9 = "all of Hell completed", per
-// [[project_crucible_censer_leveling_system]]) renders cleanly. A
-// single bar over a glyph means ×1000; a double bar means ×1,000,000.
+// (999,999,999 = 9^9 = "all of Hell completed") renders cleanly. A single
+// bar over a glyph means x1000; a double bar means x1,000,000.
 //
 // The output is two parallel arrays of the same length:
 //   - glyphs: ASCII Roman characters (I V X L C D M)

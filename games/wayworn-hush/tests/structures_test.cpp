@@ -115,7 +115,7 @@ TEST_CASE("The Bridge's center column is walkable footing; side rails are overha
 TEST_CASE("Walkability defaults to all-true when a structure omits the walkable block",
           "[structures]")
 {
-    structures::Layout lay; // default-constructed: every slice walkable
+    structures::Layout const lay; // default-constructed: every slice walkable
     REQUIRE(lay.walkableAt(0, 0, 3, 3));
     REQUIRE(lay.walkableAt(2, 2, 3, 3));
 }

@@ -7,7 +7,7 @@ using Catch::Approx;
 
 TEST_CASE("glowBrightness soft-caps toward max as Perception grows", "[formulas]")
 {
-    formulas::Config cfg; // defaults: max 0.55, half_at 6
+    formulas::Config const cfg; // defaults: max 0.55, half_at 6
 
     // Perception 0 -> 0 (a quiet world, no glow).
     REQUIRE(formulas::glowBrightness(cfg, 0) == Approx(0.0f));

@@ -284,3 +284,26 @@ FetchContent_Declare(
 set(CMAKE_WARN_DEPRECATED FALSE CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(JoltPhysics)
 set(CMAKE_WARN_DEPRECATED TRUE CACHE BOOL "" FORCE)
+
+# ---------------------------------------------------------------------------
+# GENERATED HEADERS
+#
+# Some dependencies materialise headers that first-party sources include, and
+# they do it at BUILD time rather than at configure time:
+#
+#   glad                 writes glad/glad.h from its generator
+#   sdl_headers_copy     copies SDL2's ~78 public headers, SDL.h included,
+#                        into the build tree -- configure leaves that include
+#                        directory holding only SDL_revision.h
+#
+# compile_commands.json names those directories the moment CMake configures,
+# so any tool that reads the compile database sees include paths that do not
+# resolve until this target has run. Static analysis needs no object files,
+# but it does need these. Depending on a named target keeps the list in one
+# place, beside the declarations it has to stay in step with.
+add_custom_target(generated-headers)
+foreach(dep glad sdl_headers_copy)
+    if(TARGET ${dep})
+        add_dependencies(generated-headers ${dep})
+    endif()
+endforeach()

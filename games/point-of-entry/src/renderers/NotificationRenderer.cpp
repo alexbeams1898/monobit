@@ -49,7 +49,7 @@ void line(const std::string& key, const std::string& label)
     item(key, label, 0);
 }
 
-void render(Engine& engine, float dt)
+void render(const Engine& engine, float dt)
 {
     for (auto& n : sNotes)
     {

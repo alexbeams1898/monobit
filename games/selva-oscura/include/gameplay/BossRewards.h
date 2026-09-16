@@ -6,8 +6,8 @@
 // when a boss actor dies. Owns the boss-specific reward logic
 // (item drops, sangue grants, Grimoire unlocks, world-state flips).
 //
-// v1: code-dispatch by spawn_decl_id (one case per shipped boss).
-// When enough bosses ship to define the reward shape, this becomes
+// Code-dispatch by spawn_decl_id, one case per shipped boss. When
+// enough bosses ship to define the reward shape, this becomes
 // data-driven via fields on EnemyArchetype (e.g. `drops`,
 // `grimoire_unlock`). Today the "how rewards work mechanically"
 // question is open, so the implementation is imperative -- one

@@ -58,9 +58,6 @@ struct FlowConfig
     // corpse and bites. Empty = the trickle archetype's default idle
     // plays.
     std::string on_arrival_clip;
-    // Retained for back-compat with the prior freeze_last one-shot
-    // mechanism; ignored by the loco-track loop path that replaced it.
-    float on_arrival_clip_freeze_at_seconds = 0.0f;
     // Target-selection mode for trickle spawns.
     //   "fixed_target" (default): every trickle walks to scripted_target_pos.
     //   "first_vacant_slot": every trickle walks to the first vacant
@@ -228,7 +225,6 @@ void tickInitialFill(FlowState& fs)
     // against a known-empty pool. No idempotency check needed -- if
     // we reach this point, initial_fill_done was just cleared by a
     // reset, which means the pool was just emptied. Per
-    // [[feedback_rebuild_from_authored_on_reset]].
     const bool slot_mode = (fs.cfg.target_mode == "first_vacant_slot");
     if (slot_mode)
         fs.slot_occupant.assign(fs.cfg.initial_positions.size(), std::string{});
@@ -317,9 +313,6 @@ std::string resolveEffectiveArrivalAction(const FlowState& fs, const selva::game
 // on_arrival_delay window (the fresh larva crawl-bites the corpse
 // until conversion fires). applyArchetypeSwap on conversion clears
 // idle_clip_override so the new archetype's picker resumes normally.
-//
-// on_arrival_clip_freeze_at_seconds is retained for back-compat but
-// not used by the loop path (a looping loco track ignores it).
 void playOnArrivalClipIfDeclared(const FlowState& fs, selva::gameplay::Actor& a)
 {
     if (fs.cfg.on_arrival_clip.empty())
@@ -570,7 +563,6 @@ bool parseFlowJson(const nlohmann::json& j, FlowConfig& out)
         out.on_arrival_action = j.value("on_arrival_action", std::string{});
         out.on_arrival_delay_seconds = j.value("on_arrival_delay_seconds", 0.0f);
         out.on_arrival_clip = j.value("on_arrival_clip", std::string{});
-        out.on_arrival_clip_freeze_at_seconds = j.value("on_arrival_clip_freeze_at_seconds", 0.0f);
         out.target_mode = j.value("target_mode", std::string("fixed_target"));
         if (j.contains("initial_population") && j["initial_population"].is_object())
             parseInitialPopulation(j["initial_population"], out);

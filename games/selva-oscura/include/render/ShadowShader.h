@@ -44,7 +44,6 @@ const float kNormalOffset = 0.06; // world meters
 // which broke for descent-corridor geometry 100m past the player
 // that IS sun-occluded. Real-lighting doctrine: shadow coverage is
 // determined by sun line-of-sight to the fragment, not heuristics.
-// See [[feedback_real_lighting_doctrine]].
 uniform vec3 uShadowCameraPos;
 
 float sampleSunShadow(vec3 worldPos, vec3 worldNormal)

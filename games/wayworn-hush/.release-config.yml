@@ -1,0 +1,17 @@
+# Release configuration for wayworn-hush.
+# Read by .github/workflows/release.yml when a PR with branch prefix
+# <bump>/wayworn-hush/<issue>-<desc> merges to master.
+
+# CMake target name for the executable. Used to find the built artifact in
+# build/bin/.
+cmake_target: wayworn-hush
+
+# Public-facing artifact name. Used as both the zip filename prefix and
+# the GitHub release title.
+artifact_prefix: wayworn-hush
+
+# Public-facing distribution repo. The release is mirrored there as a courtesy
+# for download. Empty skips the mirror step, which is what happens until a
+# distribution repo exists for this game -- the tagged release on the source
+# repo is still published either way.
+public_repo: ""

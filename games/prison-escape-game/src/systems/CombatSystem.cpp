@@ -384,7 +384,8 @@ void CombatSystem::update(EntityManager& em, double dt)
     }
 
     // Stamina recovery: after recovery_delay with no deduction, regen at recovery_rate/s.
-    // Sprint lockout clears once stamina is back to full (Elden Ring style).
+    // Sprint lockout clears only at full stamina, so an exhausted player
+    // walks until recovered rather than stutter-sprinting.
     for (auto [entity, sta] : em.registry().view<Stamina>().each())
     {
         if (sta.recovery_timer > 0.0f)

@@ -110,10 +110,6 @@ template <typename... Args> void samplerLog(fmt::format_string<Args...> fmt, Arg
 //   No freezeVisualHipXZ step is needed — root motion is already gone
 //   by the time pose math runs.
 //
-// SEE ALSO:
-//   memory/feedback_animation_harmony_rule.md — full rationale.
-//   memory/project_animation_transition_stack.md — system map.
-//
 // Tracks (data):
 //   * loco_current       — looping locomotion clip the gameplay asked
 //                          for this frame (idle/walk/run/combat-idle).
@@ -1849,7 +1845,7 @@ namespace
 // further down. Needed by handleLocoClipChange.
 float computeHipXZPathLength(const PoseSampler::Impl& s, const ozz::animation::Animation* anim);
 
-// Find joint by Mixamo name in the skeleton.
+// Find joint by rig bone name in the skeleton.
 int findSkeletonJoint(const ozz::animation::Skeleton& skel, const char* name)
 {
     for (int j = 0; j < skel.num_joints(); ++j)
@@ -2668,7 +2664,7 @@ bool tickOneShotPhase(PoseSampler::Impl& s, float dt, bool one_shot_finished)
 // frame delta + zero local hip-XZ (gameplay applies delta). In-
 // place clips: delta = 0, local hip stays in pose. Classification:
 // translation_source from JSON, falling back to 1.5m hip-path
-// threshold. See feedback_hip_delta_two_sides.md.
+// threshold.
 void extractTrackHipDelta(Track& t, int hip_soa, int hip_lane)
 {
     if (!t.animation)
@@ -3080,8 +3076,8 @@ glm::quat quatFromModelMatrix(const ozz::math::Float4x4& m)
 //
 // `world_yaw_axis_x_z` is the world XZ direction the foot's "forward"
 // should keep — we only rotate around the lateral axis, preserving
-// the foot's heading. For v1 we ignore heading and use the shortest
-// arc from world-up to the slope normal.
+// the foot's heading. Heading is ignored; the shortest arc from
+// world-up to the slope normal is used instead.
 // Patch the foot's model-space matrix directly: rotate its current
 // orientation by `world_correction` (which rotates world-up to the
 // slope normal). New matrix = world_correction_matrix * old_matrix.
@@ -3090,8 +3086,8 @@ glm::quat quatFromModelMatrix(const ozz::math::Float4x4& m)
 // Because we write to s.model_matrices AFTER LocalToModel ran, the
 // GPU palette computation that follows will pick up the patched
 // matrix. Child joints (toes) don't propagate the rotation since we
-// skip a second LocalToModel pass — acceptable for v1 since toes are
-// not meaningfully animated.
+// skip a second LocalToModel pass -- acceptable while toes are not
+// meaningfully animated.
 bool applyFootOrient(PoseSampler::Impl& s, int ankle_idx, float* out_nx, float* out_ny,
                      float* out_nz)
 {

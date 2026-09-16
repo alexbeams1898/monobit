@@ -5,79 +5,118 @@ on:
     branches: [master]
   push:
     branches: [master]
+  # Whole-tree analysis is half an hour of work, so it runs nightly rather
+  # than in front of a merge. workflow_dispatch makes it available on demand
+  # when a branch wants the full picture before landing.
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
 
 jobs:
-  # -----------------------------------------------------------------------
-  # 1. FORMAT CHECK  (clang-format)
-  #    Fails if any file differs from what clang-format would produce.
-  #    Same as running Prettier --check in a JS project.
-  # -----------------------------------------------------------------------
-  format:
-    name: Format check
+  # =======================================================================
+  # STAGE 1 -- STANDARDS
+  #
+  # Every gate that needs no toolchain and no build: seconds of work, so it
+  # runs first and everything expensive waits on it. One job rather than
+  # four, because four runners booting to run four scripts costs more in
+  # startup than the scripts cost to run.
+  # =======================================================================
+  standards:
+    name: Code standards
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install clang-format
+      - name: Install tools
         run: |
-          # Pin to clang-format 18.1.x from the LLVM apt repo. Ubuntu's
-          # default `clang-format` package is 1:18.0-59~exp2 which is a
-          # pre-release with subtly different formatting heuristics from
-          # the released 18.1.x that MSYS2 mingw64 ships locally — files
-          # that pass `clang-format -i` on Windows fail `--dry-run` on CI.
-          # Pinning aligns the two.
+          # clang-format pinned to 18.1.x from the LLVM apt repo. Ubuntu's
+          # default package is 1:18.0-59~exp2, a pre-release whose formatting
+          # heuristics differ subtly from the released 18.1.x that MSYS2
+          # mingw64 ships locally -- files that pass `clang-format -i` on
+          # Windows fail `--dry-run` here. Pinning aligns the two.
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
           echo "deb http://apt.llvm.org/$(lsb_release -cs)/ llvm-toolchain-$(lsb_release -cs)-18 main" | sudo tee /etc/apt/sources.list.d/llvm.list
           sudo apt-get update
           sudo apt-get install -y clang-format-18
           sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-18 100
+          # lizard pinned for the same reason: unpinned, a new release changes
+          # what counts as a parameter or a branch and the tree starts failing
+          # with no code having changed. The version is the contract.
+          pip install lizard==1.24.0
           clang-format --version
 
-      - name: Check formatting
+      - name: Formatting
         run: |
-          # Skip archived subtrees -- they're imported from mono and held to that
-          # repo's formatting rules. Treat as read-only reference; not extended.
+          # Archived subtrees keep the formatting rules of the repo they came
+          # from. Read-only reference; not extended, not reformatted.
           find engines games \
               \( -path engines/arduboy-legacy -o -path games/rpg-arduboy \) -prune \
             -o \( -name '*.cpp' -o -name '*.h' \) -print | \
           xargs clang-format --dry-run --Werror
 
-  # -----------------------------------------------------------------------
-  # 2. COMMENT DENSITY  — per-file ratio + project budget.
-  #    Initial threshold 30%; ratchet down as files get trimmed.
-  # -----------------------------------------------------------------------
-  comments:
-    name: Comment density
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run comment-density linter
-        run: python3 games/selva-oscura/scripts/check_comment_density.py
+      - name: Comment density
+        # Per-file ratio plus a project budget. Threshold starts at 30% and
+        # ratchets down as files are trimmed.
+        run: python3 scripts/check_comment_density.py
 
-  # -----------------------------------------------------------------------
-  # 2b. BANDAID KEYWORDS  — grep source comments for TODO/FIXME/HACK/
-  #     bandaid/workaround/etc. Per CLAUDE.md "no deferred work in source"
-  #     doctrine: deferred work goes to GitHub issues, not source comments.
-  # -----------------------------------------------------------------------
-  bandaid_keywords:
-    name: Bandaid keyword scan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run bandaid-keyword linter
-        run: python3 games/selva-oscura/scripts/check_bandaid_keywords.py
+      - name: Deferred-work markers
+        # TODO/FIXME/HACK and friends in source. Deferred work belongs in the
+        # issue tracker, where it can be found, not in a comment nobody greps.
+        run: python3 scripts/check_bandaid_keywords.py
 
-  # -----------------------------------------------------------------------
-  # 3. BUILD + LINT  (clang-tidy runs during the build via CMake)
-  #    Also compiles everything — catches compiler errors on every PR.
-  # -----------------------------------------------------------------------
+      - name: Comment content
+        # Density measures how much a comment says; this measures what it is
+        # allowed to say -- no tool names, no version labels, no citations to
+        # documents that are not in this repo.
+        run: python3 scripts/check_comment_content.py
+
+      - name: Dialog register
+        run: python3 games/selva-oscura/scripts/check_dialog_register.py
+
+      - name: Game-specific gates
+        # These resolve config/ and assets/ relative to the game directory, so
+        # they run from inside it. Each catches drift a compiler cannot see: a
+        # word that grew a second spelling, a config key nothing reads, a map
+        # entity with no builder.
+        run: |
+          cd games/point-of-entry
+          python3 scripts/check_vocab.py
+          python3 scripts/check_design.py
+          python3 scripts/check_structure.py
+          python3 scripts/check_areas.py
+
+      - name: Script tests
+        # The tooling that gates every PR has tests; nothing was running them.
+        run: |
+          python3 scripts/test_changelog.py
+          python3 scripts/test_filter_compile_db.py
+
+      - name: Complexity limits
+        # prison-escape-game is excluded: it carries a pile of pre-existing
+        # offenders that need their own cleanup pass before the gate can hold.
+        run: |
+          lizard \
+            engines/engine/ \
+            games/selva-oscura/src/ \
+            games/wayworn-hush/src/ \
+            -C 15 -L 250 -a 8 -w
+
+  # =======================================================================
+  # STAGE 2 -- BUILD, ANALYSIS, TESTS
+  #
+  # Everything that needs a toolchain. All four run in parallel with each
+  # other and all four wait on stage 1, so a stray space in a header costs
+  # thirty seconds instead of twenty runner-minutes.
+  # =======================================================================
   build:
     name: Build and test
+    needs: standards
     runs-on: ubuntu-latest
     steps:
+      # Default shallow checkout. Nothing in the build reads history -- no
+      # version is derived from git -- and a full clone costs 350MB here,
+      # most of it art assets no build step opens.
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Install dependencies
         run: |
@@ -112,11 +151,23 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
+      - name: Boot smoke test
+        # Nothing else in CI launches a game. Every other job compiles and
+        # unit-tests, and no test links main.cpp -- so a static-init-order
+        # fiasco, a missing required asset, or a shader that fails to compile
+        # passes every gate and is found by whoever runs the exe next.
+        # Needs a display and a GL driver: xvfb plus mesa's software renderer.
+        run: |
+          sudo apt-get install -y xvfb libgl1-mesa-dri
+          # The runner has no GPU, so GL comes from mesa's software rasteriser.
+          # llvmpipe reports 4.5, which covers the 3.3 core context the engine
+          # asks for; without these it can fall through to a driver that cannot.
+          export LIBGL_ALWAYS_SOFTWARE=1
+          export GALLIUM_DRIVER=llvmpipe
+          xvfb-run -a --server-args="-screen 0 1280x720x24"             bash games/selva-oscura/scripts/smoke_test.sh
+
   # -----------------------------------------------------------------------
-  # 3. LINT  (clang-tidy)
-  #    Runs against compile_commands.json + the fetched _deps headers,
-  #    both produced at CMake CONFIGURE time. Does not need the build
-  #    artifacts -- runs in parallel with the main build/test job.
+  # LINT
   #
   #    Scope selection (PR only; push-to-master lints everything):
   #      - directly-changed .cpp files
@@ -129,17 +180,13 @@ jobs:
   #    changed header), but does not require the build to have run --
   #    which is what lets this job sit outside the `build` job.
   # -----------------------------------------------------------------------
-  clang-tidy:
-    name: Lint (clang-tidy)
+  lint:
+    name: Lint
+    needs: standards
     runs-on: ubuntu-latest
-    # No `needs: build`. clang-tidy reads compile_commands.json, written at
-    # CMake CONFIGURE, so the project does not need compiling -- but it DOES
-    # need every header the sources include, and not all of them are fetched.
-    # glad GENERATES glad.h at BUILD time, so configure alone leaves
-    # `#include <glad/glad.h>` unresolvable and every file that reaches it
-    # fails with clang-diagnostic-error before one check has run. Building
-    # that one target is the difference between this job reading the code and
-    # this job failing on its own setup.
+    # No `needs: build`. Linting wants the compile database and the headers
+    # dependencies generate, never object files -- and those headers cost
+    # seconds, so this runs beside the build rather than behind it.
     steps:
       - uses: actions/checkout@v4
         with:
@@ -179,16 +226,46 @@ jobs:
             -DCMAKE_BUILD_TYPE=Debug
 
       - name: Generate headers
-        # glad's header does not exist until its target is built. Nothing else
-        # here needs compiling.
-        run: cmake --build build --target glad
+        # Several dependencies write headers first-party code includes at
+        # BUILD time, so configure alone leaves include paths that do not
+        # resolve. The target names them; see cmake/FetchDependencies.cmake.
+        run: cmake --build build --target generated-headers
+
+      - name: Filter compile database
+        # Analysis reads our translation units only. Dropping the rest is
+        # what keeps this job independent of any dependency's build output.
+        run: |
+          mkdir -p build/analysis
+          python3 scripts/filter_compile_db.py build/compile_commands.json \
+            -o build/analysis/compile_commands.json
 
       - name: Find files to lint
         id: lint-files
+        # A PR and the push that merges it apply the SAME rule -- lint what the
+        # change touched -- differing only in which range names it. They used to
+        # disagree: a PR linted its own diff while a push linted the whole tree,
+        # so a violation in a file the PR never touched passed the merge gate and
+        # broke master seconds later, with nothing in between that could catch
+        # it. Whole-tree coverage still happens, nightly, where a half-hour job
+        # belongs rather than in front of a merge.
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            CHANGED=$(git diff --name-only --diff-filter=d \
-              origin/${{ github.base_ref }}...HEAD -- \
+          RANGE=""
+          case "${{ github.event_name }}" in
+            pull_request)
+              RANGE="origin/${{ github.base_ref }}...HEAD" ;;
+            push)
+              BEFORE="${{ github.event.before }}"
+              # All-zeros on a first push, and unreachable after a force-push:
+              # with no range to read, fall back to linting everything.
+              if [ -n "$BEFORE" ] \
+                 && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] \
+                 && git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+                RANGE="${BEFORE}..${{ github.sha }}"
+              fi ;;
+          esac
+
+          if [ -n "$RANGE" ]; then
+            CHANGED=$(git diff --name-only --diff-filter=d "$RANGE" -- \
               'engines/' 'games/' \
               ':(exclude)engines/arduboy-legacy/**' \
               ':(exclude)games/rpg-arduboy/**')
@@ -228,7 +305,7 @@ jobs:
             cat /tmp/lint-files.txt
           fi
 
-      - name: Neutralize third-party .clang-tidy configs
+      - name: Drop third-party .clang-tidy configs
         if: steps.lint-files.outputs.skip != 'true'
         # Tracy ships its own .clang-tidy with `AnalyzeTemporaryDtors`,
         # an unknown key in clang-tidy 18+ that fails the run at config
@@ -238,33 +315,27 @@ jobs:
         run: |
           find build/_deps -name '.clang-tidy' -delete 2>/dev/null || true
 
-      - name: Lint (clang-tidy)
+      - name: Run clang-tidy
         if: steps.lint-files.outputs.skip != 'true'
         run: |
           xargs -P $(nproc) \
-            clang-tidy -p build \
+            clang-tidy -p build/analysis \
               --header-filter='(engines/engine|games/[^/]+)/.*\.(h|hpp)$' \
               --warnings-as-errors='*' \
             < /tmp/lint-files.txt
 
   # -----------------------------------------------------------------------
-  # 4. STATIC ANALYSIS  (cppcheck)
-  #    Runs against the project compile_commands.json. Restricted to our
-  #    source trees; suppresses noise in third-party deps and a small set
-  #    of pedantic checks we don't want enforced.
-  #
-  #    NOTE: continue-on-error while the pre-existing pile is cleaned up.
-  #    Flip to required (remove continue-on-error) once master is clean.
-  #    Tracking issue: see engines/engine/docs/TECH-DEBT.md.
+  # STATIC ANALYSIS
+  #    Reads the filtered compile database. Suppresses a small set of
+  #    pedantic checks we don't want enforced.
   # -----------------------------------------------------------------------
-  cppcheck:
-    name: Static analysis (cppcheck)
+  static-analysis:
+    name: Static analysis
+    needs: standards
     runs-on: ubuntu-latest
-    # No `needs: build` -- cppcheck only requires compile_commands.json,
-    # which CMake writes at CONFIGURE time, not BUILD time. Running this
-    # in parallel with `build` (which compiles + clang-tidies a much
-    # larger TU set) shortens overall CI wall time.
-    continue-on-error: true
+    # No `needs: build` -- analysis needs the compile database and the headers
+    # dependencies generate, not object files. Building those alone is seconds,
+    # so this runs beside `build` rather than behind it.
     steps:
       - uses: actions/checkout@v4
 
@@ -284,21 +355,23 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-monobit-build-
 
-      - name: Configure (if cache miss)
-        run: |
-          if [ ! -f build/compile_commands.json ]; then
-            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
-          fi
+      - name: Configure
+        # Unconditionally, so the database describes the tree being analysed.
+        # A cache restored from another commit carries that commit's database.
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
 
-      - name: Generate sources
-        # cppcheck reads compile_commands.json, which names glad.c -- a file
-        # glad's target GENERATES at build time. Without it the whole project
-        # fails to load and nothing is analysed at all.
-        run: cmake --build build --target glad
+      - name: Generate headers
+        run: cmake --build build --target generated-headers
 
-      - name: cppcheck
+      - name: Filter compile database
         run: |
-          cppcheck --project=build/compile_commands.json \
+          mkdir -p build/analysis
+          python3 scripts/filter_compile_db.py build/compile_commands.json \
+            -o build/analysis/compile_commands.json
+
+      - name: Run cppcheck
+        run: |
+          cppcheck --project=build/analysis/compile_commands.json \
             --enable=all \
             --inline-suppr \
             --suppress=missingInclude \
@@ -309,47 +382,12 @@ jobs:
             --suppress=normalCheckLevelMaxBranches \
             --suppress=checkersReport \
             --suppressions-list=cppcheck-suppressions.txt \
-            --file-filter='engines/engine/*' \
-            --file-filter='games/prison-escape-game/*' \
-            --file-filter='games/selva-oscura/*' \
-            --file-filter='games/wayworn-hush/*' \
             --error-exitcode=1 \
             --quiet
 
-  # -----------------------------------------------------------------------
-  # 4. COMPLEXITY  (lizard)
-  #    Fails on functions over CCN 15, length 250, or 8 parameters.
-  #    Same thresholds as the local pre-push pipeline.
-  #
-  #    Scope: engines/engine/ + games/selva-oscura/src/ — both active.
-  #    games/prison-escape-game/ is intentionally excluded; it has ~50
-  #    pre-existing offenders (CombatSystem::update CCN 193, etc.) that
-  #    need their own focused cleanup branch. Add it back here once the
-  #    legacy pile is cleaned up.
-  # -----------------------------------------------------------------------
-  lizard:
-    name: Complexity check (lizard)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install lizard
-        # PINNED. Unpinned, a new release changes what counts as a parameter or
-        # a branch and the branch starts failing with no code having changed --
-        # and local, on whatever version happens to be installed, disagrees with
-        # CI about whether the tree is clean. The version is the contract.
-        run: pip install lizard==1.24.0
-
-      - name: Run lizard
-        run: |
-          lizard \
-            engines/engine/ \
-            games/selva-oscura/src/ \
-            games/wayworn-hush/src/ \
-            -C 15 -L 250 -a 8 -w
 
   # -----------------------------------------------------------------------
-  # 5. SANITIZED TEST RUN  (ASan + UBSan)
+  # TESTS UNDER SANITIZERS  (ASan + UBSan)
   #    Builds a Debug build with -fsanitize=address,undefined and runs the
   #    test suite. Catches use-after-free, double-free, buffer overflow,
   #    signed overflow, null deref, misaligned access, etc. — at the line
@@ -359,7 +397,8 @@ jobs:
   #    non-sanitized build job).
   # -----------------------------------------------------------------------
   sanitized-tests:
-    name: Tests under sanitizers (ASan + UBSan)
+    name: Tests (sanitized)
+    needs: standards
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

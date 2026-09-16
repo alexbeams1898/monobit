@@ -4,7 +4,7 @@
 // Cinematic Scenes. A Scene is a time-bounded moment that locks player input
 // while something happens -- the wake animation at game start, the Guide
 // stepping out of the chapel to dispatch the beasts, a Grimoire entry
-// unlocking, etc. Per docs/design/setting.md *Saves are soulslike* and
+// unlocking, etc. Per docs/design/setting.md on saves, and
 // docs/design/wood.md the game has no cutscenes in the traditional sense;
 // the player keeps the camera and the world keeps rendering, but inputs
 // that would commit the Vagrant to actions are blocked.

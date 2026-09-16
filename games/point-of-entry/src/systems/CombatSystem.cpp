@@ -115,11 +115,11 @@ Reach parseReach(const std::string& text)
 
 } // namespace
 
-// These are the seam where the exterminator's skills will eventually multiply his kit. They
-// return the authored number for now; when stats exist, only these change.
+// The seam where the exterminator's skills multiply his kit. Everything that reads a
+// tool's numbers goes through here, so the sheet is applied in exactly one place.
 float damageOf(const Tool& tool, const Stats& holder)
 {
-    // The souls blend, one line: base * (1 + per_point * sum(grade * points-above-baseline)).
+    // The stat blend, one line: base * (1 + per_point * sum(grade * points-above-baseline)).
     // A tool with no grades ignores the sheet entirely.
     const float bonus = tool.scale_chemical * static_cast<float>(holder.chemical - 1) +
                         tool.scale_physical * static_cast<float>(holder.physical - 1) +

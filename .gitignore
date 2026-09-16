@@ -136,3 +136,6 @@ games/*/scripts/blender/gen_*.sh
 # --contact / --labels): a contact sheet is a big derived HTML, and an
 # unfilled labels sidecar is noise until someone actually names sprites.
 *_contact.html
+
+# Fuel-ledger instrumentation output. Regenerated every run.
+ammo-ledger.csv

@@ -31,7 +31,7 @@ void offerStep(const std::string& destination, int dir)
     sDir = dir;
 }
 
-void render(Engine& engine)
+void render(const Engine& engine)
 {
     if (sAction.empty() || sGrace <= 0)
         return;

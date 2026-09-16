@@ -396,7 +396,7 @@ struct PoseSampler
     // start-pose. Returns (0,0,0) on invalid inputs.
     glm::vec3 sampleJointWorldPos(const AnimationClip& clip, float t_seconds, int joint_idx) const;
 
-    // Look up a joint by Mixamo bone name. Returns -1 if not found.
+    // Look up a joint by rig bone name. Returns -1 if not found.
     // Used by combat config resolution to translate JSON joint-name
     // overrides (e.g. "mixamorig:RightHand") to skeleton indices for
     // clipJointMotionEnd.

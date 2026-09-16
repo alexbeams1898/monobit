@@ -1590,8 +1590,8 @@ bool renderPauseMenu()
     bool quit = false;
     // Full-screen darkening scrim behind the pause panel so the game
     // dims to background. The pause panel itself is sized at 85% of
-    // the viewport, leaving a margin on all sides. Souls-style scale
-    // -- the menu dominates the screen but doesn't touch the edges.
+    // the viewport, leaving a margin on all sides -- the menu dominates
+    // the screen without touching the edges.
     selva::ui::drawFullScreenBackdrop(0.60f);
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     const ImVec2 panel_size(vp->Size.x * 0.85f, vp->Size.y * 0.85f);

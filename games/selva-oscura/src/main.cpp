@@ -283,10 +283,8 @@ void initRegionsAndTerrain(Engine& engine, engine::world::RegionId& out_default_
 
     // Phase 1: parse region.json + register authored terrain modifiers
     // BEFORE initTerrain() (mesh builder queries the registry per
-    // vertex). See [[feedback_dual_source_of_truth_is_the_bug]] -- the
-    // chapel modifiers used to be C++-authored; they now live in
-    // surface/region.json's terrain_modifiers array so the chapel
-    // geometry has ONE source of truth.
+    // vertex). Chapel modifiers live in surface/region.json's
+    // terrain_modifiers array, so the chapel geometry has one source.
     engine.renderLoadingFrame("regions");
     runBootStep("loadAllRegionsRegister",
                 [&] { out_default_region = selva::world::loadAllRegionsRegister(); });

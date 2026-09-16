@@ -9,10 +9,9 @@ namespace notify
 {
 namespace
 {
-// Souls-style item notifications: pinned to the NOTIFICATION region (the right
+// Item notifications: pinned to the NOTIFICATION region (the right
 // side of the lower HUD band -- see config/hud.json), fading in/out in place with
 // no movement. Peripheral and calm; multiple stack upward from the region top.
-// (Dark Souls / Elden Ring surface the "acquired X" toast + item log on the right.)
 constexpr float kDuration = 2.6f; // total seconds on screen
 constexpr float kFadeIn = 0.25f;  // fade-in window at the start
 constexpr float kFadeOut = 0.6f;  // fade-out window at the end

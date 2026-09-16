@@ -29,7 +29,7 @@ const std::vector<Fill>& fills();
 int fillIndex();
 // Choose what gets brewed. Takes effect on the next refill; choosing AT the staging area
 // refills immediately -- you are standing right there.
-void setFill(EntityManager& em, int index);
+void setFill(const EntityManager& em, int index);
 
 int sipsLeft();
 

@@ -12,7 +12,7 @@ using worldclock::WorldClock;
 
 TEST_CASE("A fresh clock is on day 1", "[worldclock]")
 {
-    WorldClock c;
+    WorldClock const c;
     REQUIRE(worldclock::day(c) == 1);
     REQUIRE(worldclock::stamp(c) == "Day 1");
 }

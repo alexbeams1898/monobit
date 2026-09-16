@@ -15,7 +15,7 @@ namespace aim
 {
 
 // Read the cursor and mouse buttons. Call once per tick, before anything that fires.
-void update(Engine& engine, EntityManager& em);
+void update(const Engine& engine, EntityManager& em);
 
 // Ignore each mouse button until it is RELEASED and pressed again. Called when play begins: the
 // click that chose "take the job" -- or the right-click that closed a menu -- is still physically

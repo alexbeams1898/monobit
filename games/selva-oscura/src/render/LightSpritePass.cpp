@@ -201,7 +201,7 @@ void renderLightSprites(const glm::mat4& view_proj, const glm::vec3& cam_pos,
     // because perspective mixes them. Instead, accept that this pass
     // expects the call site to expose right/up — pass them in.
     //
-    // BANDAID(approved): v1 derives right+up by inverting view_proj.
+    // BANDAID(approved): right+up are derived by inverting view_proj.
     // Why: the pass needs the camera's screen-right and screen-up
     // basis, but the caller (renderWorld) only passes view_proj. The
     // root fix is to thread the inverse-view (or right+up) through

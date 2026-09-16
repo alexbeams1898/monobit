@@ -72,7 +72,7 @@ struct Stamina
     bool sprint_locked = false;
 };
 
-// Stagger reservoir. Souls-convention: starts at max, drains by
+// Stagger reservoir. Starts at max, drains by
 // per-attack poise_damage on each hit. When current hits 0, the
 // hit triggers a knockdown chain (knockdown clip → getting_up clip)
 // and poise resets to max. While not taking hits, poise refills
@@ -161,10 +161,10 @@ struct Body
     std::vector<selva::combat::HurtboxDecl> hurtbox_decls;
 };
 
-// Derived max HP / stamina / poise from Body + Stats. Linear scaling for v1;
+// Derived max HP / stamina / poise from Body + Stats. Scaling is linear;
 // coefficients live in engine::ecs::FormulaConfig (loaded by
-// selva::formulas::current() from config/balance/formulas.json). Souls-style
-// diminishing curves replace these when balance work begins; call sites
+// selva::formulas::current() from config/balance/formulas.json). Diminishing
+// curves replace these when balance work begins; call sites
 // don't change.
 int computeMaxHp(const Body& body, const Stats& stats);
 float computeMaxStamina(const Body& body, const Stats& stats);
@@ -180,7 +180,7 @@ void initActorPools(Health& hp, Stamina& stamina, Poise& poise, const Body& body
 // Apply per-Form defaults to Body + Stats before initActorPools runs.
 // Called at spawn time; archetype-level overrides (max_hp_override,
 // etc.) layer on top of the form-defaults. Form is the cosmological-
-// category axis ([[gameplay/Faction.h]] + bestiary.md
+// category axis (gameplay/Faction.h + bestiary.md
 // *Soul-form vs animal-form*); each form has a baseline body shape:
 //
 //   UnjudgedSoul    -- Vagrant, Guide. Low HP, low poise. Fragile.
@@ -225,7 +225,7 @@ void applyDamage(Health& hp, const Body& body, int raw_damage);
 // come from the weapon (or unarmed profile on the attacker's Body).
 // Returns an integer damage value to feed into applyDamage().
 //
-// Linear scaling for v1; diminishing-returns curve replaces this when
+// Scaling is linear; a diminishing-returns curve replaces this when
 // balance work begins -- the call site doesn't change, only the body.
 int computeAttackDamage(const Stats& attacker, float base, float str_scale, float dex_scale);
 
@@ -362,7 +362,7 @@ struct Actor
     // (selva::spawn::FlowSpawner) on the frame the arrival sentinel
     // fires. Read by the same system to gate delayed on_arrival
     // actions (e.g. "convert this fresh larva to aged after 30s of
-    // standing at the shore"). Per [[project_soul_larvae_cosmology]].
+    // standing at the shore"). Per.
     float arrival_wallclock = -1.0f;
     // Set once the delayed on_arrival action has fired. Prevents
     // re-firing on subsequent ticks. Cleared on archetype swap (the
@@ -401,7 +401,7 @@ struct Actor
     // rewinds that specific corpse's death_time so the right body fades.
     // Empty for actors with no corpse to consume (initial population,
     // first-cycle trickle before any deaths). Per
-    // [[project_soul_larvae_cosmology]] feeding-as-conversion doctrine.
+    // feeding-as-conversion doctrine.
     std::string feeding_on_actor_id;
 
     // Per-actor override for the locomotion-track clip pick. When
@@ -538,9 +538,8 @@ struct Actor
     // Mirrors archetype->form (or set explicitly for the player at
     // init -- UnjudgedSoul). Used by combat-permission rules
     // (soul-on-soul forbidden in Wood, etc.) and per-form stat-spread
-    // defaults. Default DamnedSoul preserves the legacy shade
-    // behavior for unauthored archetypes. Per [[gameplay/Faction.h]]
-    // Form enum + [[soul-animal-form-combat-doctrine]].
+    // defaults. DamnedSoul when an archetype declares nothing. Values
+    // come from the Form enum in gameplay/Faction.h.
     Form form = Form::DamnedSoul;
 
     // Spawn-decl id (Lupa = "lupa"). Used as the persistent identity
@@ -570,7 +569,7 @@ struct Actor
     std::string current_boss_state;
 
     // SINGLE source of truth for the boss lifecycle (per
-    // [[gameplay/BossState.h]]). All transitions funnel through
+    // gameplay/BossState.h). All transitions funnel through
     // selva::gameplay::setBossState(). Default Dormant is fine for
     // non-boss actors (nothing reads it for them). For boss actors
     // (is_boss=true), spawnEnemyFromDecl calls setBossState(Dormant)
@@ -594,7 +593,7 @@ struct Actor
     // --- AI archetype binding ---
     // Pointer to the loaded archetype data (action list, perception
     // overrides). nullptr = use defaults (test-dummy fallback).
-    // Sprint 4 will read actions[] here to drive the behavior tree.
+    // The behavior tree reads actions[] from here.
     const struct EnemyArchetype* archetype = nullptr;
 
     // --- AI locomotion intent (Sprint 4a) ---
@@ -615,8 +614,8 @@ struct Actor
     // Per-action runtime state — cooldown timestamps for each
     // archetype-declared action. Lazy: actions are inserted on first
     // lookup (LeafPickAction). Keyed by EnemyAction::id from the
-    // archetype JSON. Souls-style cooldowns keep weighted-random
-    // selection from spamming the strongest action.
+    // archetype JSON. Cooldowns keep weighted-random selection from
+    // spamming the strongest action.
     struct ActionRuntime
     {
         float cooldown_until_time = 0.0f; // wallclock; can fire when now >= this
@@ -818,7 +817,7 @@ void initActorPool();
 // Per-frame tick driving actor-agnostic systems. Iterates the
 // pool, advances each actor's animation, applies the consumed
 // hip delta to world position (the contract that keeps feet
-// planted, see feedback_hip_delta_two_sides.md), then applies
+// planted), then applies
 // actor-vs-world + actor-vs-actor collision push-out.
 void tickActors(float dt);
 

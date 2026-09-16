@@ -204,12 +204,20 @@ class TestChangelogFile(unittest.TestCase):
 
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
-        self.tmp_path = Path(self.tmp.name) / "CHANGELOG.md"
-        self._original = changelog.CHANGELOG_PATH
+        scope = Path(self.tmp.name)
+        # A scope is a directory holding a CHANGELOG.md beside a release config;
+        # the distribution repo is read from the config, never hardcoded here.
+        (scope / ".release-config.yml").write_text(
+            "public_repo: alexbeams1898/prison-escape-game-releases\n", encoding="utf-8")
+        self.tmp_path = scope / "CHANGELOG.md"
+        self._original_path = changelog.CHANGELOG_PATH
+        self._original_scope = changelog._scope_dir
+        changelog._scope_dir = scope
         changelog.CHANGELOG_PATH = self.tmp_path
 
     def tearDown(self) -> None:
-        changelog.CHANGELOG_PATH = self._original
+        changelog.CHANGELOG_PATH = self._original_path
+        changelog._scope_dir = self._original_scope
         self.tmp.cleanup()
 
     def _write_initial(self, content: str) -> None:
@@ -367,6 +375,105 @@ class TestChangelogFile(unittest.TestCase):
             changelog.cmd_release("v1.2.3")
         with self.assertRaises(changelog.ChangelogError):
             changelog.cmd_release("1.2")
+
+
+
+class TestReleaseWithoutMirror(unittest.TestCase):
+    """A scope with no distribution repo gets no link refs, not broken ones."""
+
+    def test_no_link_refs_when_no_public_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            scope = Path(tmp)
+            (scope / ".release-config.yml").write_text(
+                'public_repo: ""\n', encoding="utf-8")
+            (scope / "CHANGELOG.md").write_text(
+                "# Changelog\n\n## [Unreleased]\n\n### Fixed\n\n- A thing.\n",
+                encoding="utf-8")
+            original_scope, original_path = changelog._scope_dir, changelog.CHANGELOG_PATH
+            changelog._scope_dir = scope
+            changelog.CHANGELOG_PATH = scope / "CHANGELOG.md"
+            try:
+                changelog.cmd_release("0.2.0")
+                text = (scope / "CHANGELOG.md").read_text(encoding="utf-8")
+            finally:
+                changelog._scope_dir = original_scope
+                changelog.CHANGELOG_PATH = original_path
+            self.assertIn("## [0.2.0] -", text)
+            self.assertNotIn("https://github.com//", text)
+            self.assertNotIn("[unreleased]:", text)
+
+
+class TestChangelogRequired(unittest.TestCase):
+    """A branch prefix already says whether an entry can exist."""
+
+    def test_version_bumping_scopes_must_provide_one(self) -> None:
+        for branch in ("minor/selva-oscura/1-x", "patch/prison-escape/2-y",
+                       "major/point-of-entry/3-z"):
+            self.assertTrue(changelog.changelog_required(branch), branch)
+
+    def test_no_version_bumps_do_not(self) -> None:
+        for branch in ("chore/engine/159-ci-green", "docs/selva-oscura/4-readme"):
+            self.assertFalse(changelog.changelog_required(branch), branch)
+
+    def test_engine_scope_does_not(self) -> None:
+        # The engine ships no artifact, so a bump there has nothing to announce.
+        self.assertFalse(changelog.changelog_required("minor/engine/5-feature"))
+
+    def test_an_unparseable_branch_is_still_asked(self) -> None:
+        # Better to ask for a section that turns out unnecessary than to let a
+        # shippable change through without one.
+        for branch in ("", "master", "some-branch"):
+            self.assertTrue(changelog.changelog_required(branch), repr(branch))
+
+    def test_section_detection(self) -> None:
+        self.assertTrue(changelog.has_changelog_section("## Summary\n\n## Changelog\n\nskip"))
+        self.assertFalse(changelog.has_changelog_section("## Summary\n\nno section"))
+
+
+class TestPublicReleasesRepo(unittest.TestCase):
+    def test_read_from_scope_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            scope = Path(tmp)
+            (scope / ".release-config.yml").write_text(
+                "cmake_target: x\npublic_repo: owner/repo\n", encoding="utf-8")
+            original = changelog._scope_dir
+            changelog._scope_dir = scope
+            try:
+                self.assertEqual(changelog.public_releases_repo(), "owner/repo")
+            finally:
+                changelog._scope_dir = original
+
+    def test_quoted_empty_reads_as_no_repo(self) -> None:
+        # A scope with no distribution repo writes `public_repo: ""`. Read
+        # naively that is a repo literally named "", and every link ref comes
+        # out pointing at github.com/""/.
+        self.assertEqual(self._repo_for('public_repo: ""\n'), "")
+
+    def test_quoted_value_is_unquoted(self) -> None:
+        self.assertEqual(self._repo_for('public_repo: "owner/repo"\n'), "owner/repo")
+
+    def test_unquoted_value_is_read(self) -> None:
+        self.assertEqual(self._repo_for("public_repo: owner/repo\n"), "owner/repo")
+
+    def _repo_for(self, config_text: str) -> str:
+        with tempfile.TemporaryDirectory() as tmp:
+            scope = Path(tmp)
+            (scope / ".release-config.yml").write_text(config_text, encoding="utf-8")
+            original = changelog._scope_dir
+            changelog._scope_dir = scope
+            try:
+                return changelog.public_releases_repo()
+            finally:
+                changelog._scope_dir = original
+
+    def test_absent_config_yields_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            original = changelog._scope_dir
+            changelog._scope_dir = Path(tmp)
+            try:
+                self.assertEqual(changelog.public_releases_repo(), "")
+            finally:
+                changelog._scope_dir = original
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@
 #include "ecs/Components.h"
 #include "ecs/EntityManager.h"
 
+#include <array>
 #include <cmath>
 #include <set>
 #include <utility>
@@ -248,7 +249,8 @@ Slab floodSlab(const EntityManager& em, int col, int row, int cap)
         c1 = std::max(c1, c);
         r0 = std::min(r0, r);
         r1 = std::max(r1, r);
-        constexpr int kAround[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        constexpr std::array<std::array<int, 2>, 4> kAround = {
+            {{{1, 0}}, {{-1, 0}}, {{0, 1}}, {{0, -1}}}};
         for (const auto& step : kAround)
         {
             const int nc = c + step[0];

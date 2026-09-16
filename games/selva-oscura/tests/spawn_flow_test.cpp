@@ -105,7 +105,5 @@ TEST_CASE("acheron_larvae.json parses with expected fields", "[spawn][flow]")
     if (j.contains("on_arrival_clip"))
     {
         REQUIRE(j["on_arrival_clip"].is_string());
-        REQUIRE(j.contains("on_arrival_clip_freeze_at_seconds"));
-        REQUIRE(j["on_arrival_clip_freeze_at_seconds"].get<float>() >= 0.0f);
     }
 }

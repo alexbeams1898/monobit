@@ -25,7 +25,7 @@ void add(float worldX, float worldY, const std::string& text, const Color& c);
 void update(float dt);
 
 // Project and draw. Needs the camera, since these live in the world rather than on the HUD.
-void render(Engine& engine, float camX, float camY, int zoom);
+void render(const Engine& engine, float camX, float camY, int zoom);
 
 // Drop everything -- a new chamber should not inherit the last one's numbers.
 void clear();

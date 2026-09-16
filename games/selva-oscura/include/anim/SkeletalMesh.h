@@ -68,7 +68,7 @@ struct SkeletalMesh
     std::vector<glm::mat4> inverse_bind_matrices;
 
     // Lowest vertex Y in the baked rest pose. Different rigs author the
-    // mesh origin differently — Mixamo puts it near toe-level (a few cm
+    // mesh origin differently -- some put it near toe-level (a few cm
     // below the feet); other rigs put it at hips, on the floor, or
     // anywhere else. To plant a character's feet at world y=0, draw
     // with y_offset = -foot_offset_y. We measure this once at load

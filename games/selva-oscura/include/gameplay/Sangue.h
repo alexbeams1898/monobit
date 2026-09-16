@@ -1,14 +1,14 @@
 // Sangue currency operations. Pure functions over PlayerProfile fields
 // so they can be unit-tested without an engine context.
 //
-// Cosmology: per [[project_crucible_censer_leveling_system]], sangue is
+// Cosmology: sangue is
 // the Hell-substance; the Vagrant's vessel (Crucible for class-pickers,
 // Censer for unburdened) holds uncommitted substance until commitment
 // (installation or riversamento). Lifetime sangue is the cumulative
 // counter that survives every cycle. Both are bounded by
 // SANGUE_LIFETIME_CAP (9^9 = 999,999,999 -- numerologically "all of
-// Hell, completed"). Per [[project_substance_has_no_in_game_name]] no
-// player-facing string ever uses the word "sangue"; this header,
+// Hell, completed"). No player-facing string ever uses the word
+// "sangue"; this header,
 // variable names, and code comments use it freely as the authoring
 // vocabulary.
 

@@ -205,8 +205,8 @@ bool readMat4Array(const cgltf_accessor* acc, std::vector<glm::mat4>& out)
 // references the mesh (rare — would be a malformed file).
 //
 // We need this to compute the mesh's world-space transform: the Character
-// root node typically applies a unit-conversion scale (e.g. cm→m for
-// Mixamo) that we have to bake into the rest-pose vertices, otherwise
+// root node typically applies a unit-conversion scale (e.g. cm to m)
+// that we have to bake into the rest-pose vertices, otherwise
 // they'll be in centimeters while the bone palette (which gltf2ozz
 // already region-graph-corrected) is in meters.
 const cgltf_node* findNodeForMesh(const cgltf_data* data, const cgltf_mesh* mesh)

@@ -266,7 +266,7 @@ TEST_CASE("an arc with no written line stays invisible scaffolding", "[arcs][age
     // The routes-only arcs that exist purely to be linted must never surface to the player.
     arcs::Registry reg;
     reg.arcs.push_back(twoRouteArc());
-    Held w;
+    Held const w;
     REQUIRE(arcs::agenda(reg, w.view()).empty());
 }
 
@@ -328,7 +328,7 @@ TEST_CASE("a thread stays on the agenda across days until it is done", "[arcs][a
 
 TEST_CASE("nextOpening reports nothing for a window already open or absent", "[arcs][agenda]")
 {
-    Held w;
+    Held const w;
     unlock::Knowledge k = w.view();
     k.day_frac = 12.0 / 24.0;
 
@@ -345,7 +345,7 @@ TEST_CASE("nextOpening reports nothing for a window already open or absent", "[a
 TEST_CASE("agenda keeps the authored order", "[arcs][agenda]")
 {
     arcs::Registry reg;
-    arcs::Arc first = errand();
+    arcs::Arc const first = errand();
     arcs::Arc second = errand();
     second.id = "brook";
     second.goal_flag = "brook_followed";

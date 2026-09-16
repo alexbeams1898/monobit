@@ -50,7 +50,7 @@ interaction::Interactable actionAt(interaction::ActionKind kind, const std::stri
 TEST_CASE("Nothing targeted when the player is out of reach and no hover", "[interaction]")
 {
     const std::vector<Candidate> items = {box(500, 500)};
-    Intent it = facing(0, 0, 1.0f, 1.0f); // looking toward it -- still far out of reach
+    Intent const it = facing(0, 0, 1.0f, 1.0f); // looking toward it -- still far out of reach
     const auto r = resolve(items, it, 40.0f);
     REQUIRE(r.index == -1);
     REQUIRE_FALSE(r.fire);
@@ -144,10 +144,10 @@ TEST_CASE("Firing an actionable-only Pickup deposits the item and despawns it di
         pickup, actionAt(interaction::ActionKind::Pickup, "river_stone"));
 
     psyche::State obs;
-    growth::GrowthState growth;
+    growth::GrowthState const growth;
     inventory::Satchel satchel;
-    yields::Registry tables;
-    interaction::Context ctx{obs, growth, kNoRng, satchel, items, tables, 40.0f};
+    yields::Registry const tables;
+    interaction::Context const ctx{obs, growth, kNoRng, satchel, items, tables, 40.0f};
 
     Intent it;
     it.px = 0;
@@ -177,10 +177,10 @@ TEST_CASE("An item that is only targeted (not fired) stays in the world", "[inte
         pickup, actionAt(interaction::ActionKind::Pickup, "river_stone"));
 
     psyche::State obs;
-    growth::GrowthState growth;
+    growth::GrowthState const growth;
     inventory::Satchel satchel;
-    yields::Registry tables;
-    interaction::Context ctx{obs, growth, kNoRng, satchel, items, tables, 40.0f};
+    yields::Registry const tables;
+    interaction::Context const ctx{obs, growth, kNoRng, satchel, items, tables, 40.0f};
 
     Intent it; // in reach, but no press/click
     it.px = 0;
@@ -214,10 +214,10 @@ TEST_CASE("An observable-AND-actionable spot observes (the take is a deed, not d
     reg.emplace<interaction::Interactable>(spot, inter);
 
     psyche::State obs;
-    growth::GrowthState growth;
+    growth::GrowthState const growth;
     inventory::Satchel satchel;
-    yields::Registry tables;
-    interaction::Context ctx{obs, growth, kNoRng, satchel, items, tables, 40.0f};
+    yields::Registry const tables;
+    interaction::Context const ctx{obs, growth, kNoRng, satchel, items, tables, 40.0f};
 
     Intent it;
     it.px = 0;
@@ -256,9 +256,9 @@ TEST_CASE("Firing an actionable-only Gather rolls the table into the satchel and
                                            actionAt(interaction::ActionKind::Gather, "herbs"));
 
     psyche::State obs;
-    growth::GrowthState growth;
+    growth::GrowthState const growth;
     inventory::Satchel satchel;
-    interaction::Context ctx{obs, growth, kNoRng, satchel, items, tables, 40.0f};
+    interaction::Context const ctx{obs, growth, kNoRng, satchel, items, tables, 40.0f};
 
     Intent it;
     it.px = 0;
@@ -285,9 +285,9 @@ TEST_CASE("A Gather naming an unknown table fires but deposits nothing", "[inter
                                            actionAt(interaction::ActionKind::Gather, "ghost"));
 
     psyche::State obs;
-    growth::GrowthState growth;
+    growth::GrowthState const growth;
     inventory::Satchel satchel;
-    interaction::Context ctx{obs, growth, kNoRng, satchel, items, tables, 40.0f};
+    interaction::Context const ctx{obs, growth, kNoRng, satchel, items, tables, 40.0f};
 
     Intent it;
     it.px = 0;

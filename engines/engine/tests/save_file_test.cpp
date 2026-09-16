@@ -91,9 +91,14 @@ TEST_CASE("writeJson then readJson round-trips a document", "[save]")
 
     const auto read = engine::save::readJson(tmp.file("save.json"));
     REQUIRE(read.has_value());
-    REQUIRE((*read)["n"] == 42);
-    REQUIRE((*read)["s"] == "text");
-    REQUIRE((*read)["nested"]["flag"] == true);
+    // REQUIRE above aborts on a missing optional, but the analyser cannot see
+    // Catch2 do it -- and it rejects value() as readily as operator*. value_or
+    // needs no proof: the fallback is unreachable precisely because REQUIRE
+    // already passed.
+    const nlohmann::json loaded = read.value_or(nlohmann::json::object());
+    REQUIRE(loaded["n"] == 42);
+    REQUIRE(loaded["s"] == "text");
+    REQUIRE(loaded["nested"]["flag"] == true);
 }
 
 TEST_CASE("readJson of a missing file is nullopt, not an error", "[save]")

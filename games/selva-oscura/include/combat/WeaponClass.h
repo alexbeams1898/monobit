@@ -48,8 +48,8 @@ namespace selva::combat
 //     produces a seamless transition (no stall, no cut-off).
 //   * `motion_joints`: which joint(s) to watch when auto-detecting.
 //     Empty = use the grip-default set (right hand for one-handed,
-//     both hands for two-handed) — see resolveAttackMotionEndTime in
-//     main.cpp. List specific joints (Mixamo names) to override.
+//     both hands for two-handed) -- see resolveAttackMotionEndTime in
+//     main.cpp. List specific joints (rig bone names) to override.
 //
 // `recovery_seconds` is unrelated to the cancel window — it gates how
 // long after the swing starts the chain auto-resets to step 0.
@@ -65,7 +65,7 @@ struct WeaponAttack
     // mouse only. Pressing the wrong button is a chain miss.
     std::string expected_button;
 
-    // Joint the hitbox is parented to while this attack swings. Mixamo
+    // Joint the hitbox is parented to while this attack swings. A rig
     // bone name (e.g. "mixamorig:LeftHand"). Empty = fall back to the
     // weapon's grip bone_right (the standard weapon hand). Set per-clip
     // when the animation drives a non-default limb — e.g. unarmed jab
@@ -89,12 +89,12 @@ struct WeaponAttack
     // of a normal hit-react. 0 = fall back to attacker's body
     // unarmed_poise_damage at the spawn site. Heavy / committed
     // attacks should set this explicitly (e.g. heavy_punch ~30,
-    // jab/hook ~8, kicks higher). Souls-style poise-break model.
+    // jab/hook ~8, kicks higher). Accumulates until poise breaks.
     float poise_damage = 0.0f;
     // Override: if >= 0, force resolved_chain_link_start_seconds to
     // this value instead of motion_start - 0.05. Set to 0.0 for clips
-    // that have a Blender-authored bookend in their first ~5-10
-    // frames — we want the splice to enter at frame 0 so the bookend
+    // that have an authored bookend in their first ~5-10
+    // frames -- we want the splice to enter at frame 0 so the bookend
     // pose is what the player sees, not skipped past as windup.
     float chain_link_start_seconds = -1.0f;
 

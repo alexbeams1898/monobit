@@ -42,7 +42,7 @@ TEST_CASE("WeaponClassRegistry loads classes from JSON dir", "[combat][weaponcla
     {
         REQUIRE(a.cancel_open_seconds < 0.0f);
     }
-    // Mixamo bone names should round-trip through JSON unchanged.
+    // Rig bone names should round-trip through JSON unchanged.
     REQUIRE(sword->attach.bone_right == "mixamorig:RightHand");
     REQUIRE(sword->attach.bone_left == "mixamorig:LeftHand");
 }

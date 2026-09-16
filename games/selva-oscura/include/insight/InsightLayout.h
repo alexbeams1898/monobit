@@ -3,7 +3,7 @@
 // Mind sub-page graph layout.
 //
 // Computes a stable spatial position for every insight node, used by
-// the Mind sub-page canvas. v1 strategy: deterministic force-directed
+// the Mind sub-page canvas. Deterministic force-directed
 // layout. Inputs are the loaded graph (node ids, observation/conclusion
 // kinds, requires edges) and the player's unlocked set. Output is a
 // {node_id -> (x, y)} map in 0..1 normalized canvas space.

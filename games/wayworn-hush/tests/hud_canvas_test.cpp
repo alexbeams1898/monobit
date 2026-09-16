@@ -111,7 +111,6 @@ TEST_CASE("the HUD layout does not carry a visibility of its own", "[hud]")
     // Regions is authored LAYOUT; visibility is a player PREFERENCE (settings::Settings).
     // Two homes for it would be two answers to "is the HUD on" -- this pins that the config
     // read for one doesn't quietly populate the other.
-    static_assert(sizeof(hud::Regions) > 0, "Regions exists");
     const hud::Regions r = loadFrom(R"({"visibility":"off","pad_x":0.05})");
     REQUIRE(r.pad_x == Approx(0.05f)); // the layout still loads; the mode simply isn't here
 }

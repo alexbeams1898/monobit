@@ -31,7 +31,7 @@ TileMap makeRoom(int tile_size, int width, int height)
 
 TEST_CASE("TileMap defaults to a 32px grid", "[tilemap]")
 {
-    TileMap tm;
+    TileMap const tm;
     REQUIRE(tm.tile_size == 32);
 }
 
@@ -39,7 +39,7 @@ TEST_CASE("findRoomAt maps world position to cell at the instance tile size", "[
 {
     // Same 8x8-cell room placed identically in cell space, at two tile sizes.
     // A world point inside the room must resolve to the room regardless of size.
-    for (int ts : {16, 32})
+    for (int const ts : {16, 32})
     {
         TileMap tm = makeRoom(ts, 8, 8);
         tm.placed_rooms.push_back({1, 1, 6, 6}); // interior room, tiles [1..6]
@@ -57,9 +57,9 @@ TEST_CASE("findRoomAt maps world position to cell at the instance tile size", "[
 TEST_CASE("hasLineOfSight DDA respects the instance tile size", "[tilemap]")
 {
     // Clear horizontal path across the walkable interior at both tile sizes.
-    for (int ts : {16, 32})
+    for (int const ts : {16, 32})
     {
-        TileMap tm = makeRoom(ts, 8, 8);
+        TileMap const tm = makeRoom(ts, 8, 8);
         const float y = 3.5f * static_cast<float>(ts);
         const float x1 = 1.5f * static_cast<float>(ts);
         const float x2 = 6.5f * static_cast<float>(ts);

@@ -99,7 +99,7 @@ struct Sheet
 
 // WHAT GOES IN THE THERMOS. Its own function because a page is a page: the switch below is the
 // shape of the screen, and reading one page should not mean reading past the others.
-void drawBrew(EntityManager& em, const Sheet& sheet, const shell_input::Mouse& mouse)
+void drawBrew(const EntityManager& em, const Sheet& sheet, const shell_input::Mouse& mouse)
 {
     const float cx = sheet.cx;
     const float y = sheet.y;

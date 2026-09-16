@@ -73,7 +73,7 @@ void setLocoLockoutUntil(float t);
 // Single entry point for "fire a one-shot with this profile." Reads
 // profile, applies source-prep, kicks playOneShot. Inertialization
 // is intentionally not enrolled by any game-side profile (see
-// feedback_animation_harmony_rule.md); the engine retains the
+// harmony rule); the engine retains the
 // capability for future reuse but Selva Oscura never opts in.
 // Lockout assignment is separate (caller knows the anchor —
 // chain.cancel_window_close_at vs dodge end vs wall clock).

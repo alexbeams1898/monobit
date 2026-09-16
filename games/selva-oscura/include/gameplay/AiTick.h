@@ -21,7 +21,7 @@ struct Actor;
 // rate — `ai_decision_tick_hz` (default 10Hz). A 100ms latency between
 // "enemy decided to swing" and "the swing fires" is invisible to the
 // player but enormous savings vs running tree traversal every frame
-// across N enemies. Souls games use the same split.
+// across N enemies.
 //
 // `shouldTickAi` is a gate function. It returns true at most
 // `effective_hz` times per second per actor. When it returns true,

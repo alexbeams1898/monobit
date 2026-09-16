@@ -40,15 +40,13 @@ import re
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+import sourcetrees
 
-SCAN_ROOTS = [
-    REPO_ROOT / "engines" / "engine",
-    REPO_ROOT / "games" / "selva-oscura",
-    REPO_ROOT / "games" / "prison-escape-game",
-]
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
-SKIP_DIRS = {"deps", "third_party", "external", "build", "ozz", "imgui"}
+# Extra skips on top of the shared ones: vendored trees that live inside an
+# otherwise-owned directory.
+SKIP_DIRS = {"deps", "external", "ozz", "imgui"}
 
 # Each pattern is (regex, label). Word-boundaried where it matters so
 # "todoist" doesn't trip the TODO match. Case-insensitive across the
@@ -69,7 +67,12 @@ PATTERNS = [
     (re.compile(r"\bworkaround\b", re.IGNORECASE), "workaround"),
     (re.compile(r"paper(ed)?\s+over", re.IGNORECASE), "paper-over"),
     (re.compile(r"\bfor\s+now\b", re.IGNORECASE), "for-now"),
-    (re.compile(r"\btemporary\b", re.IGNORECASE), "temporary"),
+    # "temporary" as an ADJECTIVE on work in flight -- temporary fix, temporary
+    # until X lands. The C++ noun (a temporary, the temporary a call returns) is
+    # correct terminology for object lifetime and is deliberately not matched.
+    (re.compile(r"\btemporar(?:y (?:fix|solution|hack|shim|measure|workaround|stopgap)"
+                r"|ily)\b|\bis temporary\b|\btemporary until\b", re.IGNORECASE),
+     "temporary"),
     (re.compile(r"\btemp\s+fix\b", re.IGNORECASE), "temp-fix"),
 ]
 
@@ -89,17 +92,10 @@ BLOCK_CLOSE_RE = re.compile(r"\*/")
 
 
 def iter_source_files():
-    for root in SCAN_ROOTS:
-        if not root.exists():
+    for path in sourcetrees.source_files(REPO_ROOT):
+        if any(part in SKIP_DIRS for part in path.parts):
             continue
-        for path in root.rglob("*"):
-            if not path.is_file():
-                continue
-            if path.suffix not in {".cpp", ".h", ".hpp", ".cc"}:
-                continue
-            if any(part in SKIP_DIRS for part in path.parts):
-                continue
-            yield path
+        yield path
 
 
 def comment_text_for_line(line: str, in_block: bool) -> str:

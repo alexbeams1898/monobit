@@ -33,7 +33,7 @@ bool sStaleGuard = false;
 
 } // namespace
 
-void update(Engine& engine, EntityManager& em)
+void update(const Engine& engine, EntityManager& em)
 {
     int mx = 0;
     int my = 0;

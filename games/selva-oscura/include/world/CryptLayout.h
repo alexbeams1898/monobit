@@ -168,7 +168,7 @@ inline glm::vec3 chapelWorldOrigin()
 // to JSON.
 void registerChapelStructureFootprints();
 
-// Registers Limbo's point-light set. v1: ~6 dying-inhabitants' lights
+// Registers Limbo's point-light set: ~6 dying-inhabitants' lights
 // scattered across the FAR shore of Acheron (the side opposite the
 // descent stair) — where the lost souls congregate. The near shore
 // stays dark, motivating the player's first crafting task (torch).

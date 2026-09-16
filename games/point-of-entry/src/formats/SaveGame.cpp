@@ -274,7 +274,7 @@ void movePaths(nlohmann::json& doc)
     // NOTE TO ANY FUTURE SWEEP: the strings on the LEFT are history. They name directories that
     // no longer exist and must never be "corrected" to the current spelling -- a row mapping a
     // path to itself silently stops migrating, and the save it fails to carry is somebody's.
-    const auto moved = [](std::string s)
+    const auto moved = [](const std::string& s)
     {
         for (const auto& [was, now] : kMoved)
             if (s.rfind(was, 0) == 0)

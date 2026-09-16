@@ -31,13 +31,13 @@ struct World
 
 TEST_CASE("An empty condition is unconditional (always satisfied)", "[unlock]")
 {
-    World w;
+    World const w;
     REQUIRE(unlock::satisfied(Condition{}, w.view()));
 }
 
 TEST_CASE("A clause with no fields set holds trivially", "[unlock]")
 {
-    World w;
+    World const w;
     REQUIRE(unlock::clauseHolds(Clause{}, w.view()));
 }
 
@@ -148,7 +148,7 @@ TEST_CASE("Clauses are OR-ed (any satisfies the condition)", "[unlock]")
 
 TEST_CASE("Null knowledge sets read as empty (no crash, nothing held)", "[unlock]")
 {
-    Knowledge k; // all pointers null
+    Knowledge const k; // all pointers null
     Clause needsObs;
     needsObs.observed = {"anything"};
     REQUIRE_FALSE(unlock::clauseHolds(needsObs, k));
@@ -163,8 +163,8 @@ TEST_CASE("carrying requires the item; without requires its ABSENCE", "[unlock]"
     // Instruments gate content, never truth: a thought forms regardless, but
     // writing it down needs the notebook -- which is authored as clauses, so the
     // "if only I had something to write with" ache is content, not code.
-    World w;
-    std::unordered_set<std::string> held = {"watch"};
+    World const w;
+    std::unordered_set<std::string> const held = {"watch"};
     Knowledge k = w.view();
     k.carrying = &held;
 
@@ -190,7 +190,7 @@ TEST_CASE("without reads flags, observations and items by prefix", "[unlock]")
     World w;
     w.flags.insert("got_up");
     w.observed.insert("bed");
-    std::unordered_set<std::string> held = {"notebook"};
+    std::unordered_set<std::string> const held = {"notebook"};
     Knowledge k = w.view();
     k.carrying = &held;
 
@@ -225,7 +225,7 @@ TEST_CASE("between gates a clause to a window of the day", "[unlock]")
 {
     // A door that shuts at eight: the clause holds while the sun is up and
     // stops holding the moment the hour passes, without anything else changing.
-    World w;
+    World const w;
     Knowledge k = w.view();
 
     Clause daylight;
@@ -244,7 +244,7 @@ TEST_CASE("between gates a clause to a window of the day", "[unlock]")
 
 TEST_CASE("a window that crosses midnight wraps instead of emptying", "[unlock]")
 {
-    World w;
+    World const w;
     Knowledge k = w.view();
 
     Clause night;
@@ -262,7 +262,7 @@ TEST_CASE("a window that crosses midnight wraps instead of emptying", "[unlock]"
 TEST_CASE("day_min and day_max gate a clause to a stretch of days", "[unlock]")
 {
     // The teasing line that only exists once you have already let someone down.
-    World w;
+    World const w;
     Knowledge k = w.view();
 
     Clause laterDays;
@@ -319,8 +319,8 @@ TEST_CASE("holding gates on what is in his HANDS, not what is in the bag", "[unl
 {
     // A spade in the satchel is not a spade in the hands: the two are separate questions, so
     // a deed that needs the tool taken up cannot be satisfied by merely owning it.
-    World w;
-    std::unordered_set<std::string> carried = {"spade", "notebook"};
+    World const w;
+    std::unordered_set<std::string> const carried = {"spade", "notebook"};
     Knowledge k = w.view();
     k.carrying = &carried;
 

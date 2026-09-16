@@ -18,8 +18,8 @@ namespace selva::anim
 // wasn't loaded.
 //
 // Built-in clips (Idle, Walk, Run, TPose) come from Soldier.glb's bundled
-// animation tracks and use their original-case names. Mixamo attack clips
-// come in lowercase + underscore form via the build's gltf2ozz step.
+// animation tracks and use their original-case names. Attack clips arrive in
+// lowercase-underscore form from the bake step.
 struct ClipRegistry
 {
     std::unordered_map<std::string, AnimationClip> by_name;

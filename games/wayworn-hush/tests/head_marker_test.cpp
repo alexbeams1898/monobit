@@ -27,7 +27,7 @@ const Sprite& markerSprite(EntityManager& em)
 TEST_CASE("The bubble spawns hidden (alpha 0) above nothing yet", "[head_marker]")
 {
     EntityManager em;
-    HeadMarkerConfig cfg;
+    HeadMarkerConfig const cfg;
     head_marker::spawn(em, cfg);
     REQUIRE(markerAlpha(em) == Approx(0.0f));
     REQUIRE(markerSprite(em).layer == 3); // above the player (layer 2)
@@ -36,7 +36,7 @@ TEST_CASE("The bubble spawns hidden (alpha 0) above nothing yet", "[head_marker]
 TEST_CASE("Shown -> the bubble fades up toward peak; hidden -> back toward 0", "[head_marker]")
 {
     EntityManager em;
-    HeadMarkerConfig cfg;
+    HeadMarkerConfig const cfg;
     head_marker::spawn(em, cfg);
 
     // Show it and tick a while: alpha climbs but never exceeds peak (plus a small
@@ -58,7 +58,7 @@ TEST_CASE("Shown -> the bubble fades up toward peak; hidden -> back toward 0", "
 TEST_CASE("The stem base sits at the head; the sprite floats above it", "[head_marker]")
 {
     EntityManager em;
-    HeadMarkerConfig cfg;
+    HeadMarkerConfig const cfg;
     head_marker::spawn(em, cfg);
 
     head_marker::update(em, cfg, 200.0f, 150.0f, 1.0f / 60.0f);
@@ -80,7 +80,7 @@ TEST_CASE("The stem base sits at the head; the sprite floats above it", "[head_m
 TEST_CASE("The bubble carries no tint -- it stays its own white art", "[head_marker]")
 {
     EntityManager em;
-    HeadMarkerConfig cfg;
+    HeadMarkerConfig const cfg;
     head_marker::spawn(em, cfg);
     // No TintOverride is attached (the bubble is white; faculty hue lives in the box).
     auto view = em.registry().view<HeadMarker, TintOverride>();

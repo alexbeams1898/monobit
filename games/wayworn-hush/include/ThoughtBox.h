@@ -11,10 +11,10 @@
 using FontHandle = int;
 
 // The HUD surface -- one animated game-feel panel that renders whatever the
-// game's systems want to say or offer, in one consistent voice (EarthBound /
-// Undertale register). It consumes a queue of HudItems, each of a `kind`:
+// game's systems want to say or offer, in one consistent voice. It consumes
+// a queue of HudItems, each of a `kind`:
 //   Line -- a reading / thought / deed-result: drops in, types out with a blip,
-//           holds, and waits for Space to advance (Souls-like manual read).
+//           holds, and waits for Space to advance -- the read is manual.
 //   Menu -- a list of options (e.g. the deeds you can do at a spot after
 //           observing): W/S move the selection, Space confirms, F/RMB backs out.
 // Systems stay pure -- they enqueue text Lines via psyche::State.pending
@@ -90,7 +90,7 @@ bool fullyShown();
 // (head_marker) -- the bubble shows exactly while the thought is up, in its color.
 bool activeThought(const growth::GrowthState& growth, Color& out_color);
 
-// Run a spot's OBSERVE reading (the EarthBound "Check"): queues the reading lines; update()
+// Run a spot's OBSERVE reading -- the look-at-it verb: queues the reading lines; update()
 // drains them. Returns the observation's whole result -- the EXP to bank, and any thoughts
 // that landed for the caller to write down. The box passes it through untouched.
 // `impression` marks the reading as pressed rather than chosen (a scene firing it

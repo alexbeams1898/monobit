@@ -45,10 +45,10 @@ struct EnemySpawnDecl
     // spawn, and LeafFollowScriptedTarget (first node in every tree's
     // root selector) walks the actor toward it. On arrival, the leaf
     // clears the target -- the actor falls through to the rest of the
-    // tree (combat/alerted/idle). Used for v1 of the soul-larvae
-    // system: fresh larvae spawn at the top of the descent and walk
+    // tree (combat/alerted/idle). Used by the soul-larvae system:
+    // fresh larvae spawn at the top of the descent and walk
     // to the shore landing; scripted_stop_range gates "near enough."
-    // See [[project_soul_larvae_cosmology]]. Absent in JSON = no
+    // Absent in JSON = no
     // scripted target on spawn (existing behavior).
     std::optional<glm::vec3> scripted_target_pos;
     float scripted_stop_range = 0.5f; // meters; "near enough" radius
@@ -136,7 +136,6 @@ void spawnEnemyFromDecl(const std::string& region_id, const EnemySpawnDecl& decl
 // archetype overrides; each calling spawnEnemyFromDecl's override
 // block by hand drifts. Centralizing here keeps the "form default
 // -> formula -> archetype override" contract in one place. Per
-// [[feedback_dual_source_of_truth_is_the_bug]].
 //
 // Caller is responsible for setting a.archetype + a.form + a.body
 // + a.stats first -- this function reads them, doesn't write them.
@@ -219,7 +218,7 @@ const Actor* enemyAt(int index);
 // `world_normal` is the attacker -> target xz direction at hit time.
 // `attacker_pos` is the attacker's world position; used to instantly
 // aggro the enemy to Combat awareness (sets last_known_player_pos
-// so the AI faces + approaches the right direction) — Souls rule:
+// so the AI faces + approaches the right direction) -- the rule is:
 // getting hit always engages, even if you were sneaking up from
 // behind and out of the vision cone.
 // No-op on out-of-range or unloaded clips, or while the actor is

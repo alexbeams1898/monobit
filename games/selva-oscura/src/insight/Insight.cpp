@@ -30,8 +30,8 @@ enum class TriggerKind : std::uint8_t
     SangueAccumulated,
 };
 
-// Per the cognition-system v1 (cognition-system.md), inference nodes
-// carry an authored `readings` array. Each reading is one of 3-5
+// Per cognition-system.md, inference nodes carry an authored `readings`
+// array. Each reading is one of 3-5
 // interpretations the player can pick at Deduce time. A reading
 // declares its `warrant_evidence` set: the specific observation ids
 // the player must have linked for that reading to count as
@@ -45,7 +45,7 @@ struct Reading
 
 // One node = one trigger (observations) OR one inference (with
 // readings). Triggers describe how an observation fires; inferences
-// don't have triggers -- they fire only via tryDeduce().
+// don't have triggers -- they fire only when the player deduces them.
 struct Node
 {
     std::string node_id;
@@ -61,9 +61,9 @@ struct Node
     // the player picks one; the picked reading's warrant_evidence set
     // is what determines whether the inference is warranted.
     std::vector<Reading> readings;
-    // DEPRECATED 2026-06-10 (cognition-system v1 replaced this).
-    // Parser still tolerates the field for back-compat with existing
-    // JSON; no logic consumes it. New inferences should not author it.
+    // Observations that promote this inference from uncertain to certain.
+    // Read by tryConfirm and confirmedByOf; empty means there is nothing
+    // to confirm and the inference fires certain on the spot.
     std::vector<std::string> confirmed_by_ids;
     // Authored canvas position. Unused by the workbench (player-set
     // positions live on PlayerProfile) but kept for any future
@@ -193,7 +193,7 @@ bool parseInferenceRequires(const nlohmann::json& v, Node& n, const std::filesys
     return !n.requires_ids.empty();
 }
 
-// Parse the inference's optional `readings` array (cognition-system v1).
+// Parse the inference's optional `readings` array.
 void parseInferenceReadings(const nlohmann::json& v, Node& n, const std::filesystem::path& path,
                             const std::string& node_id)
 {
@@ -529,7 +529,7 @@ void tick()
     for (const auto& n : sNodes())
     {
         // Conclusions never auto-fire; they're player-driven via
-        // tryDeduce(). The per-frame walk is observation-only.
+        // deduction. The per-frame walk is observation-only.
         if (n.node_kind == NodeKind::Inference)
             continue;
         if (selva::hasInsight(p, n.node_id))
@@ -539,7 +539,7 @@ void tick()
             selva::setInsight(p, n.node_id);
             std::fprintf(stderr, "[insight] node fired: '%s'\n", n.node_id.c_str());
             std::fflush(stderr);
-            // Cognition-system v1: new observation grows Perception.
+            // A new observation grows Perception.
             selva::growPerception();
             any_change = true;
         }
@@ -548,8 +548,8 @@ void tick()
     // does NOT auto-promote uncertain conclusions even when their
     // confirmed_by set is satisfied -- the player has to do the act
     // of linking the testimony to the conclusion on the Mind page.
-    // Re-layout once per tick when anything changed (cheap at v1 N;
-    // skip when nothing fired to avoid recomputing every frame).
+    // Re-layout once per tick when anything changed (cheap at this node
+    // count; skip when nothing fired to avoid recomputing every frame).
     if (any_change)
         selva::insight::layout::recompute();
 }
@@ -839,7 +839,7 @@ std::string commitDeduce(const std::string& inference_id)
         selva::setInsight(p, n.node_id);
         std::fprintf(stderr, "[insight] inference fired: '%s'\n", n.node_id.c_str());
         std::fflush(stderr);
-        // Cognition-system v1: new inference grows Cognition. The
+        // A new inference grows Cognition. The
         // Intelligence bump happens after the UI confirms the reading
         // pick is warranted -- the UI calls growIntelligence() directly
         // because warrantedness depends on the chosen reading.
@@ -848,40 +848,6 @@ std::string commitDeduce(const std::string& inference_id)
         return n.node_id;
     }
     return {};
-}
-
-std::string tryDeduce(const std::vector<std::string>& selected_observation_ids)
-{
-    // Back-compat path: match + commit in one call. Caller is on the
-    // hook for picking a reading separately (via readingsOf and
-    // storing the choice on its WorkbenchNode).
-    const std::string id = matchInference(selected_observation_ids);
-    if (id.empty())
-        return {};
-    return commitDeduce(id);
-}
-
-std::vector<std::string> firedInsightsInCategory(Category cat)
-{
-    std::vector<std::string> out;
-    const PlayerProfile* p = selva::activePlayerProfile();
-    if (p == nullptr)
-        return out;
-    // Walk the LOADED graph in insertion order (stable display
-    // order) and pick nodes that are (a) in this category and
-    // (b) in the player's unlocked set. The unlocked set is a
-    // small vector; std::find scan is fine at v1 scale.
-    for (const auto& n : sNodes())
-    {
-        if (n.category != cat)
-            continue;
-        if (std::find(p->unlocked_insights.begin(), p->unlocked_insights.end(), n.node_id) !=
-            p->unlocked_insights.end())
-        {
-            out.push_back(n.node_id);
-        }
-    }
-    return out;
 }
 
 } // namespace selva::insight

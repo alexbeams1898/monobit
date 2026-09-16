@@ -17,17 +17,12 @@
 namespace selva::gameplay
 {
 
-// One thing an enemy can do — a clip to play, a range it's valid at,
-// a cooldown, a weight for random selection. Loaded from JSON; never
-// constructed by hand at runtime. Sprint 4's behavior tree's
-// LeafPickAction filters the actor's actions[] by range_min..range_max
-// + cooldown + min_awareness, then weighted-randoms within what
-// remains, then fires the chosen action's clip via playOneShot.
+// One thing an enemy can do: a clip, the range it is valid at, a cooldown,
+// a weight for random selection. Authored in JSON, never built by hand.
 //
-// Schema is intentionally narrow for v1 — anything an action might
-// also want (animation overrides, sound, damage scaling) can land on
-// this struct as fields later without breaking the file format
-// (nlohmann's WITH_DEFAULT serialization tolerates missing keys).
+// LeafPickAction filters actions[] by range, cooldown and min_awareness, then
+// weighted-randoms what remains and fires the chosen clip. New fields can be
+// added without breaking existing files -- absent keys take their defaults.
 struct EnemyAction
 {
     std::string id;   // unique key within archetype, e.g. "shade_swing"
@@ -39,7 +34,7 @@ struct EnemyAction
     // gating. Non-zero = force this number even if the clip would
     // compute differently. Rarely needed; intended for big-boss
     // actions where the designer wants forced-fire-distance for
-    // pacing reasons. See [[feedback_action_range_max_is_chase_stop_range]]
+    // pacing reasons.
     // for why this is a single number (BT chase-stop AND fire-gate
     // resolve to the same value).
     float effective_reach_override = 0.0f;
@@ -58,77 +53,45 @@ struct EnemyAction
     float blend_out_seconds = 0.20f;
     bool freeze_last = false;
     Awareness min_awareness = Awareness::Combat;
-    // Hitbox geometry — mirrors the player's WeaponAttack schema.
-    // Empty hitbox_joint = action plays its clip but spawns no
-    // hitbox (e.g. a roar, wind-up taunt). Common case: joint is
-    // set, swing fires a hitbox; LeafPickAction calls
-    // selva::combat::spawnAttackHitbox.
+    // Mirrors the player's WeaponAttack schema. An empty hitbox_joint plays
+    // the clip and spawns nothing -- a roar, or a wind-up taunt.
     std::string hitbox_joint;
     float hitbox_radius = 0.18f;
     float hitbox_tip_offset_z = 0.0f;
 
     // ----------------------------------------------------------------
-    // Souls-style attack timing windows.
-    // Every attack splits into windup -> active -> recovery on the
-    // clip timeline:
-    //   windup_seconds   : t in [0, windup_seconds) -- hitbox INACTIVE.
-    //                      Player's read window: "she's about to bite,
-    //                      dodge now." Longer = more telegraphed.
-    //                      Souls UX: small enemies 150-250ms, bosses
-    //                      400-800ms, big slow bosses 1s+.
-    //   active_seconds   : t in [windup, windup+active) -- hitbox
-    //                      ACTIVE, damage applies on overlap. Typically
-    //                      80-200ms so a well-timed dodge passes
-    //                      through. Default 0 = fall back to the legacy
-    //                      lifetime_fraction calc (whole clip * 0.55).
-    //   recovery         : (windup+active, clip_end] -- hitbox
-    //                      INACTIVE, animator's follow-through. Player's
-    //                      punish window. Length defines fight rhythm:
-    //                      short = aggressive boss, long = trade.
-    // The BT fires the one-shot immediately, then defers the hitbox
-    // spawn by windup_seconds (LeafPickAction queues a PendingAttackSpawn
-    // on the actor; tickPendingAttackSpawns spawns it when the wallclock
-    // crosses fire_at_time). hitbox lifetime = active_seconds.
-    // Defaults preserve existing behavior: windup=0 + active=0 falls
-    // back to spawn-now + lifetime_fraction calc.
+    // Attack timing. Every attack splits into windup -> active -> recovery
+    // along the clip:
+    //   windup   hitbox inactive. The player's read window, so longer reads as
+    //            more telegraphed. Small enemies 150-250ms, bosses 400-800ms.
+    //   active   hitbox live. 80-200ms, so a well-timed dodge passes through.
+    //   recovery hitbox inactive again. The player's punish window, and what
+    //            sets the rhythm: short is aggressive, long invites a trade.
+    //
+    // The one-shot fires at once; the hitbox spawn is deferred by windup and
+    // lives for active. Both zero spawns immediately for a fraction of the
+    // clip instead.
     float windup_seconds = 0.0f;
     float active_seconds = 0.0f;
-    // Per-action clip playback rate. 1.0 = author's authored cadence
-    // (default). 2.0 = clip plays at 2x speed (1s clip becomes 0.5s
-    // wall-time). Use when the source clip was authored at a tempo
-    // that doesn't fit the enemy's combat feel (e.g. Mixamo's zombie
-    // clips are at a deliberately-slow zombie pace, but feral larvae
-    // need a snappier swing).
+    // Playback rate. 2.0 halves a clip's wall-time -- for a source authored
+    // at a tempo that does not suit the enemy.
     //
-    // SEMANTIC NOTE: windup_seconds and active_seconds are in
-    // CLIP-AUTHORED time, not wall-time. The runtime divides them by
-    // playback_rate when scheduling fire_at_time + lifetime. This
-    // keeps windup/active values stable when playback_rate is tuned
-    // (a strike at clip-time 1.0s stays at windup=0.85 regardless of
-    // playback_rate). Reach computation uses the same clip-time
-    // window because reach is a property of the clip's authored
-    // joint geometry, not wallclock.
+    // The windows above are in CLIP time, not wall time; the runtime divides
+    // them by this rate. That keeps them stable while the rate is tuned, and
+    // reach is measured the same way, being a property of the clip's geometry
+    // rather than of the clock.
     float playback_rate = 1.0f;
 
-    // Souls "commit + recover" model: how far into the one-shot the
-    // actor regains control. tickEnemyLocomotion checks
-    // isOneShotPastCancelFraction() and resumes the velocity ramp
-    // past this fraction (default 1.0 = no early cancel, legacy
-    // behavior: actor frozen for the full clip duration). Set to
-    // (windup + active) / clip_duration for the cleanest feel --
-    // hitbox dies on schedule, body finishes the bite-recovery
-    // animation while gameplay-locomotion resumes underneath.
+    // How far into the one-shot the actor regains control. 1.0 freezes it
+    // for the whole clip. (windup + active) / duration reads cleanest: the
+    // hitbox dies on schedule and the body finishes its recovery while
+    // locomotion resumes underneath.
     float cancel_fraction = 1.0f;
 
-    // Hard movement lock for the full clip duration. When true,
-    // velocity is zeroed for as long as the one-shot is active --
-    // cancel_fraction is ignored for locomotion purposes (it still
-    // gates other things like chain-input). Use for heavy / committed
-    // swings where the body planting is part of the read (wolf bite:
-    // the head lunges visually but the body MUST NOT slide forward
-    // toward the player during recovery). Default true matches the
-    // safer Souls feel; set false for light/jab attacks where the
-    // actor should track the target through recovery.
+    // Zero velocity for the whole clip, ignoring cancel_fraction for
+    // locomotion. For committed swings where the plant is part of the read: a
+    // wolf's head lunges, but the body must not slide toward the player during
+    // recovery. False lets light attacks track the target through it.
     bool locks_movement = true;
 };
 
@@ -153,18 +116,16 @@ struct EnemyArchetype
     std::optional<float> vision_fov_degrees;
     std::optional<float> vision_range_meters;
 
-    // Faction the actor spawns with. Default Hostile preserves legacy
-    // behavior (every existing shade / wolf archetype spawns Hostile
-    // without authoring the field). NPCs override to Allied (the Guide,
+    // Faction the actor spawns with. Hostile by default, so an archetype
+    // that declares nothing is an enemy. NPCs override to Allied (the Guide,
     // companions) or Neutral (friendly-but-passive NPCs who can be
     // aggro'd by the player into Hostile). Read at spawn time by
     // spawnEnemyFromDecl to seed actor.faction.
     Faction faction = Faction::Hostile;
 
-    // Cosmological form. Default DamnedSoul preserves legacy shade
-    // behavior (existing shade JSON omits the field; loads as
-    // damned-soul which is canonically correct for Hell-resident
-    // sinners). Wolf archetype overrides to Animal. Guide overrides
+    // Cosmological form. DamnedSoul by default, correct for the
+    // Hell-resident sinners that declare nothing. Wolf overrides to
+    // Animal. Guide overrides
     // to UnjudgedSoul. HellMachinery + Divine reserved for future
     // keeper / Beatrice ships. Read at spawn time to seed actor.form
     // AND to apply per-form stat-spread defaults BEFORE per-archetype
@@ -227,8 +188,8 @@ struct EnemyArchetype
     // Yaw-acknowledgment range (meters). If non-zero, this actor
     // turns its yaw to face the player whenever the player is within
     // this XZ range AND the actor is in a passive state (not in
-    // active combat, not on a scripted-walk leg). Souls-style "the
-    // NPC notices you walking by" behavior. 0 = disabled (default).
+    // active combat, not on a scripted-walk leg) -- the actor turns its
+    // head as you pass. 0 = disabled (default).
     // Per-archetype because only named NPCs (Guide, future
     // merchants/companions) should do this; ambient mobs ignore the
     // player until they aggro.
@@ -261,7 +222,7 @@ struct EnemyArchetype
     // every existing humanoid shade reuses the player rig.
     std::string skeleton_id = "player";
     // Per-archetype clip names. Empty = humanoid default (the X_Bot
-    // mixamo names). Wolf overrides every entry. Read EXCLUSIVELY via
+    // humanoid clip names). Wolf overrides every entry. Read EXCLUSIVELY via
     // lookupArchetypeClip in Enemies.cpp so the per-skeleton registry
     // is always honored -- the wolf's sampler must never receive a
     // player clip (skel.num_joints != anim.num_tracks -> ozz garbage
@@ -285,8 +246,8 @@ struct EnemyArchetype
     // Aggro / wake-up clip. Fired once when this actor's perception
     // transitions Suspicious -> Alerted (the "confirmed sighting"
     // moment per Awareness comment in perception.h). Matches the
-    // Souls/ER pattern: Hollows wake from slumped idle, knights raise
-    // weapon, larvae scream as the imprint finds outlet. Movement is
+    // The sleeper wakes: a slumped idle straightens, a weapon comes up,
+    // larvae scream as the imprint finds outlet. Movement is
     // locked for the clip's full duration (action_locks_movement set
     // alongside the playOneShot); the BT's chase + attack starts after
     // the clip finishes. Empty = no aggro clip; the actor goes
@@ -312,7 +273,7 @@ struct EnemyArchetype
     // falls through to LeafMoveToTarget (charge-in). Set on quadrupeds
     // and other "no-dance" bosses whose locomotion model is straight-
     // line pursuit. Humanoid shades leave this false (default) to keep
-    // the Souls-style mirror-strafe behavior.
+    // the mirror-strafe behavior.
     bool disable_circle_strafe = false;
 
     // Per-archetype HP / poise overrides. <= 0 = fall back to the
@@ -324,11 +285,9 @@ struct EnemyArchetype
     int max_hp_override = 0;
     float max_poise_override = 0.0f;
 
-    // Sangue granted to the player's vessel + lifetime ledger when the
-    // player kills an actor of this archetype. Default 0 (no grant).
-    // Per [[project_imprint_handle_required_for_sangue]] trash kills
-    // produce barely any collectible substance; keeper-fall events are
-    // where playable amounts arrive. Tuned per archetype in JSON.
+    // Sangue granted to the player's vessel and lifetime ledger on a kill.
+    // Trash kills produce barely any; keeper-falls are where playable amounts
+    // arrive. Tuned per archetype in JSON.
     std::uint32_t sangue_drop = 0u;
 
     // Physical items released on this archetype's death. Distinct from
@@ -369,9 +328,8 @@ struct EnemyArchetype
     // True -> this archetype has NO hurtboxes regardless of empty
     // hurtbox_decls. Spawn-side code skips both the explicit and
     // inherited hurtbox paths. Used for beings that are intentionally
-    // not killable: fresh larvae (substance too tightly arranged for
-    // the Vagrant's second-death-grant per project_soul_larvae_cosmology),
-    // future intact NPCs, decoration-tier entities.
+    // not killable: fresh larvae, whose substance is too tightly arranged to
+    // grant anything, plus intact NPCs and decoration-tier entities.
     bool disable_hurtboxes = false;
 
     // Hazard kinds this archetype's actors avoid. Tags match the
@@ -379,11 +337,8 @@ struct EnemyArchetype
     // in region JSON's `hazard_zones`. Actors will not chase a
     // target into a zone with a matching kind; their locomotion
     // velocity clamps at the boundary. Empty -> avoids no hazards
-    // (default; the Vagrant + unjudged souls don't avoid anything;
-    // damned souls of every circle should include "acheron" since
-    // the river dissolves them per the substance law). See
-    // [[project_soul_larvae_cosmology]] river-dissolves-on-contact
-    // + selva/hazard/HazardZones.h.
+    // (the Vagrant and unjudged souls avoid nothing; the damned should list
+    // "acheron", since the river dissolves them). See hazard/HazardZones.h.
     std::vector<std::string> avoids_hazards;
 
     // Per-archetype lockon points. Empty -> fall back to the
@@ -403,9 +358,8 @@ struct EnemyArchetype
     // ----------------------------------------------------------------
     bool is_boss = false;
 
-    // Display name shown by the boss-GUI on encounter. Italian for
-    // legends per [[selva-epistemic-doctrine-2026-05-31]] (e.g.
-    // "LUPA"). Empty for non-bosses.
+    // Display name shown by the boss GUI on encounter -- Italian for
+    // legends, e.g. "LUPA". Empty for non-bosses.
     std::string boss_name;
     // Language-map key for the boss HP-bar name. Tier-gated through
     // the insight system; tier-0 is "???" until the player gains the
@@ -428,8 +382,8 @@ struct EnemyArchetype
     // player doesn't yet know the boss's name (insight unlock fires
     // on death of THIS boss; the felled overlay is shown for ~3s
     // after death, so the message you see depends on the same node
-    // that gates the HP bar -- per the locked design "same node
-    // gates both"). Empty = fall back to felled_message.
+    // that gates the HP bar: one node gates both). Empty = fall back to
+    // felled_message.
     std::string felled_message_key;
 
     // PlayerProfile flag name to set when this actor dies via
@@ -464,7 +418,7 @@ struct EnemyArchetype
     // spawn (sad-look pose for Lupa lands at ~1.69s of
     // idle_2_head_low). Played as a held one-shot (freeze_last +
     // freeze_at_seconds) on top of the idle_clip loco track. 0 =
-    // no freeze, idle_clip just loops normally (legacy behavior).
+    // no freeze, idle_clip just loops normally.
     // Released automatically when the engage trigger fires --
     // engage_clip is a fresh one-shot that crossfades over the held
     // pose, so the 1.69 -> end portion of idle_clip never plays.
@@ -474,7 +428,7 @@ struct EnemyArchetype
     // idle_clip. Use when the actor's spawn pose differs from its
     // standing idle -- e.g. larva_fresh spawns prone in zombie_crawl,
     // not standing in zombie_idle. Empty (default) = bind idle_clip
-    // at spawn (legacy behavior).
+    // at spawn.
     //
     // Resolved via the skeleton's clip registry (clipsByKey(skeleton_id))
     // so authors give a clip-name string here.
@@ -526,8 +480,8 @@ void to_json(nlohmann::json& j, const EnemyArchetype& a);
 void from_json(const nlohmann::json& j, EnemyArchetype& a);
 
 // Process-wide archetype registry. Loaded once at startup; read by
-// gameplay code via archetypes(). Sprint 3 ships with one entry —
-// "limbo_shade" — but the registry scales to as many archetypes as
+// gameplay code via archetypes(). One entry today -- "limbo_shade" --
+// but the registry scales to as many archetypes as
 // the bestiary has files for.
 class EnemyArchetypeRegistry
 {

@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <vector>
 
-// Per [[project_crucible_censer_leveling_system]] auto-magnetization.
+// auto-magnetization.
 //
 // On enemy death we decompose the dropped sangue amount into
 // Roman-numeral additive tier particles (see RomanTiers.h). Each

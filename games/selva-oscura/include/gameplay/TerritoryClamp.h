@@ -1,29 +1,14 @@
 #pragma once
 
-// Per-frame post-physics clamp: keep ring-bound damned souls inside
-// their own region's law-domain. Doctrine clamp -- a DamnedSoul actor
-// whose post-physics position classifies as foreign territory gets
-// pushed OUT of the winning foreign volume along its nearest face.
+// Post-physics clamp holding region-bound actors inside their own region.
 //
-// Form gate: only DamnedSoul actors are clamped. UnjudgedSoul (Guide,
-// Vagrant-projected NPCs), Animal (Lupa, descendant fauna),
-// HellMachinery (keepers), Divine (Beatrice) all carry their own
-// movement authority -- the territory clamp is Hell's measurement
-// machinery, and Hell's measurement only grips imprinted damned souls
-// (same invariant as the rest of the substance economy per
-// [[project_imprint_handle_required_for_sangue]] +
-// [[project_territory_system_doctrine]]).
+// Gated on Form::DamnedSoul, and skipped entirely for actors with no
+// spawn_region_id -- every other form carries its own movement authority.
 //
-// Player + actors without a spawn_region_id are skipped (the player
-// has no domain restriction; flow-spawned or hand-spawned actors
-// without a region id are intentionally region-free).
-//
-// Note: the actor's pos may sit INSIDE a larger own-region volume
-// while ALSO being inside a smaller foreign volume that wins by
-// smallest-volume ownership resolution (e.g. the descent corridor
-// sits inside Limbo's disc; corridor is chapel_interior's; smallest-
-// wins gives the corridor to chapel_interior). The clamp tests
-// regionIdAtPosition -- the resolved owner -- not raw containment.
+// Tests regionIdAtPosition, the RESOLVED owner of a point, rather than raw
+// containment: a position can sit inside a large volume and a smaller one at
+// once and the smaller wins, so containment alone would clamp against the
+// wrong region.
 
 namespace selva::gameplay
 {

@@ -578,7 +578,7 @@ void enactPause(Engine& engine, pause_screen::Action a)
 
 // The world's own layer of the HUD -- anchored to the camera the world was drawn with, and the
 // two black curtains that cover a changeover, which fade the HUD along with everything else.
-void renderPlayOverlays(Engine& engine, EntityManager& em)
+void renderPlayOverlays(const Engine& engine, EntityManager& em)
 {
     // World-anchored, so it needs the camera the world was drawn with.
     const auto& cam = em.registry().get<Camera>(player::entity());
@@ -745,7 +745,7 @@ int main(int argc, char* argv[])
     area_build::registerAll();
     travel::scan("assets/maps/world.ldtk");
 
-    auto& em = engine.entityManager();
+    const auto& em = engine.entityManager();
 
     engine.setGameUpdate(&gameUpdate);
     engine.setRenderWorld(&gameRenderWorld);

@@ -1,25 +1,25 @@
 {
-  "id": "limbo_shade",
-  "vision_fov_degrees": 90.0,
-  "vision_range_meters": 12.0,
-  "avoids_hazards": ["acheron"],
-  "sangue_drop": 1,
-  "_comment_sangue_drop": "Trash kills produce barely-collectible amounts. Per [[project_imprint_handle_required_for_sangue]] the playable substance arrives at keeper-fall events, not per-shade. 1 is a placeholder for the tuning pass; the order of magnitude (single-digit per kill) is the locked design intent.",
-  "_comment_avoids_hazards": "Damned souls dissolve on contact with Acheron's sangue-flow. The BT chase leaf skips when target is in the river; locomotion velocity clamps at the boundary. Per setting.md substance law + soul-larvae cosmology.",
-  "actions": [
-    {
-      "id": "shade_swing",
-      "clip": "jab",
-      "range_min": 0.0,
-      "range_max": 1.1,
-      "cooldown_seconds": 1.5,
-      "weight": 1.0,
-      "raw_damage": 6,
-      "poise_damage": 8,
-      "min_awareness": "Combat",
-      "hitbox_joint": "mixamorig:LeftHand",
-      "hitbox_radius": 0.18,
-      "hitbox_tip_offset_z": 0.0
-    }
-  ]
+ "id": "limbo_shade",
+ "vision_fov_degrees": 90.0,
+ "vision_range_meters": 12.0,
+ "avoids_hazards": ["acheron"],
+ "sangue_drop": 1,
+ "_comment_sangue_drop": "Trash kills produce barely-collectible amounts. the playable substance arrives at keeper-fall events, not per-shade. 1 is a placeholder for the tuning pass; the order of magnitude (single-digit per kill) is the locked design intent.",
+ "_comment_avoids_hazards": "Damned souls dissolve on contact with Acheron's sangue-flow. The BT chase leaf skips when target is in the river; locomotion velocity clamps at the boundary. Per setting.md substance law + soul-larvae cosmology.",
+ "actions": [
+ {
+ "id": "shade_swing",
+ "clip": "jab",
+ "range_min": 0.0,
+ "range_max": 1.1,
+ "cooldown_seconds": 1.5,
+ "weight": 1.0,
+ "raw_damage": 6,
+ "poise_damage": 8,
+ "min_awareness": "Combat",
+ "hitbox_joint": "mixamorig:LeftHand",
+ "hitbox_radius": 0.18,
+ "hitbox_tip_offset_z": 0.0
+ }
+ ]
 }

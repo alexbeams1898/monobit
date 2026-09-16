@@ -7,9 +7,7 @@
 //
 // Doctrine: territory clamp is Hell's measurement machinery. Hell's
 // measurement only grips imprinted damned souls. UnjudgedSoul, Animal,
-// HellMachinery, Divine all carry their own movement authority. Per
-// [[project_territory_system_doctrine]] + the five-form taxonomy +
-// [[project_imprint_handle_required_for_sangue]].
+// HellMachinery, Divine all carry their own movement authority.
 //
 // Pure-compute test: register two synthetic territories, place actors
 // at positions that classify as foreign for their spawn_region, run

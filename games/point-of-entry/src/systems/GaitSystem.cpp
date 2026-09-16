@@ -13,35 +13,15 @@
 
 namespace walk_bob
 {
-namespace
-{
-
-// THE CUTOUT WALK. The body is one rigid piece that HOPS and ROCKS: each step it tilts to one
-// side, pivoting at its FEET, while rising in a small hop -- then tilts the other way on the next
-// step. Because the pivot is at the base, the head sweeps diagonally up-and-out with every step,
-// which is the whole goofy signature; a body that slides sideways instead of tilting reads as
-// jiggle, because nothing pivots.
-//
-// Deliberately QUANTIZED into a few held poses per step rather than a smooth curve -- the source
-// style is jerky cutout animation, and the choppiness is the charm, not a defect to smooth out.
-
-// World px travelled per step (one hop, one tilt). The tilt alternates each step. This is the
-// CADENCE knob: at a given walk speed, a longer stride means fewer steps per second. Too short
-// and the rock becomes a shudder -- 13px at 120px/s was nine steps a second, triple a natural
-// rhythm, and every pose-snap landed three times as often as the eye wanted it.
-
-// Held poses per step. Fewer is snappier cutout, more is smoother; 4 keeps the paper feel
-// without the strobe of 3 at walking cadence.
-
-} // namespace
+// The body is one rigid piece that hops and rocks, pivoting at its FEET, alternating side each
+// step. Quantized into a few held poses per step rather than a smooth curve: the snapping is the
+// intended read, not something to smooth out.
 
 void update(EntityManager& em, float dt)
 {
     auto& reg = em.registry();
-    // CARRYING A GAIT IS WHAT MAKES A THING A WALKER. Membership is the component, never a
-    // guess from what else an entity happens to have: everything the game draws moves and has a
-    // sprite -- droplets of spray, a thrown area, a pest -- and none of those walk. Given a
-    // gait by whoever builds a body with legs.
+    // Carrying a Gait is what makes a thing a walker. Everything drawn has a sprite and moves
+    // -- spray, thrown areas, pests -- so membership has to be declared, never inferred.
     for (auto [entity, sprite, transform, prev, gait] :
          reg.view<Sprite, Transform, PreviousTransform, Gait>().each())
     {
@@ -50,8 +30,7 @@ void update(EntityManager& em, float dt)
 
         gait.travelled += moved;
 
-        // Settle to rest when standing still rather than freezing mid-hop, or a character stops
-        // walking while suspended in the air.
+        // Settle to rest rather than freezing mid-hop, which leaves him stopped in mid-air.
         if (moved < 0.01f)
         {
             gait.rest = std::min(1.0f, gait.rest + dt * 8.0f);
@@ -61,9 +40,8 @@ void update(EntityManager& em, float dt)
         else
             gait.rest = 0.0f;
 
-        // Bracing TIGHTENS the walk rather than stopping it. He still waddles -- taking the
-        // sway away outright reads as the animation breaking rather than as a man setting
-        // himself -- it just travels less far, and the hop settles with it.
+        // Bracing tightens the walk rather than stopping it: removing the sway outright reads
+        // as the animation breaking, not as a man setting himself.
         const float amp = 1.0f - gait.rest;
         const float loose = 1.0f - gait.braced;
 
@@ -72,9 +50,8 @@ void update(EntityManager& em, float dt)
         const float s =
             std::floor(gait.travelled * posesPerPx) / (feel::current().walk.poses_per_step);
 
-        // A FOOT LANDS on every whole step. Reported from here because this is where the walk
-        // IS: anything else would have to work the same number out again from speed and time,
-        // and the two would part company the first time he was slowed.
+        // Footfalls are reported from here because this is where the step count exists.
+        // Deriving it again from speed and time gives two answers the moment he is slowed.
         if (const int footfall = static_cast<int>(gait.travelled / feel::current().walk.stride);
             footfall != gait.footfalls)
         {
@@ -83,17 +60,16 @@ void update(EntityManager& em, float dt)
                 sound::play("footstep");
         }
 
-        // One hop per step, and the lean ALTERNATES by step parity -- left step, right step. Both
-        // peak mid-step together: up-and-tilted is one pose, level at each footfall.
+        // Hop and lean peak together mid-step, so up-and-tilted is one pose and each footfall
+        // lands level. The lean alternates on step parity.
         const float hop = std::abs(std::sin(s * geom::kPi)) * feel::current().walk.hop * amp *
                           (0.6f + 0.4f * loose);
         const float side = static_cast<int>(s) % 2 == 0 ? 1.0f : -1.0f;
         const float theta = std::abs(std::sin(s * geom::kPi)) * feel::current().walk.tilt * side *
                             amp * (0.45f + 0.55f * loose);
 
-        // Pivot at the FEET. The engine rotates a sprite about its centre, which would swing the
-        // feet out from under him -- offsetting by the base's displacement puts the hinge where
-        // the ground is, and the head does the travelling.
+        // The engine rotates a sprite about its centre, which would swing the feet out from
+        // under him. Offsetting by the base's displacement puts the hinge on the ground.
         const float halfH = static_cast<float>(sprite.src_h) * 0.5f;
         sprite.rotation = theta;
         sprite.draw_offset_x = std::sin(theta) * halfH;

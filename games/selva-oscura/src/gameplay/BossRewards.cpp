@@ -6,7 +6,7 @@
 namespace selva::gameplay
 {
 
-// Per-boss reward dispatch. v1 is imperative; goes data-driven once
+// Per-boss reward dispatch. Imperative today; goes data-driven once
 // enough bosses ship to settle the shape. See ideas/boss_backend.md §12.
 void onBossFelled(const std::string& boss_id, Actor& /*killer*/)
 {

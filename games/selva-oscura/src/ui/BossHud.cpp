@@ -129,7 +129,7 @@ const selva::gameplay::Actor* findActorBySpawnDeclId(const std::string& spawn_de
 }
 
 // Draw the HP bar + name. Position: bottom-center of screen, ~10%
-// from bottom. Width ~40% of viewport. Souls-style placement.
+// from bottom. Width ~40% of viewport.
 void drawHpBarAndName(const std::string& name, float hp_norm, float alpha)
 {
     if (alpha <= 0.0f)

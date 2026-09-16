@@ -25,7 +25,7 @@ namespace
 constexpr const char* kFootLeftJointName = "mixamorig:LeftFoot";
 constexpr const char* kFootRightJointName = "mixamorig:RightFoot";
 
-// Foot-plant detection v2 — velocity-based.
+// Foot-plant detection, velocity-based.
 //
 // We fire on the moment the foot's vertical velocity transitions from
 // descending to ascending (vy crosses zero going positive) — that's

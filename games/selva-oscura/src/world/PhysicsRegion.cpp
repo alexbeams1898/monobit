@@ -78,7 +78,7 @@ void registerChapelStructureFootprints()
 {
     using engine::world::StructureFootprint;
 
-    // Doctrine [[feedback_structures_own_terrain_seam]]: chapel OWNS
+    // Doctrine: chapel OWNS
     // its ground via three coordinated pieces:
     //   1) FlushAt + FlushSlope terrain modifiers (now authored in
     //      surface/region.json's terrain_modifiers array, registered

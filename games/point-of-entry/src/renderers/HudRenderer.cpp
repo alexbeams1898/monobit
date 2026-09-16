@@ -162,7 +162,7 @@ void staminaBar(const EntityManager& em, float x, float y)
 //
 // The tank is a number as well as a bar. A bar answers "roughly how much"; mid-swarm the question
 // is "can I hold this trigger for another two seconds", and only a number answers that.
-void equipped(Engine& engine, const EntityManager& em)
+void equipped(const Engine& engine, const EntityManager& em)
 {
     const auto& kit = tools::all();
     if (kit.empty())
@@ -221,7 +221,7 @@ void equipped(Engine& engine, const EntityManager& em)
 // reach, and (brighter) how far the damaging front has swept. What the F1
 // toggle shows is the exact geometry HitDetection tests, so a "the spray
 // touched it but nothing died" moment can be read instead of guessed at.
-void hitAreaOverlay(Engine& engine, const EntityManager& em, float camX, float camY, int zoom)
+void hitAreaOverlay(const Engine& engine, const EntityManager& em, float camX, float camY, int zoom)
 {
     if (!debug_panel::showHitAreas())
         return;
@@ -267,7 +267,7 @@ void hitAreaOverlay(Engine& engine, const EntityManager& em, float camX, float c
     }
 }
 
-void enemyBars(Engine& engine, const EntityManager& em, float camX, float camY, int zoom)
+void enemyBars(const Engine& engine, const EntityManager& em, float camX, float camY, int zoom)
 {
     const auto z = static_cast<float>(zoom);
     const float halfW = static_cast<float>(engine.windowWidth()) / (2.0f * z);
@@ -303,7 +303,8 @@ void reset()
     sPumpCarry = 0.0f;
 }
 
-void renderWorldOverlays(Engine& engine, EntityManager& em, float camX, float camY, int zoom)
+void renderWorldOverlays(const Engine& engine, const EntityManager& em, float camX, float camY,
+                         int zoom)
 {
     enemyBars(engine, em, camX, camY, zoom);
     hitAreaOverlay(engine, em, camX, camY, zoom);
@@ -315,7 +316,7 @@ void renderWorldOverlays(Engine& engine, EntityManager& em, float camX, float ca
 // TOP CENTRE: where he is. Quiet and always there while he is in the descent -- reference
 // rather than news. Centred because both top corners are spoken for: what is left of him on one
 // side, the work on the other, and where he stands belongs to neither.
-void placeBox(Engine& engine)
+void placeBox(const Engine& engine)
 {
     const std::string here = descent::hereLabel();
     if (here.empty())
@@ -334,7 +335,7 @@ void placeBox(Engine& engine)
 // spent one is work done, and seeing both at a glance is the difference between reading the
 // room and walking it. Derived every frame from the descent -- there is nothing to remember,
 // so there is nothing to go stale when he changes floors.
-void exclusionSheet(Engine& engine)
+void exclusionSheet(const Engine& engine)
 {
     const std::vector<descent::Point> sheet = descent::exclusions();
     if (sheet.empty())
@@ -371,7 +372,7 @@ void exclusionSheet(Engine& engine)
     }
 }
 
-void render(Engine& engine, EntityManager& em)
+void render(const Engine& engine, const EntityManager& em)
 {
     // Drawn on exactly the frames the HUD took the pointer away from the desktop, from the one
     // value that decided it. The pointer has ONE owner: a crosshair easing in over a system

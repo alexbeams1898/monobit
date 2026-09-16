@@ -11,7 +11,7 @@ namespace selva::combat
 
 // Build the actor-to-world transform for a character whose origin
 // is at (pos.x, -foot_offset_y, pos.z) and which faces +yaw with
-// the Mixamo 180-degree bind offset. Mirrors what the renderer
+// the rig's 180-degree bind offset. Mirrors what the renderer
 // builds; centralized here so hitbox + hurtbox + render all agree
 // on the joint -> world mapping.
 glm::mat4 buildActorModelMatrix(const glm::vec3& pos, float yaw, float foot_offset_y);

@@ -285,7 +285,7 @@ void renderDialogScreen()
             // Mouse hover steers the cursor ONLY if keyboard isn't
             // the active owner. Otherwise the keyboard-selected
             // option would visibly snap to wherever the mouse rests.
-            // Souls/ER convention: last-input-source wins.
+            // Last-input-source wins.
             if (cv.enabled && !cursor().keyboard_owns && ImGui::IsItemHovered())
                 cursor().index = i;
             if (!cv.enabled)
