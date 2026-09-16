@@ -1,0 +1,24 @@
+# What GitHub counts as this repo's code.
+#
+# Linguist measures every tracked file by default, and by that measure most of
+# this repo is somebody else's: the vendored emulator under arduboy-legacy is
+# 299 of its 362 C/C++ files on its own. Left alone, the language bar describes
+# dependencies rather than the engine.
+#
+# These marks are accurate rather than flattering -- each one names code that
+# is genuinely vendored, generated, or archived.
+
+# Third-party source kept in-tree.
+vendor/**                       linguist-vendored
+engines/arduboy-legacy/tools/** linguist-vendored
+
+# Archived, read-only, not built. Held to the rules of the repo it came from.
+engines/arduboy-legacy/**       linguist-vendored
+games/rpg-arduboy/**            linguist-vendored
+
+# Prose, not implementation.
+docs/**                         linguist-documentation
+**/docs/**                      linguist-documentation
+
+# Reference texts, checked in so the design canon can cite them.
+games/selva-oscura/docs/reference/** linguist-documentation

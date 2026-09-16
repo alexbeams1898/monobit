@@ -49,6 +49,10 @@ config keys nothing reads, and authored map entities with no builder. They share
 one derived definition of which trees they scan, because three hand-written
 copies of that list had each silently stopped covering a game.
 
+**Repository weight** — 365MB of `.git` for 157MB of live content, because Git
+keeps every version of every binary and cannot compress art at all. Measured, with
+what studios do instead, in [docs/ASSET-PIPELINE.md](docs/ASSET-PIPELINE.md).
+
 ## Stack
 
 C++17 · SDL2 · OpenGL 3.3 · entt (ECS) · miniaudio · Jolt · ozz-animation ·
