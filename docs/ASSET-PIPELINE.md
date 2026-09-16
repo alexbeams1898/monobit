@@ -96,3 +96,5 @@ and a first sync is measured in hours.
 
 What it does demonstrate is the shape of the curve and the reason for it, which
 is the part that does not change with size.
+
+<!-- probe: verifying that a skipped job satisfies a required check -->
