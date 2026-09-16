@@ -1,0 +1,19 @@
+Copyright (c) 2026 Alex Beams. All rights reserved.
+
+This repository is licensed in two parts, because code and art are separate
+works and are not offered on the same terms.
+
+ENGINE -- engines/engine/
+    MIT. See engines/engine/LICENSE for the full text. Reusable, including
+    commercially, with attribution.
+
+EVERYTHING ELSE -- games/, engines/arduboy-legacy/, and every asset, design
+document, and configuration file in this repository
+    All rights reserved. Source-available for reading and review. Not licensed
+    for use, modification, or redistribution.
+
+Third-party dependencies carry their own licences, which govern their own code.
+Vendored copies retain the licence files they shipped with.
+
+Asset attribution for third-party art and audio is recorded per game, e.g.
+games/prison-escape-game/CREDITS.md.
