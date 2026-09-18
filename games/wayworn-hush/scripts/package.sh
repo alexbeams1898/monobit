@@ -120,6 +120,13 @@ fi
 
 rm -rf "$STAGE_DIR"
 
+# Confirm the archive exists before saying so. PowerShell's Compress-Archive
+# reports non-terminating errors and still exits 0, so `set -e` never fires.
+if [ ! -s "$NAME.zip" ]; then
+    echo "ERROR: $NAME.zip was not created." >&2
+    exit 1
+fi
+
 echo
-echo "Created $NAME.zip -- share this file."
+echo "Created $NAME.zip ($(du -h "$NAME.zip" | cut -f1)) -- share this file."
 echo "It carries its own assets + config; unzip anywhere and run $EXE_NAME."

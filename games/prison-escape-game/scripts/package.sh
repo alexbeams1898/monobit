@@ -19,8 +19,11 @@ REPO_ROOT="$(cd "$GAME_DIR/../.." && pwd)"
 
 cd "$REPO_ROOT"
 
-BUILD_BIN="build/bin"
 EXE_NAME="prison-break-game.exe"  # CMake target name (internal id, predates the public 'prison-escape' name)
+# CMake writes each game into its own subdirectory under bin/. Find the exe
+# rather than naming the directory: a second copy of that path went stale when
+# the layout changed, and three releases failed on it before anyone noticed.
+BUILD_BIN="$(dirname "$(find build/bin -name "$EXE_NAME" -type f 2>/dev/null | head -1)")"
 
 # Extract version from this game's CMakeLists.txt: project(... VERSION X.Y.Z ...)
 VERSION=$(grep -oP 'project\([^)]*VERSION\s+\K[0-9]+\.[0-9]+\.[0-9]+' "$GAME_DIR/CMakeLists.txt" || echo "unknown")
@@ -28,7 +31,7 @@ NAME="${1:-prison-escape-game-v$VERSION}"
 STAGE_DIR="$NAME"
 
 if [ ! -f "$BUILD_BIN/$EXE_NAME" ]; then
-    echo "ERROR: $BUILD_BIN/$EXE_NAME not found. Build the game first (F7)." >&2
+    echo "ERROR: $EXE_NAME not found under build/bin. Build the game first (F7)." >&2
     exit 1
 fi
 
@@ -78,7 +81,16 @@ else
         "Compress-Archive -Path '$STAGE_DIR' -DestinationPath '$NAME.zip' -Force"
 fi
 
+# Confirm the archive exists before saying so. PowerShell's Compress-Archive
+# reports non-terminating errors and still exits 0, so `set -e` never fires:
+# a locked file meant no zip, a success message, and a staging directory
+# deleted before anyone could look at it.
+if [ ! -s "$NAME.zip" ]; then
+    echo "ERROR: $NAME.zip was not created. Staging left at $STAGE_DIR/ to inspect." >&2
+    exit 1
+fi
+
 # Clean up staging dir.
 rm -rf "$STAGE_DIR"
 
-echo "Created $NAME.zip -- share this file."
+echo "Created $NAME.zip ($(du -h "$NAME.zip" | cut -f1)) -- share this file."
