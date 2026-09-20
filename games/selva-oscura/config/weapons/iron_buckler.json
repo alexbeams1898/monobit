@@ -2,7 +2,6 @@
   "id": "iron_buckler",
   "name": "Iron Buckler",
   "class": "buckler",
-  "mesh": "assets/weapons/iron_buckler.glb",
   "stats": {
     "one_handed": {
       "base_damage":    6.0,

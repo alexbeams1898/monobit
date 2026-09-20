@@ -2,7 +2,6 @@
   "id": "longsword",
   "name": "Longsword",
   "class": "sword",
-  "mesh": "assets/weapons/longsword.glb",
   "stats": {
     "one_handed": {
       "base_damage":   22.0,

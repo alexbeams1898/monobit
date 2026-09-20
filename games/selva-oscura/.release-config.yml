@@ -11,3 +11,46 @@ artifact_prefix: selva-oscura
 # Public-facing distribution repo. The release is mirrored here as a courtesy
 # for download. Empty string skips the mirror step.
 public_repo: alexbeams1898/selva-oscura-releases
+
+# Ceiling on DECLARED DATA -- the executable is not counted, since it is
+# 165MB in Debug and a fraction of that in Release and would make this
+# gate move for reasons unrelated to what ships. Currently 25.6 MB.
+# A release over the ceiling fails instead of shipping.
+size_limit_mb: 45
+
+# What ships, as paths under this game directory. Inclusion, not exclusion --
+# anything not named here does not ship. This tree is the reason: the runtime
+# reads world/trees/low_poly_forest_tree_pack/scene.gltf, and the bake reads
+# characters/wolf/source/wolf.gltf, which it does not. No extension rule tells
+# those apart, so the paths are named. Everything is read from the SOURCE tree,
+# never from build/bin -- that directory is never pruned and holds every asset
+# that has existed on any branch.
+include:
+  - config
+  - assets/regions/**/*.json
+  # Depth two on purpose. characters/<id>/ holds what the runtime loads;
+  # characters/<id>/source/ holds the authoring originals it was baked from
+  # (including a second copy of wolf.glb), and x_bot/baked-archive/ holds
+  # clips kept without their sources, which ClipRegistry::loadDirectory does
+  # not read -- it iterates one level.
+  - assets/characters/*/*.ozz
+  - assets/characters/*/*.glb
+  # world/ nests deeper: the tree pack keeps its textures in a subdirectory,
+  # and its scene.gltf IS runtime, unlike characters/wolf/source/wolf.gltf.
+  # No extension rule separates those two, which is why these are paths.
+  - assets/world/**/*.glb
+  - assets/world/**/*.gltf
+  - assets/world/**/*.bin
+  - assets/world/**/*.png
+  - assets/world/**/*.json
+  # Non-recursive: audio/source/ holds the originals the .ogg were encoded from.
+  - assets/audio/*.ogg
+  - assets/audio/*.mp3
+  # Third-party attribution travels with the binary -- the art and audio here
+  # are used on terms that require it. check_assets.py fails the build if one
+  # of these stops being covered.
+  - assets/**/LICENSE*
+  - assets/**/license*
+  - assets/**/CREDITS*
+  - assets/**/*_CREDITS.txt
+  - assets/**/*-OFL.txt

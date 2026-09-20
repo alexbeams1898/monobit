@@ -153,15 +153,17 @@ jobs:
             echo "should_release=false" >> "$GITHUB_OUTPUT"
           else
             echo "should_release=true" >> "$GITHUB_OUTPUT"
-            # Read release config (yaml -- pure grep parsing, no yq dep).
+            # Read the release config through the same reader the packager and
+            # the changelog tool use. This step parsed it with its own grep
+            # until that made three parsers of one file.
             cfg="$scope_dir/.release-config.yml"
             if [ ! -f "$cfg" ]; then
               echo "::error::Game scope '$scope' is missing $cfg"
               exit 1
             fi
-            cmake_target=$(grep -E '^cmake_target:' "$cfg" | sed 's/^cmake_target:[[:space:]]*//' | tr -d '"')
-            artifact_prefix=$(grep -E '^artifact_prefix:' "$cfg" | sed 's/^artifact_prefix:[[:space:]]*//' | tr -d '"')
-            public_repo=$(grep -E '^public_repo:' "$cfg" | sed 's/^public_repo:[[:space:]]*//' | tr -d '"')
+            cmake_target=$(python3 scripts/releaseconfig.py "$scope_dir" cmake_target)
+            artifact_prefix=$(python3 scripts/releaseconfig.py "$scope_dir" artifact_prefix)
+            public_repo=$(python3 scripts/releaseconfig.py "$scope_dir" public_repo)
             echo "cmake_target=$cmake_target" >> "$GITHUB_OUTPUT"
             echo "artifact_prefix=$artifact_prefix" >> "$GITHUB_OUTPUT"
             echo "public_repo=$public_repo" >> "$GITHUB_OUTPUT"
@@ -276,14 +278,24 @@ jobs:
       - name: Configure and build
         env:
           CMAKE_TARGET: ${{ needs.bump.outputs.cmake_target }}
+          SCOPE_DIR: ${{ needs.bump.outputs.scope_dir }}
         run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          # Settings a game needs to be shippable at all -- wayworn-hush
+          # otherwise compiles a chdir to this runner's checkout. package.py
+          # re-checks these against CMakeCache.txt rather than trusting that
+          # this step and that one stayed in agreement.
+          extra=""
+          while IFS= read -r arg; do
+            [ -n "$arg" ] && extra="$extra -D$arg"
+          done < <(python3 scripts/releaseconfig.py "$SCOPE_DIR" cmake_args)
+          echo "Extra CMake settings:${extra:- none}"
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release $extra
           cmake --build build --target "$CMAKE_TARGET"
 
       - name: Package
         env:
           SCOPE_DIR: ${{ needs.bump.outputs.scope_dir }}
-        run: ./$SCOPE_DIR/scripts/package.sh
+        run: python3 scripts/package.py --scope-dir "$SCOPE_DIR"
 
       - name: Extract release notes from CHANGELOG.md
         env:

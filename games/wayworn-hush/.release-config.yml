@@ -15,3 +15,38 @@ artifact_prefix: wayworn-hush
 # distribution repo exists for this game -- the tagged release on the source
 # repo is still published either way.
 public_repo: ""
+
+# Settings this game needs to produce a shippable executable. A dev build
+# compiles an absolute chdir to the BUILD MACHINE'S source tree so asset edits
+# are live on the next F7; that exe finds nothing on anyone else's computer.
+# package.py checks these against the build directory's CMakeCache.txt and
+# refuses to package a build configured the other way.
+cmake_args:
+  - WAYWORN_RELEASE=ON
+
+# Ceiling on DECLARED DATA -- the executable is not counted, since it is
+# 165MB in Debug and a fraction of that in Release and would make this
+# gate move for reasons unrelated to what ships. Currently 5.9 MB.
+# A release over the ceiling fails instead of shipping.
+size_limit_mb: 25
+
+# What ships, as paths under this game directory. Inclusion, not exclusion --
+# anything not named here does not ship.
+include:
+  - config
+  # The authored map lives under tilesets/source/ -- config/world.json names
+  # it there. That directory is not purely authoring for this game.
+  - assets/tilesets/source/*.ldtk
+  - assets/tilesets/*.png
+  - assets/sprites/**/*.png
+  - assets/fonts/*.ttf
+  - assets/audio/*.ogg
+  - assets/audio/*.mp3
+  # Third-party attribution travels with the binary -- the art and audio here
+  # are used on terms that require it. check_assets.py fails the build if one
+  # of these stops being covered.
+  - assets/**/LICENSE*
+  - assets/**/license*
+  - assets/**/CREDITS*
+  - assets/**/*_CREDITS.txt
+  - assets/**/*-OFL.txt

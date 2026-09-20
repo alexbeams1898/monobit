@@ -21,11 +21,23 @@ the branch prefix `<bump>/<scope>/<issue>-<desc>` and derives the rest:
 
 Changelog bullets come from the merged PR body, are validated before merge, and
 are prepended to the scope's `[Unreleased]` section — then promoted to a real
-version on a bump. Each game declares its own target, artifact name, and
-distribution repo in [`.release-config.yml`](games/selva-oscura/.release-config.yml);
-releases are mirrored to per-game public repos, and a scope with no distribution
-repo publishes the tag and skips the mirror. A guard stops the bot's own bump
-commit from retriggering the workflow.
+version on a bump. Releases are mirrored to per-game public repos, and a scope
+with no distribution repo publishes the tag and skips the mirror. A guard stops
+the bot's own bump commit from retriggering the workflow.
+
+**What ships is declared, not inferred** — each game's
+[`.release-config.yml`](games/selva-oscura/.release-config.yml) lists the paths
+that constitute runtime data, the settings its build needs to be shippable at
+all, and a ceiling on payload size. One packager reads it for every game.
+
+The list is an inclusion list, which matters more than it sounds: an exclusion
+list fails open, so anything a new pipeline drops into the asset tree ships by
+default and the only signal is the download size. Inclusion fails closed, and
+the trade — omitting something the game needs — is covered by a CI gate that
+checks every asset path named in config against both the disk and the manifest.
+Payloads come from the source tree rather than the build directory, since that
+directory is never pruned and accumulates every asset that has existed on any
+branch.
 
 **CI** — [`ci.yml`](.github/workflows/ci.yml), two stages. Everything that needs
 no toolchain runs first and gates the rest, so a formatting slip costs thirty
@@ -45,9 +57,10 @@ nightly and on demand, where a half-hour job belongs.
 
 **Custom linters** live in [`scripts/`](scripts/) and catch what a compiler
 cannot: comment density and content, deferred-work markers, vocabulary drift,
-config keys nothing reads, and authored map entities with no builder. They share
-one derived definition of which trees they scan, because three hand-written
-copies of that list had each silently stopped covering a game.
+config keys nothing reads, authored map entities with no builder, and assets a
+game names but does not have. They share one derived definition of which trees
+they scan, because three hand-written copies of that list had each silently
+stopped covering a game.
 
 **Repository weight** — 365MB of `.git` for 157MB of live content, because Git
 keeps every version of every binary and cannot compress art at all. Measured, with

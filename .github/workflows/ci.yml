@@ -125,11 +125,21 @@ jobs:
           python3 scripts/check_structure.py
           python3 scripts/check_areas.py
 
+      - name: Release manifests
+        # Every asset a game names must exist, and must be covered by the
+        # `include:` list its release ships. Packaging is inclusion-only, which
+        # cannot ship an authoring source by accident but can omit something
+        # the game loads -- this is the half that makes that trade safe.
+        run: python3 scripts/check_assets.py
+
       - name: Script tests
         # The tooling that gates every PR has tests; nothing was running them.
         run: |
           python3 scripts/test_changelog.py
           python3 scripts/test_filter_compile_db.py
+          python3 scripts/test_releaseconfig.py
+          python3 scripts/test_package.py
+          python3 scripts/test_check_assets.py
 
       - name: Complexity limits
         # prison-escape-game is excluded: it carries a pile of pre-existing

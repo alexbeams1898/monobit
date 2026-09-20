@@ -15,3 +15,30 @@ artifact_prefix: prison-escape-game
 # Public-facing distribution repo. The release is mirrored here as a courtesy
 # for download. Empty string skips the mirror step.
 public_repo: alexbeams1898/prison-escape-game-releases
+
+# Ceiling on DECLARED DATA -- the executable is not counted, since it is
+# 165MB in Debug and a fraction of that in Release and would make this
+# gate move for reasons unrelated to what ships. Currently 40.8 MB.
+# A release over the ceiling fails instead of shipping.
+size_limit_mb: 60
+
+# What ships, as paths under this game directory. Inclusion, not exclusion --
+# anything not named here does not ship. An exclusion list fails open, which is
+# how authoring sources reach a release: whatever a new pipeline drops into the
+# asset tree is included by default and nobody finds out until the zip is
+# measured. Everything here is read from the SOURCE tree, never from build/bin.
+include:
+  - config
+  - assets/sprites/**/*.png
+  - assets/tiles/**/*.png
+  - assets/fonts/**/*.ttf
+  - assets/sfx/**/*.ogg
+  - assets/music/**/*.ogg
+  # Third-party attribution travels with the binary -- the art and audio here
+  # are used on terms that require it. check_assets.py fails the build if one
+  # of these stops being covered.
+  - assets/**/LICENSE*
+  - assets/**/license*
+  - assets/**/CREDITS*
+  - assets/**/*_CREDITS.txt
+  - assets/**/*-OFL.txt

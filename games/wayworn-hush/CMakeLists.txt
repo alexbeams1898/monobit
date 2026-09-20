@@ -77,7 +77,8 @@ endif()
 
 # A shareable build: the exe reads assets from beside itself rather than chdir'ing
 # to THIS machine's source tree, so it runs anywhere. Off by default -- F7 wants the
-# dev behaviour. scripts/package.sh turns it on for the copy it zips.
+# dev behaviour. The release config declares it, so CI builds with it on and
+# scripts/package.py refuses to package a build that has it off.
 option(WAYWORN_RELEASE "Build an exe that reads assets beside it, for sharing" OFF)
 
 # Dev builds read assets/config DIRECTLY from the source tree (main.cpp chdir's

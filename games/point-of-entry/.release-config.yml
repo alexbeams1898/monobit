@@ -15,3 +15,30 @@ artifact_prefix: point-of-entry
 # distribution repo exists for this game -- the tagged release on the source
 # repo is still published either way.
 public_repo: ""
+
+# Ceiling on DECLARED DATA -- the executable is not counted, since it is
+# 165MB in Debug and a fraction of that in Release and would make this
+# gate move for reasons unrelated to what ships. Currently 0.5 MB.
+# A release over the ceiling fails instead of shipping.
+size_limit_mb: 25
+
+# What ships, as paths under this game directory. Inclusion, not exclusion --
+# anything not named here does not ship. Note the audio: the .ogg are runtime
+# and audio/source/*.mp3 is the authoring original, so only .ogg is named.
+include:
+  - config
+  - assets/maps/**/*.ldtk
+  - assets/sprites/*.png
+  - assets/sprites/*.json
+  - assets/tilesets/*.png
+  - assets/fonts/*.ttf
+  # Non-recursive: audio/source/ holds the authoring original.
+  - assets/audio/*.ogg
+  # Third-party attribution travels with the binary -- the art and audio here
+  # are used on terms that require it. check_assets.py fails the build if one
+  # of these stops being covered.
+  - assets/**/LICENSE*
+  - assets/**/license*
+  - assets/**/CREDITS*
+  - assets/**/*_CREDITS.txt
+  - assets/**/*-OFL.txt
